@@ -1,0 +1,38 @@
+app:
+  name: "SatQuery AI"
+  version: "1.0.0"
+  environment: "development"
+  debug: true
+  host: "0.0.0.0"
+  port: 8000
+  cors_origins:
+    - "http://localhost:3000"
+    - "http://127.0.0.1:3000"
+
+storage:
+  results_dir: "results"
+  max_upload_size_mb: 500
+  allowed_extensions:
+    - ".tif"
+    - ".tiff"
+    - ".png"
+    - ".jpg"
+    - ".jpeg"
+
+geospatial:
+  tiling:
+    tile_size: 512
+    overlap: 64
+    max_dimension_no_tile: 2048
+  display:
+    percentile_min: 2.0
+    percentile_max: 98.0
+    preview_max_dim: 1024
+  co_registration:
+    max_resolution_diff_ratio: 0.1
+    min_bounds_iou: 0.8
+  metric_projection_fallback: "EPSG:3857"
+
+logging:
+  level: "INFO"
+  structured_json: true

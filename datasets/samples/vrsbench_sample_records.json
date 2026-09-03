@@ -1,0 +1,18 @@
+[
+  {
+    "id": "vrsbench_sample_001",
+    "image_id": "real_image_b",
+    "query": "The small dark-colored vehicle located at the top-right corner of the image.",
+    "bbox": [245.0, 48.0, 256.0, 65.0],
+    "bbox_format": "xyxy",
+    "category": "vehicle"
+  },
+  {
+    "id": "vrsbench_sample_002",
+    "image_id": "real_image_b",
+    "query": "The small vehicle parked near the upper edge.",
+    "bbox": [245.0, 48.0, 256.0, 65.0],
+    "bbox_format": "xyxy",
+    "category": "vehicle"
+  }
+]

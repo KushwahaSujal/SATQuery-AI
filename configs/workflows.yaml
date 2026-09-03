@@ -1,0 +1,55 @@
+workflows:
+  single_image_vqa:
+    id: "workflow_single_vqa"
+    name: "Single-Image Visual Question Answering"
+    primary_model: "general_rs_vlm"
+    optional_models: []
+    max_tokens: 512
+    temperature: 0.2
+
+  single_image_caption:
+    id: "workflow_caption"
+    name: "Single-Image Remote Sensing Captioning"
+    primary_model: "general_rs_vlm"
+    optional_models: ["remoteclip"]
+    max_tokens: 256
+
+  single_image_grounding:
+    id: "workflow_grounding"
+    name: "Visual Grounding & Segmentation Refinement"
+    primary_model: "grounding_dino"
+    refinement_model: "sam2"
+    box_threshold: 0.35
+    text_threshold: 0.25
+    mask_threshold: 0.5
+    nms_threshold: 0.5
+
+  bi_temporal_change:
+    id: "workflow_temporal_change"
+    name: "Bi-Temporal Change Detection & Metric Analysis"
+    detection_model: "changeformer"
+    vqa_model: "cdvqa"
+    change_probability_threshold: 0.5
+    min_polygon_area_pixels: 16
+    metric_area_unit: "sq_meters"
+
+  bi_temporal_change_vqa:
+    id: "workflow_temporal_change_vqa"
+    name: "Bi-Temporal Change Question Answering"
+    detection_model: "changeformer"
+    vqa_model: "cdvqa"
+    change_probability_threshold: 0.5
+
+  optical_sar_analysis:
+    id: "workflow_optical_sar"
+    name: "Optical + SAR Cross-Modal Fusion Analysis"
+    representation_encoder: "dofa"
+    fusion_model: "satquery_optical_sar_fusion"
+    sar_representation_default: "linear" # linear | dB | unknown
+    optical_bands: ["red", "green", "blue", "nir"]
+    sar_polarizations: ["VV", "VH"]
+
+thresholds:
+  confidence_high: 0.80
+  confidence_medium: 0.50
+  cross_model_iou_agreement: 0.60

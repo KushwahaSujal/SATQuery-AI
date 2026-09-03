@@ -1,0 +1,165 @@
+device:
+  preferred: "auto"  # auto | cuda | mps | cpu
+  fallback: "cpu"
+  allow_cpu_for_heavy_models: true
+
+concurrency:
+  gpu_lock_timeout_seconds: 120
+
+models:
+  general_rs_vlm:
+    name: "GeneralRSVLM"
+    version: "v1.0"
+    task: "vqa"
+    supported_tasks:
+      - "single_image_vqa"
+      - "single_image_caption"
+    supported_modalities:
+      - "optical"
+      - "multispectral"
+    input_count: 1
+    input_relationship: "single"
+    enabled: true
+    checkpoint_path: "checkpoints/general_rs_vlm"
+    device: "auto"
+    precision: "float16"
+
+  grounding_dino:
+    name: "GroundingDINO"
+    version: "T-v1.0"
+    task: "grounding"
+    supported_tasks:
+      - "single_image_grounding"
+    supported_modalities:
+      - "optical"
+      - "multispectral"
+      - "sar"
+    input_count: 1
+    input_relationship: "single"
+    enabled: true
+    checkpoint_path: "checkpoints/grounding_dino/groundingdino_swint_ogc.pth"
+    config_path: "checkpoints/grounding_dino/GroundingDINO_SwinT_OGC.py"
+    device: "auto"
+    model_id: "IDEA-Research/grounding-dino-base"
+    box_threshold: 0.35
+    text_threshold: 0.25
+
+  sam2:
+    name: "SAM2"
+    version: "Hiera-Base"
+    task: "segmentation"
+    supported_tasks:
+      - "single_image_segmentation"
+      - "grounding_refinement"
+    supported_modalities:
+      - "optical"
+      - "multispectral"
+      - "sar"
+    input_count: 1
+    input_relationship: "single"
+    enabled: true
+    model_id: "facebook/sam2.1-hiera-small"
+    checkpoint_path: "checkpoints/sam2/sam2_hiera_base_plus.pt"
+    config_path: "checkpoints/sam2/sam2_hiera_b+.yaml"
+    device: "auto"
+
+  changeformer:
+    name: "ChangeFormer"
+    version: "v6"
+    task: "change_detection"
+    supported_tasks:
+      - "bi_temporal_change"
+      - "bi_temporal_change_vqa"
+    supported_modalities:
+      - "optical"
+      - "multispectral"
+    input_count: 2
+    input_relationship: "temporal"
+    enabled: true
+    checkpoint_path: "checkpoints/changeformer/satquery_changeformer_best.pt"
+    device: "auto"
+    input_size: 512
+    threshold: 0.5
+
+  cdvqa:
+    name: "CDVQA"
+    version: "v1.0"
+    task: "change_vqa"
+    supported_tasks:
+      - "bi_temporal_change_vqa"
+    supported_modalities:
+      - "optical"
+      - "multispectral"
+    input_count: 2
+    input_relationship: "temporal"
+    enabled: true
+    checkpoint_path: "checkpoints/cdvqa/cdvqa_satquery.pt"
+    device: "auto"
+
+  dofa:
+    name: "DOFA"
+    version: "ViT-Base-e100"
+    task: "representation"
+    supported_tasks:
+      - "optical_sar_analysis"
+      - "feature_extraction"
+    supported_modalities:
+      - "optical"
+      - "multispectral"
+      - "sar"
+    input_count: 2
+    input_relationship: "cross_modal"
+    enabled: true
+    checkpoint_path: "checkpoints/dofa/DOFA_ViT_base_e100.pth"
+    device: "auto"
+
+  satquery_optical_sar_fusion:
+    name: "OpticalSARFusionModel"
+    version: "v1.0"
+    task: "fusion_prediction"
+    supported_tasks:
+      - "optical_sar_analysis"
+      - "multimodal_fusion"
+      - "cross_modal_analysis"
+    supported_modalities:
+      - "optical"
+      - "sar"
+    input_count: 2
+    input_relationship: "cross_modal"
+    enabled: true
+    checkpoint_path: "checkpoints/optical_sar/satquery_fusion.pth"
+    device: "auto"
+
+  remoteclip:
+    name: "RemoteCLIP"
+    version: "ViT-B-32"
+    task: "image_text"
+    supported_tasks:
+      - "zero_shot_classification"
+      - "cross_modal_retrieval"
+    supported_modalities:
+      - "optical"
+      - "multispectral"
+    input_count: 1
+    input_relationship: "single"
+    enabled: true
+    checkpoint_path: "checkpoints/remoteclip/RemoteCLIP-ViT-B-32.pt"
+    device: "auto"
+
+  bigearthnet:
+    name: "BigEarthNet-v2.0"
+    version: "resnet50-all-v0.2.0"
+    task: "multimodal_classification"
+    supported_tasks:
+      - "multimodal_land_cover"
+      - "optical_sar_analysis"
+    supported_modalities:
+      - "optical"
+      - "multispectral"
+      - "sar"
+    input_count: 2
+    input_relationship: "cross_modal"
+    enabled: true
+    checkpoint_path: "checkpoints/bigearthnet/model.safetensors"
+    config_path: "checkpoints/bigearthnet/config.json"
+    device: "auto"

@@ -1,0 +1,38 @@
+# Git
+.git
+.gitignore
+
+# Python virtual environment & caches
+.venv/
+venv/
+ENV/
+env/
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Node.js / Next.js caches
+node_modules/
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+
+# Environment files with local secrets
+.env
+.env.local
+.env.*.local
+
+# Large datasets, model checkpoints, and runtime results
+# (These are mounted via volumes in docker-compose, not baked into the image)
+checkpoints/
+datasets/
+results/
+logs/
+*.log
+
+# OS temporary files
+.DS_Store
+Thumbs.db

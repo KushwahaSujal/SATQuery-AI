@@ -1,0 +1,83 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual Environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Results & Checkpoint weights (do not commit raw heavy models or runtime results)
+results/*
+!results/.gitkeep
+checkpoints/**
+!checkpoints/**/README.md
+!checkpoints/**/.gitkeep
+*.safetensors
+*.pth
+*.pt
+*.bin
+*.ckpt
+*.whl
+downloads/
+
+# Datasets (external raw data)
+datasets/raw/*
+datasets/processed/*
+datasets/cdvqa/*
+*.zip
+!datasets/README.md
+!datasets/manifests/
+
+# Node.js / Frontend
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+frontend/build/
+frontend/.env.local
+frontend/.env.development.local
+frontend/.env.test.local
+frontend/.env.production.local
+
+# Scratch scripts & temporary test artifacts
+scratch/
+
+# IDE & OS
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Pytest / Coverage
+.pytest_cache/
+.coverage
+htmlcov/

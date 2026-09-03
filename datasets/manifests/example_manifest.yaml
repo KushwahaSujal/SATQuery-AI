@@ -1,0 +1,16 @@
+dataset:
+  name: "VRSBench"
+  task: "single_image_vqa"
+  version: "official"
+
+images:
+  root: "/path/to/vrsbench/images"
+  format: "PNG"
+
+annotations:
+  path: "/path/to/vrsbench/vqa_annotations.json"
+
+split:
+  train: "train"
+  validation: "val"
+  test: "test"
