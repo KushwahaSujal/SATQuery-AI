@@ -208,7 +208,7 @@ The SatQuery AI Agent (`backend/app/agent/`) employs deterministic heuristic cla
 | *"Highlight the small cargo ship docked at pier."* | 1 Optical Image + Referring Phrase | `single_image_grounding` | `GroundingWorkflow` | Grounding DINO → V4 Reasoner → SAM 2.1 | Bounding boxes, polygon mask, area ($m^2$), visual overlay |
 | *"Show where new buildings were constructed."* | 2 Registered Images ($T_1, T_2$) | `bi_temporal_change` | `ChangeWorkflow` | ChangeFormerV6 | Binary change mask, continuous probability map, changed area |
 | *"Did the water reservoir increase or decrease?"* | 2 Images ($T_1, T_2$) + Temporal Query | `bi_temporal_change_vqa`| `TemporalVQAWorkflow` | ChangeFormerV6 + CDVQA | Spatial change mask, natural language change answer (19 classes) |
-| *"Flag when the white truck moves past the gate."* | MP4/AVI Video + Natural Query | `video_analysis` | `VideoAnalysisWorkflow` | OpenCV Decoder → DINO → V4 → SAM 2.1 Video | Keyframe cards, timeline markers, heuristic event scores |
+| *"Flag when the white truck moves past the gate."* | MP4 Video + Natural Query | `video_analysis` | `VideoAnalysisWorkflow` | OpenCV Decoder → DINO → V4 → SAM 2.1 Video | Keyframe cards, timeline markers, heuristic event scores |
 | *"Compute vegetation health and water indices."* | 4-Band Multispectral GeoTIFF | `visual_analytics` | `VisualAnalyticsSubsystem` | `SpectralIndexEngine` | NDVI & NDWI rasters, colorbar legends, 50-bin histograms |
 | *"Inspect radar backscatter across the harbor."* | 2-Band SAR GeoTIFF (VV, VH) | `visual_analytics` | `VisualAnalyticsSubsystem` | `SARVisualizationEngine` | VV/VH backscatter, dual-pol ratio composite, dB conversion |
 
@@ -367,7 +367,7 @@ Implemented in `backend/app/visualization/` and exposed via `/api/analysis/{job_
 
 ### 9.1. Streaming Decoding & Frame Sampling Architecture
 Implemented in `backend/app/video/decoder.py` and `backend/app/video/sampler.py`:
-- Ingests `.mp4`, `.avi`, `.mov`, `.mkv` files.
+- Ingests `.mp4`, `.mov` files.
 - Employs an OpenCV streaming generator (`iter_frames()`) that decodes frames lazily to maintain an $O(1)$ memory footprint regardless of video file size.
 - Implements two-stage adaptive sampling:
   1. *Coarse Sampling*: Uniform temporal subsampling (e.g., 1 frame per second).

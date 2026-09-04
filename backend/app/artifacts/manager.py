@@ -75,13 +75,13 @@ class ArtifactManager:
             json.dump(trace_data, f, indent=2, default=str)
         return out_path
 
-    def load_trace_json(self, request_id: str) -> List[Dict[str, Any]]:
+    def load_trace_json(self, request_id: str) -> Optional[List[Dict[str, Any]]]:
         job_dir = self.get_job_dir(request_id)
         path = job_dir / "trace.json"
         if path.exists():
             with open(path, "r", encoding="utf-8") as f:
                 return json.load(f)
-        return []
+        return None
 
     def get_artifact_path(self, request_id: str, artifact_type: str, filename: str) -> Optional[Path]:
         job_dir = self.get_job_dir(request_id)

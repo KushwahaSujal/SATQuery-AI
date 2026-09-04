@@ -488,7 +488,7 @@ Computes an authentic 50-bin distribution histogram and summary statistics over 
 
 ### 5.1 Video Ingestion
 #### `POST /api/video/upload`
-Uploads video file (MP4, AVI, MOV, MKV) and extracts stream metadata.
+Uploads video file (MP4, MOV) and extracts stream metadata.
 
 - **Form Fields**: `file` (Video binary file)
 - **Response**:
@@ -512,16 +512,17 @@ Uploads video file (MP4, AVI, MOV, MKV) and extracts stream metadata.
 #### `POST /api/video/analyze`
 Executes intelligent frame sampling, zero-shot Grounding DINO detection, SAM 2.1 mask segmentation, and temporal event aggregation.
 
-- **Request Body**:
-  ```json
-  {
-    "job_id": "video_job_8f21e",
-    "video_filename": "surveillance_pass.mp4",
-    "query": "Track all military transport vehicles moving across the runway",
-    "sampling_fps": 2.0,
-    "confidence_threshold": 0.4
-  }
-  ```
+- **Request Body** (multipart/form-data, sent as `FormData` by the frontend — **not** JSON):
+
+  | Field | Type | Required | Description |
+  | :--- | :--- | :--- | :--- |
+  | `query` | string | Yes | Natural language query about the video content. |
+  | `request_id` | string | No | Existing job ID from `POST /api/video/upload`. If omitted, a new UUID is generated and the video must be provided via `file`. |
+  | `file` | binary | No | Direct video upload (MP4/MOV). Usually omitted — the video is uploaded separately via `POST /api/video/upload`. |
+  | `sample_fps` | float | No | Frame sampling rate for analysis. |
+  | `max_frames` | int | No | Maximum number of frames to process. |
+  | `min_persistence_frames` | int | No | Minimum consecutive frames for an event to persist. |
+  | `min_event_score` | float | No | Minimum confidence threshold for flagged events (frontend maps `confidence_threshold` → `min_event_score`). |
 
 ### 5.3 Video Results & Stream
 - `GET /api/video/{job_id}` & `GET /api/video/{job_id}/results`: Retrieves aggregated event flags and keyframe overlays.
