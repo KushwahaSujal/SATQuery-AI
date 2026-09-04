@@ -216,7 +216,14 @@ The SatQuery AI Agent (`backend/app/agent/`) employs deterministic heuristic cla
 
 ## 7. Comprehensive Model Stack & Technical Specifications
 
-### 7.1. General RS-VLM (Vision-Language Candidate Evaluation & Status)
+> [!NOTE]
+> **Complete Technical Dossiers**: Full mathematical formulations, architecture diagrams, benchmark splits, and integration files for each model are maintained in the **[Model Research Dossier Directory](file:///c:/Users/user/Desktop/SATQuery/satquery-ai/docs/models/README.md)**:
+> - 📊 [Model Comparison Matrix](file:///c:/Users/user/Desktop/SATQuery/satquery-ai/docs/models/MODEL_COMPARISON_MATRIX.md) | 🏗️ [Pipeline Architecture](file:///c:/Users/user/Desktop/SATQuery/satquery-ai/docs/models/MODEL_PIPELINE_ARCHITECTURE.md) | 💾 [Checkpoint Inventory](file:///c:/Users/user/Desktop/SATQuery/satquery-ai/docs/models/CHECKPOINT_INVENTORY.md) | 📈 [Benchmarks](file:///c:/Users/user/Desktop/SATQuery/satquery-ai/docs/models/MODEL_BENCHMARKS.md)
+> - 🎯 [Grounding DINO](file:///c:/Users/user/Desktop/SATQuery/satquery-ai/docs/models/GROUNDING_DINO.md) | 🚀 [V4 Spatial Reasoner](file:///c:/Users/user/Desktop/SATQuery/satquery-ai/docs/models/V4_GROUNDING_REASONING.md) | ✂️ [SAM 2.1](file:///c:/Users/user/Desktop/SATQuery/satquery-ai/docs/models/SAM2_1.md)
+> - 🔄 [ChangeFormerV6](file:///c:/Users/user/Desktop/SATQuery/satquery-ai/docs/models/CHANGEFORMER_V6.md) | 💬 [CDVQA](file:///c:/Users/user/Desktop/SATQuery/satquery-ai/docs/models/CDVQA.md) | ⚖️ [Evidence Adjudicator](file:///c:/Users/user/Desktop/SATQuery/satquery-ai/docs/models/EVIDENCE_ADJUDICATOR.md)
+> - 🛰️ [DOFA Foundation Model](file:///c:/Users/user/Desktop/SATQuery/satquery-ai/docs/models/DOFA.md) | 🔀 [Optical-SAR Fusion](file:///c:/Users/user/Desktop/SATQuery/satquery-ai/docs/models/OPTICAL_SAR_FUSION.md) | 🌍 [BigEarthNet-v2.0](file:///c:/Users/user/Desktop/SATQuery/satquery-ai/docs/models/BIGEARTHNET_MULTIMODAL.md)
+> - 🗨️ [General RS-VLM](file:///c:/Users/user/Desktop/SATQuery/satquery-ai/docs/models/GENERAL_RS_VLM.md) | 🏷️ [RemoteCLIP](file:///c:/Users/user/Desktop/SATQuery/satquery-ai/docs/models/REMOTECLIP.md)
+> - 📚 Historical / Evaluated: [V1](file:///c:/Users/user/Desktop/SATQuery/satquery-ai/docs/models/V1_GROUNDING_STRATEGY.md) | [V2](file:///c:/Users/user/Desktop/SATQuery/satquery-ai/docs/models/V2_GROUNDING_STRATEGY.md) | [V3](file:///c:/Users/user/Desktop/SATQuery/satquery-ai/docs/models/V3_GROUNDING_STRATEGY.md) | [GeoChat](file:///c:/Users/user/Desktop/SATQuery/satquery-ai/docs/models/GEOCHAT.md) | [EarthDial](file:///c:/Users/user/Desktop/SATQuery/satquery-ai/docs/models/EARTHDIAL.md) | [RSCoVLM](file:///c:/Users/user/Desktop/SATQuery/satquery-ai/docs/models/RSCOVLM.md)
 - **Role**: General conversational VQA, captioning, and open-ended scene interpretation.
 - **Evaluated Candidates**:
   1. *EarthDial* (IEEE TGRS / arXiv 2024, 7.2B params, Vicuna-7B + Spatial Perceiver, 78.9% RSVQA HR)
