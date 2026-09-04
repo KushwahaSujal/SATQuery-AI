@@ -16,7 +16,7 @@ def test_changeformer_smoke_real_images():
       5. Verifies a valid binary change mask is produced.
     """
     # Verify sample images exist locally on disk
-    data_dir = Path(__file__).parent / "data"
+    data_dir = Path(__file__).resolve().parents[1] / "data"  # tests/data (this file lives in tests/models/)
     img1_path = data_dir / "sample_t1.png"
     img2_path = data_dir / "sample_t2.png"
 

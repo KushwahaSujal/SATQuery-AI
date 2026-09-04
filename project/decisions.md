@@ -325,6 +325,62 @@ most of the 25%. Must be re-measured after, not assumed.
 the unadapted BLIP (D-101) — so it returns prose instead of a box, and the evaluation scores zero
 for that record. Router accuracy multiplies directly into grounding score.
 
+### D-117 · ChangeFormer is broken at the architecture level, not the preprocessing — **BLOCKER**
+Date 2026-09-04 · Session 2 · Evidence: `results/evaluations/changeformer_levircd_*.json`
+
+The real 492.6 MB checkpoint arrived. It is genuine and **well trained** — it carries its own
+training metadata:
+
+```
+epoch 10 | precision 0.857  recall 0.776  f1 0.814  IoU 0.687
+model_class "ChangeFormerV6"  model_module "models.ChangeFormer"  total_parameters 41,026,674
+```
+
+Our pipeline scores **IoU 0.0306** on the real LEVIR-CD test split. That is 22× below what the
+checkpoint itself reports.
+
+**It is not preprocessing.** A full sweep of every candidate contract on real LEVIR-CD pairs:
+
+| config | IoU | precision | recall | predicted-change % |
+|---|---|---|---|---|
+| imagenet@256 | 0.0668 | 0.070 | 0.589 | 62.4% |
+| imagenet@512 (production) | 0.0658 | 0.069 | 0.608 | 65.7% |
+| neg1to1@512 | 0.0709 | 0.074 | 0.642 | 64.6% |
+| zero_one@512 | 0.0671 | 0.069 | 0.741 | 80.1% |
+
+Ground-truth change is **7.2%** of pixels; every configuration predicts 62–80%. Swapping the output
+channel (ch0 vs ch1) changes nothing meaningful (0.066 → 0.075).
+
+**Three measurements that settle it:**
+
+1. **AUC = 0.4801** over 2.6M pixels — *below* chance. The probability map carries **no signal**, so
+   no threshold, normalisation or channel choice can recover it.
+2. **Best IoU over every threshold from 0.05 to 0.95 is 0.0653.** There is nothing to tune.
+3. **Feeding the identical image as both T1 and T2 yields 61.61% "changed"**, versus 62.13% for a
+   genuinely different pair — a 0.51 percentage-point difference. A change detector that cannot
+   distinguish an image from itself is not performing change detection.
+
+**Root cause:** `backend/app/ml/adapters/changeformer/network.py` is a 418-line in-repo
+reimplementation. All 373 parameter names match, so `load_state_dict(..., strict=True)` succeeds —
+but matching *names* is not matching *computation*. The forward pass does not do what the weights
+were trained to expect. The checkpoint points at `models.ChangeFormer`, i.e. the upstream
+`wgcban/ChangeFormer` module, which is not what this repo runs.
+
+**Consequences**
+- Bi-temporal change detection has **never worked**, and `temporal_change_vqa` inherits the failure.
+- The `[IMPLEMENTED & VERIFIED]` status in the master documentation is wrong for ChangeFormer.
+- The `test_changeformer_smoke.py` test passes because it only asserts shapes and finiteness —
+  never that the output is *correct*. Smoke tests that never check correctness are how this
+  survived.
+
+**Fix direction (not yet applied):** replace the reimplementation with the upstream
+`wgcban/ChangeFormer` `ChangeFormerV6`, then re-run `scripts/evaluate_changeformer_levircd.py` and
+require IoU within ~15% of 0.687 before calling it fixed. Do not touch preprocessing until the
+architecture reproduces the checkpoint's own score.
+
+**Correction to D-011:** the master doc's "preprocessing mismatch, fixed" story is not the cause of
+the change-detection problem. Preprocessing moves IoU by ~0.005 here. It was a red herring.
+
 ### D-114 · Dependencies are unpinned, and `transformers` resolved to a major version the code has never seen
 `backend/requirements.txt` uses `>=` with **no upper bounds**. On a clean install today that
 resolves `transformers>=4.41.0` to **5.16.1** — a major release with breaking API changes — plus

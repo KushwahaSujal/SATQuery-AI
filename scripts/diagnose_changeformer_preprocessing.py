@@ -172,7 +172,7 @@ def main() -> int:
     print(f"WINNER            : {win['config']} @ thr={win['threshold']} -> IoU {win['iou']:.4f}")
     print(f"PRODUCTION TODAY  : imagenet@512 @ thr={current['threshold']} -> IoU {current['iou']:.4f}")
 
-    if win["iou"] < 0.20:
+    if win["iou"] < 0.40:
         print(
             "\nVERDICT: every configuration scores poorly. Preprocessing is NOT the root cause.\n"
             "         Suspect the checkpoint itself (wrong weights, or trained on a different task).\n"

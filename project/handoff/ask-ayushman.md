@@ -1,131 +1,149 @@
-# What I need from Ayushman
+# What I need from Ayushman — v2
 
-Forwardable as-is. Ordered by how much it blocks.
+*Revised 2026-09-04 after receiving the checkpoints. Everything from v1 about sending files is
+resolved — the zip had all of them and they are genuine. What's below is what the weights themselves
+raised.*
 
-**Context:** I've got the backend running on a clean machine — Python 3.11, CUDA on a 3070,
-108/120 tests passing. Every one of the 12 non-passing tests is "model weights not on disk",
-because `checkpoints/` is gitignored and never left your machine. I've already pulled everything
-that's public from HuggingFace. What's left is the stuff only you have, plus a few questions that
-code can't answer.
+Forwardable as-is.
 
 ---
 
-## A. Files — only you have these
+## Status: files received, all real
 
-These three are SatQuery-specific, so I can't download them. Everything else I've handled.
+The 3.1 GB zip is unpacked and verified. Nothing further needed on that front.
 
-| # | File | Goes in | Blocks |
-|---|---|---|---|
-| **A1** | `satquery_changeformer_best.pt` | `checkpoints/changeformer/` | **All change detection.** Also blocks the investigation into the bug you reported. This is the #1 item. |
-| **A2** | `cdvqa_satquery.pt` | `checkpoints/cdvqa/` | Change-VQA — one of the mandatory SIH capabilities |
-| **A3** | `satquery_fusion.pth` | `checkpoints/optical_sar/` | Optical–SAR analysis (also mandatory). See question B3 before sending — it may not be worth sending. |
+| model | size | verdict |
+|---|---|---|
+| changeformer | 492.6 MB | real weights, well trained (see below) |
+| cdvqa | 56.5 MB | real |
+| optical_sar fusion | 30.0 MB | real file — but see Q3 |
+| dofa · general_rs_vlm · remoteclip · bigearthnet | 447 MB · 1.54 GB · 605 MB · 94.5 MB | real |
 
-Any transfer is fine — Drive, WeTransfer, USB. Please **don't** commit them to git; they're
-correctly gitignored and should stay that way.
-
-**Already sorted, don't bother:** Grounding DINO, SAM 2.1, BLIP (general_rs_vlm), DOFA, RemoteCLIP,
-BigEarthNet — all public on HuggingFace, I'm pulling them directly.
+**Test suite went from 104 passed / 7 failed to 117 passed / 0 failed.** Thank you — that unblocked
+a lot.
 
 ---
 
-## B. Questions — genuinely more important than the files
+## Q1. ChangeFormer: where did the architecture code come from? ⚠️ blocking
 
-### B1. How was `satquery_changeformer_best.pt` produced? ⚠️ highest priority
+**Your checkpoint is good.** It carries its own training metadata:
 
-There's no ChangeFormer training script anywhere in the repo, so I can't tell what the model
-expects as input. Specifically:
+```
+epoch 10 | precision 0.857  recall 0.776  f1 0.814  IoU 0.687
+model_class: ChangeFormerV6   model_module: models.ChangeFormer   params: 41,026,674
+```
 
-- Did you **fine-tune** it yourself, or convert/rename a released checkpoint from
-  `wgcban/ChangeFormer`?
-- If you trained it: **what normalisation did your dataloader use?**
-  - ImageNet stats — `mean=[0.485,0.456,0.406]`, `std=[0.229,0.224,0.225]`, or
-  - `[-1,1]` rescale — `mean=[0.5,0.5,0.5]`, `std=[0.5,0.5,0.5]`?
-- What **input size** did you train at — 256×256 or 512×512?
-- Can you send the **training script or notebook**? Even a rough one.
+**Our pipeline scores IoU 0.0306 on the real LEVIR-CD test split.** That is 22× worse than what your
+own checkpoint reports. So the weights are fine and our inference is wrong.
 
-**Why this matters and why it's probably your bug.** Our two docs contradict each other:
-`SATQUERY_AI_MASTER_DOCUMENTATION.md` §26 says training used `[-1,1]` and that ImageNet was the
-bug that got fixed. `docs/models/CHANGEFORMER_V6.md` §10 says ImageNet is correct. **The code uses
-ImageNet.** One of those documents is wrong.
+It is **not** the preprocessing — I swept every candidate (ImageNet vs `[-1,1]` vs plain `[0,1]`, at
+256 and 512, across all thresholds). Everything lands at IoU 0.066–0.071 and predicts 62–80% of the
+scene as changed when ground truth is 7.2%.
 
-If the checkpoint was trained on `[-1,1]` but we feed it ImageNet-normalised input, the tensors are
-roughly twice the magnitude the model expects and per-channel skewed — which produces exactly what
-you described: change masks that are blank, or saturated, or just not lining up with the real
-difference. Your answer decides this in one line. I've already written the script that measures it
-across all the candidate settings (`scripts/diagnose_changeformer_preprocessing.py`) — it just
-needs A1 to run.
+Three measurements that pin it down:
 
-### B2. When you saw the bug, what were you feeding it?
+- **AUC = 0.4801** across 2.6M pixels — below chance. The output has no signal in it at all.
+- Best IoU across *every* threshold 0.05–0.95 is **0.0653**. Nothing to tune.
+- **Feed the same image as both T1 and T2 → 61.61% flagged as "changed."** A real pair gives 62.13%.
+  The model cannot tell an image from itself.
 
-- Which two images exactly? (LEVIR-CD pair, our `datasets/samples/real_pair/`, or your own?)
-- **PNG/JPEG, or GeoTIFF?**
-- What did you expect vs what you got — blank mask, everything marked as changed, or right shape
-  but wrong place? A screenshot is ideal.
+The cause is almost certainly that `backend/app/ml/adapters/changeformer/network.py` is a
+**reimplementation** of ChangeFormerV6 written in this repo. All 373 parameter names match, so
+`load_state_dict(strict=True)` succeeds — but matching names is not the same as matching
+computation. Your checkpoint says `model_module: models.ChangeFormer`, i.e. the upstream
+`wgcban/ChangeFormer` module, which is not what we run.
 
-**Why:** I proved a separate real bug — any image deeper than 8-bit gets mangled. A 12-bit GeoTIFF
-arrives at the model ~26× out of range, a 16-bit one ~430×. If you were on GeoTIFF, that alone
-explains it and I can fix it today. If you were on PNG, it's the normalisation question above.
-The two need different fixes, so I don't want to guess.
+**What I need:**
 
-### B3. How was `satquery_fusion.pth` created?
+1. **Which code did you train with?** The upstream `wgcban/ChangeFormer` repo, or the
+   `network.py` in ours? If upstream — can you send or link the exact `models/ChangeFormer.py` you
+   used? That single file resolves this.
+2. **Did you ever run inference through *our* adapter and check it against ground truth?** Or was
+   the 0.687 measured inside your training script? If the latter, that fully explains how this
+   survived — the two paths were never compared.
+3. Same question for **CDVQA**: was the 69.50% OA measured through
+   `backend/app/ml/adapters/cdvqa/`, or in your training notebook? I'll verify it next and want to
+   know which number I'm reproducing.
 
-`docs/SATQUERY_AI_MODEL_DATA_SETUP.md` §F says to generate it like this:
+**Nothing is broken on your side.** The training worked. The gap is between your training code and
+the repo's inference code, and it means change detection has never actually worked in the app.
+
+---
+
+## Q2. The 164 MB vs 492 MB confusion is resolved — docs need correcting
+
+Both numbers were right about different things, and both docs are wrong about the parameter count:
+
+- weights alone = **41.0M params × 4 bytes = 164 MB** ← what `SATQUERY_AI_MODEL_DATA_SETUP.md` cites
+- the file is **492.6 MB** because it also contains the Adam optimiser state (exactly 3.00×)
+- both docs claim **"~13.5 Million parameters"** — the real figure is **41,026,674**
+
+Worth fixing before anyone quotes 13.5M to a judge. Also: the file being a full training checkpoint
+rather than weights-only is *useful* — that's where the metadata came from — so please keep saving
+them that way.
+
+---
+
+## Q3. Was `satquery_fusion.pth` ever trained? — still open
+
+The file is real (30.0 MB, consistent with the architecture's ~7.3M params). But size cannot tell me
+whether the weights are trained or random, and `docs/SATQUERY_AI_MODEL_DATA_SETUP.md` §F still says
+to create it like this:
 
 ```python
 net = CrossAttentionFusionNet()
 torch.save(net.state_dict(), 'checkpoints/optical_sar/satquery_fusion.pth')
 ```
 
-That's a **freshly constructed, untrained network** — random weights. It also references
-`scripts/train_optical_sar_fusion.py`, which doesn't exist in the repo.
+That's an untrained network. It also references `scripts/train_optical_sar_fusion.py`, which doesn't
+exist in the repo.
 
-If that's really how it was made, then the land-cover classes, "surface roughness" and "built-up
-index" it reports are random noise formatted to look like findings. That's one of the six mandatory
-SIH requirements, and it's the kind of thing a mentor asks "how did you train this?" about.
+**Just tell me straight — was it trained, and on what?** No blame either way. If it was, send the
+training script and I'll verify it like ChangeFormer. If it wasn't, we need to decide between
+training it on BigEarthNet, replacing it with an honest documented rule-based analysis, or disabling
+the capability. Any of those is defensible. Reporting random-weight land-cover classes as findings
+is not, and optical–SAR is one of the six mandatory SIH requirements.
 
-**Just tell me straight — was it ever trained?** No blame either way; I need to know whether to
-train it on BigEarthNet, replace it with an honest rule-based analysis, or disable it. Any of those
-is fine. Shipping random weights isn't.
-
-### B4. Where did the VRSBench grounding numbers come from?
-
-The master doc reports V1 mIoU 0.1832 / V2 0.2371 / V3 0.2238 as VRSBench results. I checked
-`datasets/samples/vrsbench_sample_records.json` against the real 16,159-record VRSBench eval split:
-
-- There are **2 records**, and both point at `real_image_b` — which is a **LEVIR-CD** crop, not a
-  VRSBench image.
-- Record 1's question is **word-for-word from real VRSBench**, where it belongs to `P0003_0002.png`
-  with a different ground-truth box. Here it's pointed at the LEVIR-CD crop with a hand-made box.
-- Record 2's question doesn't exist anywhere in VRSBench, and it reuses record 1's box exactly.
-
-I'm assuming this started as a smoke-test fixture and the numbers got written into the docs as
-"results" later — easy drift, no drama. But we can't put those numbers in the PPT or the paper,
-because if a judge checks, it looks like fabricated benchmarks.
-
-**Was there ever a run against the real VRSBench split?** If yes, send the output JSON. If no, say
-so and I'll produce real numbers — I've already downloaded the official split.
-
-### B5. Any local changes not pushed?
-
-`main` has only 2 commits and `checkpoints/`, `results/` and `datasets/` are all gitignored. If
-you've got fixes, eval outputs, or training scripts sitting locally, they're invisible to me.
-Anything in `results/` from previous runs is especially useful — that's where real measured numbers
-would live.
+Unlike ChangeFormer, this one **cannot be settled by measurement** — there's no ground truth to test
+against — so your answer is the only way to know.
 
 ---
 
-## C. Heads-up on things I've already changed
+## Q4. VRSBench grounding numbers — still open
 
-So we don't collide:
+The master doc reports V1 mIoU 0.1832 / V2 0.2371 / V3 0.2238 as VRSBench results. The fixture those
+came from (`datasets/samples/vrsbench_sample_records.json`) has **2 records, both pointing at
+`real_image_b`** — a LEVIR-CD crop, not a VRSBench image. One question is copied verbatim from real
+VRSBench (where it belongs to a different image with a different box); the other exists nowhere in
+the 16,159-record official split and reuses the first one's box.
 
-- **Fixed a real database bug.** Our Supabase URL uses the transaction pooler on port 6543, which
-  breaks asyncpg's prepared statements. Symptom is nasty: the health check passes and it fails
-  later under load. Verified against the live DB and fixed in `backend/app/db/session.py`.
-- **Deleted dead code** on branch `refactor/s0-remove-dead-layers`: `agent/planner.py`,
-  `agent/router.py` and the five `*Workflow` classes were never called by anything —
-  `AgentController` assigns `self.planner` and never reads it. Tests went 120 → 112 with an
-  identical failure list, so nothing behavioural changed.
-- **`requirements.txt` is missing two packages** that the code imports: `aiosqlite` (the whole test
-  suite needs it) and `sam2`. Also everything is unpinned, so a clean install now pulls
-  `transformers 5.16.1` — a major version the adapters were written before. Worth pinning from a
-  known-good environment; if you have a working `pip freeze`, send it.
+I've since run the real thing: **mean IoU 0.3532, R@0.5 0.398 over 299 records** of the official
+referring split. Those numbers are in `project/handoff/ppt-results.md` and should replace the old
+ones everywhere.
+
+**Was there ever a run against the real split?** If yes, send the output JSON. If no, just say so —
+I'll assume the fixture was a smoke test that drifted into the docs as "results", which is an easy
+thing to happen and worth catching before a judge does.
+
+---
+
+## Q5. Things I changed that you should know about
+
+- **Supabase pooler fix** — we both found this independently. Yours applies `connect_args`
+  unconditionally; mine only when the URL is a transaction pooler (`:6543`/pgbouncer), because the
+  same host on `:5432` is session mode and handles prepared statements fine. Merged, kept the
+  conditional one.
+- **`requirements.txt` is missing two packages the code imports**: `aiosqlite` (the whole test suite
+  needs it) and `sam2`. Also everything is unpinned — a clean install now pulls `transformers 5.16.1`,
+  a major version the adapters predate. If you have a working `pip freeze`, send it and I'll pin from it.
+- **`scripts/setup_checkpoints.py` is actively dangerous** — it writes 1.5 KB placeholder dicts to
+  every checkpoint path. Because `is_available()` is a bare file-existence check, that makes
+  `/api/models` report all 9 models as configured while `load_model()` fails on 373 missing tensors.
+  I've added `scripts/verify_checkpoints.py`, which creates nothing and detects placeholders by
+  loading the file. Suggest we delete `setup_checkpoints.py`.
+- **Restructure** on branch `refactor/s0-remove-dead-layers`: dead planner/router/workflow layers
+  removed, `routes.py` split by domain, `models/` → `ml/adapters/<model>/`, tests tiered into
+  unit/integration/models, tools now self-register via a decorator. All behaviour-preserving and
+  verified at each step.
+- **Heads up:** commit `f0a8c7b` on `main` deleted the entire `frontend/` directory — all 13
+  components, 4,941 deletions. If that wasn't intended, someone should know.
