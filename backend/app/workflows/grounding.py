@@ -5,7 +5,6 @@ import time
 import numpy as np
 from PIL import Image
 
-from backend.app.workflows.base import BaseWorkflow
 from backend.app.workflows.grounding_reasoner import (
     parse_v4_query,
     run_v4_reasoning,
@@ -327,79 +326,3 @@ def run_grounding_pipeline(
         "trace": trace
     }
 
-
-class GroundingWorkflow(BaseWorkflow):
-    """
-    Workflow B: Single Image Grounding & SAM 2 Segmentation Refinement.
-    Orchestrates Grounding DINO, V4 Multi-Attribute Reasoning, and SAM 2.
-    """
-    def run(self, image: Any, query: str, **kwargs: Any) -> Dict[str, Any]:
-        """Direct functional execution of the grounding pipeline."""
-        return run_grounding_pipeline(image=image, query=query, **kwargs)
-
-    async def execute(self, state: AgentState) -> AnalyzeResponse:
-        """
-        Executes grounding workflow within the agent runtime lifecycle.
-        Updates state with observable evidence, execution trace, and answers.
-        """
-        if not state.image_paths:
-            raise InvalidInputError("Grounding workflow requires at least one input image.")
-
-        img_path = state.image_paths[0]
-        pipeline_res = run_grounding_pipeline(
-            image=img_path,
-            query=state.query
-        )
-
-        state.task = TaskType.GROUNDING
-        state.status = JobStatus.COMPLETED
-        state.answer = pipeline_res["answer"]
-        state.confidence = pipeline_res["sam2_score"]
-        state.selected_models = ["grounding_dino", "sam2"]
-
-        # Populate state execution trace
-        for step in pipeline_res["trace"]:
-            state.add_trace(
-                step_name=step["step"],
-                status=step["status"],
-                tool=step.get("tool"),
-                details=str(step.get("details"))
-            )
-
-        # Populate state evidence package via Evidence Engine
-        ev_dict = pipeline_res.get("evidence", {})
-        sel_box = pipeline_res.get("selected_box")
-        bin_mask = pipeline_res.get("segmentation_mask")
-        grounding_score = pipeline_res.get("grounding_score")
-        sam2_score = pipeline_res.get("sam2_score")
-        meta = state.metadata[0] if state.metadata else None
-
-        state.evidence = EvidenceFusionEngine.build_grounding_evidence(
-            selected_box=sel_box,
-            segmentation_mask=bin_mask,
-            metadata=meta,
-            request_id=state.request_id,
-            target_category=ev_dict.get("target_category", "object"),
-            grounding_score=grounding_score,
-            sam2_score=sam2_score,
-            summary=pipeline_res.get("answer"),
-            extra_metadata={
-                "strategy": pipeline_res.get("strategy"),
-                "reasoning_scores": ev_dict.get("reasoning_scores"),
-                "reference_evidence": ev_dict.get("reference_evidence"),
-            }
-        )
-
-        return AnalyzeResponse(
-            request_id=state.request_id,
-            status=state.status,
-            task=state.task,
-            workflow_id="Workflow_B_Grounding",
-            workflow_reason="Target object grounding and promptable segmentation requested.",
-            answer=state.answer,
-            confidence=state.confidence,
-            models_used=state.selected_models,
-            evidence=state.evidence,
-            execution_trace=state.execution_trace,
-            artifacts=state.artifacts
-        )

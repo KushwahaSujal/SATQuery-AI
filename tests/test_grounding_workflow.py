@@ -2,11 +2,8 @@ import pytest
 import numpy as np
 from PIL import Image
 
-from backend.app.workflows.grounding import run_grounding_pipeline, GroundingWorkflow
+from backend.app.workflows.grounding import run_grounding_pipeline
 from backend.app.models.sam2 import SAM2Result
-from backend.app.agent.state import AgentState
-from backend.app.schemas.agent import JobStatus, TaskType
-from backend.app.schemas.responses import AnalyzeResponse
 
 
 class MockGroundingDINOAdapter:
@@ -85,28 +82,3 @@ def test_grounding_pipeline_execution():
     assert "receive_segmentation_mask" in trace_steps
     assert "build_visual_evidence" in trace_steps
     assert "complete_pipeline" in trace_steps
-
-
-@pytest.mark.asyncio
-async def test_grounding_workflow_class(tmp_path):
-    # Save a test image
-    img_path = tmp_path / "test_grounding.png"
-    Image.new("RGB", (100, 100)).save(img_path)
-
-    state = AgentState(
-        request_id="req_grounding_test",
-        query="the vehicle",
-        image_paths=[str(img_path)]
-    )
-
-    workflow = GroundingWorkflow()
-    # Mock adapters via monkeypatch or directly testing run_grounding_pipeline
-    # Here we test run() directly
-    res = workflow.run(
-        image=str(img_path),
-        query="the vehicle",
-        grounding_adapter=MockGroundingDINOAdapter(),
-        sam2_adapter=MockSAM2Adapter()
-    )
-    assert res["task"] == "grounding"
-    assert res["strategy"] == "V4_RELATIONAL"
