@@ -23,6 +23,25 @@ executed on this machine yet; every finding below comes from reading the source.
 
 ---
 
+## 1b. Restructure progress (see [restructure.md](restructure.md))
+
+| Stage | State | Result |
+|---|---|---|
+| **S0** dead-code removal | ✅ done | `agent/` 7→5 modules, `workflows/` 8→3; 493 deletions, 0 behaviour change |
+| **Docs off root** | ✅ done | 13 root `.md` files → 1 (`README.md`); rest under `project/` |
+| **S1** split `routes.py` | ✅ done | 1246 lines → 6 domain modules under `api/v1/endpoints/` + shim; all 27 routes intact |
+| **S2** `models/` → `ml/` | ✅ done | per-model packages; `changeformer.py` 722 → `network.py` 418 + `adapter.py` 329; 45 import sites rewritten |
+| **S3** decorator tool registry + per-capability files | ⬜ next | fixes D-104/D-105 structurally |
+| **S4** test tiering (`unit`/`integration`/`smoke`) | ⬜ | no markers today; can't run "fast tests only" |
+| **S5/S6** frontend | ⬜ blocked | **frontend was deleted upstream** in `f0a8c7b` — see below |
+
+Verification after each stage: **104 passed / 7 failed / 1 skipped**, failure list unchanged
+(all 7 are missing checkpoints). The improvement from the 100/11 baseline came from installing
+`sam2`, not from any refactor.
+
+⚠️ **Upstream deleted the entire `frontend/` directory** in commit `f0a8c7b` (4,941 deletions,
+all 13 components). Merged in. If unintended, the team needs to know before rebuilding.
+
 ## 2. Currently working on
 
 **`phases.md` P0 — baseline**, then `restructure.md` **S0** (dead-code removal). Approved
