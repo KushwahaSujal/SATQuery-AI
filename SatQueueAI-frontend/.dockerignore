@@ -1,0 +1,13 @@
+node_modules
+.next
+npm-debug.log
+.git
+.gitignore
+Dockerfile
+.dockerignore
+*.md
+LICENSE
+*.pdf
+.env*
+.idea
+.commandcode
