@@ -14,8 +14,11 @@ dist/
 downloads/
 eggs/
 .eggs/
-lib/
-lib64/
+# Python build output only — anchored to the repo root so these do NOT swallow
+# frontend source directories. An unanchored "lib/" matches src/lib/ at any depth
+# and silently excluded SatQueueAI-frontend/src/lib/ from a push (2026-09-04).
+/lib/
+/lib64/
 parts/
 sdist/
 var/

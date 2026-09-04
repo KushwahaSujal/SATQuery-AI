@@ -68,7 +68,7 @@ services:
 
   frontend:
     build:
-      context: ../SatQueueAI-frontend
+      context: ./frontend
       dockerfile: Dockerfile
     container_name: satquery-frontend
     restart: unless-stopped
