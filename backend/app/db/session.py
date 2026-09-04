@@ -81,6 +81,10 @@ def get_async_engine() -> AsyncEngine:
                 "max_overflow": settings.database.max_overflow,
                 "pool_timeout": settings.database.pool_timeout,
                 "pool_pre_ping": True,
+                "connect_args": {
+                    "statement_cache_size": 0,
+                    "prepared_statement_cache_size": 0,
+                },
             })
 
         _async_engine = create_async_engine(db_url, **engine_kwargs)

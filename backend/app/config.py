@@ -10,6 +10,15 @@ def _get_project_root() -> Path:
     return Path(__file__).resolve().parent.parent.parent
 
 
+try:
+    from dotenv import load_dotenv
+    _env_file = _get_project_root() / ".env"
+    if _env_file.exists():
+        load_dotenv(_env_file)
+except ImportError:
+    pass
+
+
 class AppSettings(BaseModel):
     name: str = "SatQuery AI"
     version: str = "1.0.0"

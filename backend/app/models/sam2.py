@@ -103,9 +103,12 @@ class SAM2Adapter(BaseModelAdapter):
         self._video_predictor: Optional[Any] = None
 
     def is_available(self) -> bool:
-        """Checks if SAM 2 package and dependencies are accessible."""
+        """Checks if SAM 2 package, checkpoint, or dependencies are accessible."""
         if self.config and not self.config.enabled:
             return False
+        p = self.checkpoint_path
+        if p is not None and p.exists():
+            return True
         try:
             import sam2
             from sam2.sam2_image_predictor import SAM2ImagePredictor

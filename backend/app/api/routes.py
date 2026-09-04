@@ -275,6 +275,66 @@ async def analyze_query(request: AnalyzeRequest, db: AsyncSession = Depends(get_
     return response
 
 
+@router.get("/jobs")
+async def list_jobs(db: AsyncSession = Depends(get_db)):
+    """Retrieves list of all analysis jobs from PostgreSQL."""
+    try:
+        from sqlalchemy import select
+        from backend.app.db.models.job import AnalysisJob
+        stmt = select(AnalysisJob).order_by(AnalysisJob.created_at.desc())
+        res = await db.execute(stmt)
+        jobs = res.scalars().all()
+        return [
+            {
+                "id": j.id,
+                "job_id": j.id,
+                "task": j.task_type or "unknown",
+                "query": j.query or "",
+                "status": j.status,
+                "created_at": j.created_at.isoformat() if j.created_at else None,
+                "updated_at": j.updated_at.isoformat() if j.updated_at else None,
+            }
+            for j in jobs
+        ]
+    except Exception as e:
+        logger.warning(f"Failed to list jobs: {e}")
+        return []
+
+
+@router.delete("/jobs")
+async def delete_all_jobs(db: AsyncSession = Depends(get_db)):
+    """Clears all jobs from PostgreSQL database and workspace folders."""
+    try:
+        from sqlalchemy import delete
+        from backend.app.db.models.job import AnalysisJob
+        from backend.app.db.models.file import UploadedFile
+        from backend.app.db.models.model_run import ModelRun
+        from backend.app.db.models.step import ExecutionStep
+        from backend.app.db.models.result import AnalysisResult
+        from backend.app.db.models.artifact import Artifact
+        import shutil
+
+        await db.execute(delete(Artifact))
+        await db.execute(delete(AnalysisResult))
+        await db.execute(delete(ExecutionStep))
+        await db.execute(delete(ModelRun))
+        await db.execute(delete(UploadedFile))
+        await db.execute(delete(AnalysisJob))
+        await db.commit()
+
+        # Clean workspace jobs dir
+        jobs_dir = artifact_manager.workspace_root / "jobs"
+        if jobs_dir.exists():
+            for item in jobs_dir.iterdir():
+                if item.is_dir():
+                    shutil.rmtree(item, ignore_errors=True)
+
+        return {"status": "ok", "message": "All jobs cleared successfully."}
+    except Exception as e:
+        logger.error(f"Failed to clear jobs: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/jobs/{job_id}")
 @router.get("/jobs/{job_id}/status")
 async def get_job_status(job_id: str, db: AsyncSession = Depends(get_db)):
@@ -791,7 +851,7 @@ async def get_analysis_layers(job_id: str, db: AsyncSession = Depends(get_db)):
         input_files = sorted([f for f in input_dir.iterdir() if f.is_file() and not f.name.endswith(".json")])
 
     if not input_files:
-        job = await JobRepository.get_job_by_id(db, job_id)
+        job = await JobRepository.get_job(db, job_id)
         if not job:
             raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found.")
 

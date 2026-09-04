@@ -183,7 +183,7 @@ Refer to `.env.example` for all configurable keys:
 - `SATQUERY_DEVICE`: Set to `auto` (default), `cuda`, or `cpu`.
 - `DATABASE_URL`: Connection string for PostgreSQL (`postgresql+asyncpg://satquery:satquery@postgres:5432/satquery`).
 - `BACKEND_API_URL`: Internal container communication URL (`http://backend:8000`).
-- `NEXT_PUBLIC_API_URL`: Browser-facing API endpoint (`http://localhost:8000`).
+- `NEXT_PUBLIC_API_BASE_URL`: Browser-facing API endpoint (`http://localhost:8000`).
 
 ---
 
