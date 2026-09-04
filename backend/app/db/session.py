@@ -21,6 +21,29 @@ _session_maker: Optional[async_sessionmaker[AsyncSession]] = None
 _engine_loop = None
 
 
+def _is_transaction_pooler(db_url: str) -> bool:
+    """
+    Heuristically detects a transaction-mode connection pooler in front of PostgreSQL.
+
+    Transaction/statement pooling (pgBouncer and hosted equivalents such as Supabase's
+    pooler on port 6543) rebinds each transaction to an arbitrary server connection, so
+    server-side prepared statements leak across clients and asyncpg raises
+    DuplicatePreparedStatementError. Callers use this to disable the statement cache.
+
+    Override with SATQUERY_DB_POOLER=1 / 0 when the heuristic guesses wrong.
+    """
+    override = os.getenv("SATQUERY_DB_POOLER")
+    if override is not None:
+        return override.strip().lower() in ("1", "true", "yes")
+
+    host_part = db_url.split("@")[-1].lower()
+    # Port 6543 is the conventional transaction-pooling port (Supabase, Neon, PgCat).
+    # Deliberately NOT matching "pooler." alone: the same pooler host on :5432 is
+    # session mode, which supports prepared statements normally (verified 2026-09-04),
+    # and disabling the cache there would cost performance for no benefit.
+    return ":6543" in host_part or "pgbouncer" in host_part
+
+
 def get_database_url() -> str:
     """Returns database connection URL, ensuring asyncpg driver is specified for PostgreSQL, with safe test fallback."""
     is_test_env = (
@@ -82,6 +105,25 @@ def get_async_engine() -> AsyncEngine:
                 "pool_timeout": settings.database.pool_timeout,
                 "pool_pre_ping": True,
             })
+
+            # Transaction-mode connection poolers (pgBouncer, Supabase :6543, PgCat)
+            # multiplex many clients onto few server connections, so a prepared
+            # statement created by one client can collide with another's:
+            #   asyncpg.exceptions.DuplicatePreparedStatementError:
+            #   prepared statement "__asyncpg_stmt_1__" already exists
+            # Disabling asyncpg's statement cache is the supported workaround.
+            # Verified 2026-09-04: without this, Supabase :6543 fails on the second
+            # parameterised query; with it, all probes pass. See decisions.md D-113.
+            if _is_transaction_pooler(db_url):
+                engine_kwargs["connect_args"] = {
+                    **engine_kwargs.get("connect_args", {}),
+                    "statement_cache_size": 0,
+                    "prepared_statement_cache_size": 0,
+                }
+                logger.info(
+                    "Transaction-mode pooler detected; asyncpg prepared-statement "
+                    "cache disabled to prevent DuplicatePreparedStatementError."
+                )
 
         _async_engine = create_async_engine(db_url, **engine_kwargs)
         if "sqlite" in db_url:
