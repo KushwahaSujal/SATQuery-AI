@@ -3,7 +3,7 @@ import numpy as np
 from unittest.mock import patch
 from pathlib import Path
 
-from backend.app.models.changeformer import ChangeFormerAdapter
+from backend.app.ml.adapters.changeformer import ChangeFormerAdapter
 from backend.app.exceptions import ModelUnavailableError, InvalidInputError
 
 

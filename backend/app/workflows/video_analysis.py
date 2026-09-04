@@ -24,7 +24,7 @@ from backend.app.video.decoder import VideoDecoder
 from backend.app.video.sampler import VideoSampler
 from backend.app.video.flagger import VideoFlagger, FrameDetection
 from backend.app.workflows.grounding_reasoner import parse_v4_query, run_v4_reasoning
-from backend.app.models.registry import model_registry
+from backend.app.ml.registry import model_registry
 from backend.app.artifacts.manager import artifact_manager
 from backend.app.db.repositories.video_repository import VideoRepository
 from backend.app.db.repositories.job_repository import JobRepository

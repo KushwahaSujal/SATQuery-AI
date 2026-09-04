@@ -23,7 +23,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from backend.app.models.grounding_dino import GroundingDINOAdapter
+from backend.app.ml.adapters.grounding_dino import GroundingDINOAdapter
 from backend.app.exceptions import ModelUnavailableError, InferenceError
 
 

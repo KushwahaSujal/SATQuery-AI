@@ -6,7 +6,7 @@ Verifies lazy loading, validation rules, availability, and prediction interface.
 import pytest
 import numpy as np
 from PIL import Image
-from backend.app.models.grounding_dino import GroundingDINOAdapter
+from backend.app.ml.adapters.grounding_dino import GroundingDINOAdapter
 from backend.app.exceptions import InvalidInputError
 
 

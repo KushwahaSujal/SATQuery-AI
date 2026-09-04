@@ -2,8 +2,8 @@ import pytest
 import numpy as np
 import torch
 
-from backend.app.models.dofa import DOFAAdapter
-from backend.app.models.registry import model_registry
+from backend.app.ml.adapters.dofa import DOFAAdapter
+from backend.app.ml.registry import model_registry
 from backend.app.exceptions import InvalidInputError
 
 

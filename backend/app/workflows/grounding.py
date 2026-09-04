@@ -10,9 +10,9 @@ from backend.app.workflows.grounding_reasoner import (
     run_v4_reasoning,
     detect_reference
 )
-from backend.app.models.registry import model_registry
-from backend.app.models.grounding_dino import GroundingDINOAdapter
-from backend.app.models.sam2 import SAM2Adapter
+from backend.app.ml.registry import model_registry
+from backend.app.ml.adapters.grounding_dino import GroundingDINOAdapter
+from backend.app.ml.adapters.sam2 import SAM2Adapter
 from backend.app.agent.state import AgentState
 from backend.app.schemas.agent import JobStatus, TaskType, ExecutionStep
 from backend.app.schemas.responses import AnalyzeResponse

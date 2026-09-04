@@ -5,12 +5,12 @@ import numpy as np
 from PIL import Image
 from transformers import BlipProcessor, BlipForQuestionAnswering
 
-from backend.app.models.base import BaseModelAdapter
+from backend.app.ml.base import BaseModelAdapter
 from backend.app.schemas.models import ModelResult
 from backend.app.exceptions import InvalidInputError, InferenceError
 from backend.app.logging import logger
 from backend.app.geo.optical_preprocessing import to_pil_rgb
-from backend.app.models.device import warn_if_cpu_for_heavy_model
+from backend.app.ml.device import warn_if_cpu_for_heavy_model
 
 
 class GeneralRSVLMAdapter(BaseModelAdapter):

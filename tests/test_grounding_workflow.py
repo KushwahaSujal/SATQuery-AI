@@ -3,7 +3,7 @@ import numpy as np
 from PIL import Image
 
 from backend.app.workflows.grounding import run_grounding_pipeline
-from backend.app.models.sam2 import SAM2Result
+from backend.app.ml.adapters.sam2 import SAM2Result
 
 
 class MockGroundingDINOAdapter:

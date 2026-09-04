@@ -9,7 +9,7 @@ from backend.app.geo.validation import (
     validate_temporal_pair,
     validate_optical_sar_pair,
 )
-from backend.app.models.registry import model_registry
+from backend.app.ml.registry import model_registry
 from backend.app.evidence.boxes import normalize_box
 from backend.app.evidence.masks import save_mask_as_geotiff
 from backend.app.evidence.polygons import mask_to_geojson, save_geojson

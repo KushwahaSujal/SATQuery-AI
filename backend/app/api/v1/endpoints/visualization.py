@@ -27,8 +27,8 @@ from backend.app.geo.modality import ModalityDetector
 from backend.app.geo.display import save_display_preview
 from backend.app.agent.state import AgentState
 from backend.app.agent.controller import agent_controller
-from backend.app.models.registry import model_registry
-from backend.app.models.device import get_device
+from backend.app.ml.registry import model_registry
+from backend.app.ml.device import get_device
 from backend.app.artifacts.manager import artifact_manager
 from backend.app.config import settings
 from backend.app.exceptions import (

@@ -5,7 +5,7 @@ import torch
 from backend.app.schemas.models import ModelResult
 from backend.app.exceptions import ModelUnavailableError
 from backend.app.config import settings
-from backend.app.models.device import get_device, warn_if_cpu_for_heavy_model
+from backend.app.ml.device import get_device, warn_if_cpu_for_heavy_model
 from backend.app.logging import logger
 
 

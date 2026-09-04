@@ -4,10 +4,10 @@ import numpy as np
 from PIL import Image
 import torch
 
-from backend.app.models.base import BaseModelAdapter
+from backend.app.ml.base import BaseModelAdapter
 from backend.app.exceptions import InvalidInputError, InferenceError, ModelUnavailableError
 from backend.app.logging import logger
-from backend.app.models.device import warn_if_cpu_for_heavy_model
+from backend.app.ml.device import warn_if_cpu_for_heavy_model
 
 
 class GroundingResult(dict):

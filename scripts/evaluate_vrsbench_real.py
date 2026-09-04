@@ -153,7 +153,7 @@ def main() -> int:
         return 1
 
     from backend.app.workflows.grounding import run_grounding_pipeline
-    from backend.app.models.registry import model_registry
+    from backend.app.ml.registry import model_registry
 
     print(f"grounding_dino available : {model_registry.is_model_available('grounding_dino')}")
     print(f"sam2 available           : {model_registry.is_model_available('sam2')}")

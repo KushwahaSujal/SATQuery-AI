@@ -6,7 +6,7 @@ response serialization, and error recovery without requiring gigabytes of GPU mo
 """
 from typing import Any, Dict
 import numpy as np
-from backend.app.models.base import BaseModelAdapter
+from backend.app.ml.base import BaseModelAdapter
 from backend.app.schemas.models import ModelResult
 
 

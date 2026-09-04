@@ -3,7 +3,7 @@ from datetime import datetime
 from typing import Optional
 from backend.app.agent.state import AgentState
 from backend.app.agent.registry import TOOL_REGISTRY
-from backend.app.models.concurrency import gpu_lock
+from backend.app.ml.concurrency import gpu_lock
 from backend.app.logging import logger
 
 

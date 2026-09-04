@@ -1,7 +1,7 @@
 import pytest
 import numpy as np
 from PIL import Image
-from backend.app.models.sam2 import SAM2Adapter
+from backend.app.ml.adapters.sam2 import SAM2Adapter
 from backend.app.exceptions import InvalidInputError
 
 

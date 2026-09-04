@@ -1,8 +1,8 @@
 import pytest
 import torch
 from PIL import Image
-from backend.app.models.cdvqa import CDVQAAdapter, READABLE_ANSWER_MAP
-from backend.app.models.cdvqa_model import (
+from backend.app.ml.adapters.cdvqa import CDVQAAdapter, READABLE_ANSWER_MAP
+from backend.app.ml.adapters.cdvqa.network import (
     CDVQAModel,
     ChangeEnhancingModule,
     CDVQA_ANSWER_CLASSES,

@@ -1,10 +1,10 @@
 from typing import Any, Dict, List
 import torch
-from backend.app.models.base import BaseModelAdapter
+from backend.app.ml.base import BaseModelAdapter
 from backend.app.schemas.models import ModelResult
 from backend.app.exceptions import InvalidInputError, InferenceError
 from backend.app.logging import logger
-from backend.app.models.device import warn_if_cpu_for_heavy_model
+from backend.app.ml.device import warn_if_cpu_for_heavy_model
 
 
 class RemoteCLIPAdapter(BaseModelAdapter):

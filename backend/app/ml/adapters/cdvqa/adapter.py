@@ -7,12 +7,12 @@ import torchvision.transforms as T
 
 from pathlib import Path
 from backend.app.config import settings
-from backend.app.models.base import BaseModelAdapter
+from backend.app.ml.base import BaseModelAdapter
 from backend.app.schemas.models import ModelResult
 from backend.app.exceptions import InvalidInputError, InferenceError, ModelUnavailableError
 from backend.app.logging import logger
-from backend.app.models.device import warn_if_cpu_for_heavy_model
-from backend.app.models.cdvqa_model import (
+from backend.app.ml.device import warn_if_cpu_for_heavy_model
+from backend.app.ml.adapters.cdvqa.network import (
     CDVQAModel,
     CDVQA_ANSWER_CLASSES,
     IDX2ANSWER,

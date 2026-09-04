@@ -1,7 +1,7 @@
 import pytest
-from backend.app.models.registry import ModelRegistry
-from backend.app.models.grounding_dino import GroundingDINOAdapter
-from backend.app.models.sam2 import SAM2Adapter
+from backend.app.ml.registry import ModelRegistry
+from backend.app.ml.adapters.grounding_dino import GroundingDINOAdapter
+from backend.app.ml.adapters.sam2 import SAM2Adapter
 
 
 def test_registry_contains_grounding_dino_and_sam2():

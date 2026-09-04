@@ -4,11 +4,11 @@ import sys
 import torch
 import numpy as np
 
-from backend.app.models.base import BaseModelAdapter
+from backend.app.ml.base import BaseModelAdapter
 from backend.app.schemas.models import ModelResult
 from backend.app.exceptions import InvalidInputError, InferenceError
 from backend.app.logging import logger
-from backend.app.models.device import warn_if_cpu_for_heavy_model
+from backend.app.ml.device import warn_if_cpu_for_heavy_model
 from backend.app.geo.optical_preprocessing import preprocess_optical_image
 from backend.app.geo.sar_preprocessing import SARPreprocessor
 

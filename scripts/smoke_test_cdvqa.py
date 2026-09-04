@@ -12,7 +12,7 @@ _root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if _root not in sys.path:
     sys.path.insert(0, _root)
 
-from backend.app.models.cdvqa import CDVQAAdapter
+from backend.app.ml.adapters.cdvqa import CDVQAAdapter
 from backend.app.schemas.models import ModelResult
 
 

@@ -3,7 +3,7 @@ import numpy as np
 import pytest
 from PIL import Image
 
-from backend.app.models.changeformer import ChangeFormerAdapter
+from backend.app.ml.adapters.changeformer import ChangeFormerAdapter
 
 
 def test_changeformer_smoke_real_images():

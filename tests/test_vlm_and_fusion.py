@@ -3,9 +3,9 @@ import numpy as np
 import torch
 from PIL import Image
 
-from backend.app.models.registry import model_registry
-from backend.app.models.general_rs_vlm import GeneralRSVLMAdapter
-from backend.app.models.fusion import OpticalSARFusionModel
+from backend.app.ml.registry import model_registry
+from backend.app.ml.adapters.general_rs_vlm import GeneralRSVLMAdapter
+from backend.app.ml.adapters.fusion import OpticalSARFusionModel
 
 
 def test_general_rs_vlm_registered_and_available():
