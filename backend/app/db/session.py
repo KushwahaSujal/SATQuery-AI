@@ -104,10 +104,6 @@ def get_async_engine() -> AsyncEngine:
                 "max_overflow": settings.database.max_overflow,
                 "pool_timeout": settings.database.pool_timeout,
                 "pool_pre_ping": True,
-                "connect_args": {
-                    "statement_cache_size": 0,
-                    "prepared_statement_cache_size": 0,
-                },
             })
 
             # Transaction-mode connection poolers (pgBouncer, Supabase :6543, PgCat)
