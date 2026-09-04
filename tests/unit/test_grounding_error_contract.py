@@ -2,7 +2,7 @@
 import pytest
 from backend.app.workflows.grounding_reasoner import parse_v4_query
 from backend.app.agent.state import AgentState
-from backend.app.agent.registry import ToolRegistry
+from backend.app.agent.tools import inference as tools_inference
 from backend.app.exceptions import SatQueryException, InferenceError
 
 
@@ -27,7 +27,7 @@ def test_run_segmentation_with_empty_boxes():
     state.evidence.spatial.has_mask = False
     
     # ToolRegistry.run_segmentation should gracefully return without raising InvalidInputError
-    ToolRegistry.run_segmentation(state)
+    tools_inference.run_segmentation(state)
     assert not state.evidence.spatial.has_mask
 
 
