@@ -14,7 +14,7 @@ export function useHealth() {
 export function useModels() {
   return useQuery({
     queryKey: ["models"],
-    queryFn: api.models,
+    queryFn: async () => (await api.models()).models ?? [],
     refetchInterval: 30_000,
     staleTime: 15_000,
   });

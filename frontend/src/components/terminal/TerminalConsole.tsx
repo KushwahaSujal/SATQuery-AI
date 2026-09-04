@@ -32,7 +32,7 @@ export default function TerminalConsole({
   // Initialize terminal logs with live models when loaded
   useEffect(() => {
     const models = modelsQuery.data ?? [];
-    const activeCount = models.filter((m) => m.status === "AVAILABLE" || m.loaded).length;
+    const activeCount = models.filter((m) => (m.status ?? "") === "AVAILABLE" || m.loaded).length;
 
     const initialLogs: TerminalOutputLine[] = [
       { id: "c1", type: "input", text: "satquery pipeline status" },
@@ -46,8 +46,8 @@ export default function TerminalConsole({
         columns: models.slice(0, 4).map((m, idx) => ({
           id: `mod_${idx + 1}`,
           name: m.name,
-          desc: m.description || m.task,
-          status: m.status === "AVAILABLE" || m.loaded ? "active" : "standby",
+          desc: (m.description ?? m.task ?? m.name) || "model",
+          status: ((m.status ?? "") === "AVAILABLE" || m.loaded) ? "active" : "standby",
         })),
       });
       if (models.length > 4) {
@@ -106,8 +106,8 @@ export default function TerminalConsole({
           columns: models.map((m, idx) => ({
             id: `adapter_${idx + 1}`,
             name: m.name,
-            desc: m.task,
-            status: m.status === "AVAILABLE" || m.loaded ? "active" : "standby",
+            desc: (m.task ?? m.name) || "model",
+            status: ((m.status ?? "") === "AVAILABLE" || m.loaded) ? "active" : "standby",
           })),
         }
       );

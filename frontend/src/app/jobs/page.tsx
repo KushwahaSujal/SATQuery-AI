@@ -36,8 +36,8 @@ export default function JobsPage() {
       // Merge unique by job_id
       const map = new Map<string, LocalJobRecord>();
       for (const item of [...live, ...local]) {
-        if (item && (item.job_id || item.id)) {
-          const id = item.job_id || item.id;
+        const id = item.job_id || item.id || "";
+        if (item && id) {
           if (!map.has(id)) {
             map.set(id, {
               job_id: id,

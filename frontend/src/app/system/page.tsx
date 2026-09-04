@@ -44,7 +44,7 @@ export default function SystemPage() {
           </div>
 
           <Row label="API Gateway" value={d.api} status={d.api === "online" ? "ok" : "err"} />
-          <Row label="Database Engine" value={d.database} status={d.database === "connected" ? "ok" : "err"} />
+          <Row label="Database Engine" value={d.database ?? "offline"} status={d.database === "connected" ? "ok" : "err"} />
           <Row label="Compute Device" value={d.device || "CPU"} status={d.device ? "ok" : "warn"} />
           <Row
             label="Models Available"

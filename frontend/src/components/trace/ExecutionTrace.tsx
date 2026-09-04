@@ -27,7 +27,7 @@ export default function ExecutionTrace({ steps }: { steps: TraceStep[] }) {
           const isSuccess = step.status === "success";
           const isFailed  = step.status === "failed";
           const isRunning = step.status === "running";
-          const isPending = step.status === "skipped";
+          const isPending = step.status === "pending" || step.status === "skipped";
 
           const dotColor = isSuccess ? "var(--green)" : isFailed ? "var(--red)" : isRunning ? "var(--accent)" : "var(--t4)";
 
