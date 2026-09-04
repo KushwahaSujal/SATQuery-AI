@@ -39,7 +39,7 @@ def test_normalize_gt_box():
 
 
 def test_resolve_image_path():
-    root = Path(__file__).resolve().parent.parent
+    root = Path(__file__).resolve().parents[2]  # repo root (tests/unit/<file>)
     sample_dir = root / "datasets/samples/real_pair"
     resolved = resolve_image_path("real_image_b", [sample_dir])
     assert resolved is not None
@@ -48,7 +48,7 @@ def test_resolve_image_path():
 
 
 def test_load_evaluation_records():
-    root = Path(__file__).resolve().parent.parent
+    root = Path(__file__).resolve().parents[2]  # repo root (tests/unit/<file>)
     sample_rec_path = root / "datasets/samples/vrsbench_sample_records.json"
     records = load_evaluation_records(sample_rec_path)
     assert len(records) >= 1
