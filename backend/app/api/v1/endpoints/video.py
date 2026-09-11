@@ -21,7 +21,7 @@ from backend.app.schemas.responses import (
     ModelsListResponse,
     RasterMetadataResponse,
 )
-from backend.app.schemas.agent import JobStatus
+from backend.app.schemas.agent import JobStatus, TaskType
 from backend.app.geo.raster import RasterInspector
 from backend.app.geo.modality import ModalityDetector
 from backend.app.geo.display import save_display_preview
@@ -61,8 +61,10 @@ from backend.app.schemas.video import (
     VideoMetadata,
     VideoSamplingConfig,
     VideoFlagConfig,
+    VideoFlag,
 )
 from backend.app.workflows.video_analysis import VideoAnalysisWorkflow
+from backend.app.workflows.grounding_reasoner import parse_v4_query
 from backend.app.video.decoder import VideoDecoder
 from backend.app.visualization import (
     VisualizationRegistry,
@@ -295,11 +297,29 @@ async def get_video_analysis_result(
 
     artifacts = artifact_manager.list_artifacts(job_id)
 
+    # Re-derive the outcome message. The analysis result itself is not persisted, only
+    # the flags, so a bare "0 flags" read cannot distinguish "the colour you asked for
+    # is not in this footage" from "nothing was found". The job record keeps the
+    # original query, and the colour gate is deterministic, so the same conclusion can
+    # be restated here rather than silently degrading to a generic message.
+    workflow_reason = f"Retrieved {len(flags)} persisted event flags from database."
+    if not flags:
+        job_rec = await JobRepository.get_job(db, job_id)
+        original_query = getattr(job_rec, "query", None) if job_rec else None
+        if original_query:
+            parsed = parse_v4_query(original_query)
+            if parsed.get("color"):
+                workflow_reason = (
+                    f"NOT_APPLICABLE: no {parsed['color']} "
+                    f"{parsed.get('category') or 'object'} found in this footage. "
+                    f"Candidate regions were detected but none are {parsed['color']}."
+                )
+
     return VideoAnalysisResponse(
         job_id=job_id,
         status=JobStatus.COMPLETED,
         task=TaskType.VIDEO_GROUNDING,
-        workflow_reason=f"Retrieved {len(flags)} persisted event flags from database.",
+        workflow_reason=workflow_reason,
         video_metadata=meta,
         flags=flags,
         models_used=["grounding_dino", "sam2"],

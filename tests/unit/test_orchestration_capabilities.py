@@ -147,3 +147,89 @@ def test_provenance_graph_assembly(tmp_path):
     assert any(n.node_id == "model_grounding_dino" for n in graph.nodes)
     assert any(n.node_id == "final_answer" for n in graph.nodes)
     assert len(graph.edges) > 0
+
+
+# ---------------------------------------------------------------------------
+# Capability health (D-104 / D-105)
+#
+# CapabilityRegistry._validate_all() warns on every boot when a capability
+# declares a tool with no implementation, or has no DAG branch. Nothing tested
+# that, so the warnings could drift out of date silently — which is the same
+# class of bug D-105 describes, one level up.
+# ---------------------------------------------------------------------------
+
+# Capabilities that cannot be executed by the agent DAG today. Kept explicit so
+# that fixing one FAILS this test and forces project/pre-demo.md to be updated.
+KNOWN_DEGRADED = {
+    "multispectral_analysis",
+    "pixel_inspection",
+    "report_generation",
+    "sar_analysis",
+    "video_grounding",
+    "video_grounding_tracking",
+    "visualization",
+}
+
+
+def _degraded_capability_ids():
+    from backend.app.agent.tools import TOOL_REGISTRY
+    from backend.app.orchestration.capability_registry import capability_registry
+    from backend.app.orchestration.dependency_graph import DependencyGraph
+
+    degraded = set()
+    for cap in capability_registry.list_all():
+        if any(t not in TOOL_REGISTRY for t in cap.required_tools):
+            degraded.add(cap.capability_id)
+        elif not DependencyGraph.has_branch_for(cap.capability_id):
+            degraded.add(cap.capability_id)
+    return degraded
+
+
+def test_agent_executable_capabilities_declare_only_real_tools():
+    """Every capability with a DAG branch must have all its tools implemented.
+
+    This guards the six that actually work. A capability that routes and then
+    cannot run is exactly the D-104 failure.
+    """
+    from backend.app.agent.tools import TOOL_REGISTRY
+    from backend.app.orchestration.capability_registry import capability_registry
+    from backend.app.orchestration.dependency_graph import DependencyGraph
+
+    for cap in capability_registry.list_all():
+        if not DependencyGraph.has_branch_for(cap.capability_id):
+            continue
+        missing = sorted(t for t in cap.required_tools if t not in TOOL_REGISTRY)
+        assert not missing, (
+            f"Capability '{cap.capability_id}' has a DAG branch but declares "
+            f"unimplemented tools {missing}; it will route and then produce nothing."
+        )
+
+
+def test_capability_health_matches_documented_gaps():
+    """Pin the degraded set so progress and regressions are both visible."""
+    assert _degraded_capability_ids() == KNOWN_DEGRADED, (
+        "Capability health changed. Update KNOWN_DEGRADED and the matching table "
+        "in project/pre-demo.md §2.3."
+    )
+
+
+def test_validator_detects_a_capability_declaring_an_unknown_tool():
+    """The validation itself works — a bogus tool is actually caught."""
+    from backend.app.agent.tools import TOOL_REGISTRY
+    from backend.app.orchestration.schemas import CapabilityDefinition, CapabilityPriority
+
+    bogus = CapabilityDefinition(
+        capability_id="test_only_bogus",
+        name="Bogus",
+        description="Declares a tool that does not exist.",
+        accepted_input_types=["image/png"],
+        required_modalities=["optical"],
+        output_types=["report"],
+        required_models=[],
+        required_tools=["inspect_raster", "no_such_tool_exists"],
+        workflow="workflow_none",
+        priority=CapabilityPriority.REPORT_GENERATION,
+        validation_requirements={},
+    )
+    missing = [t for t in bogus.required_tools if t not in TOOL_REGISTRY]
+    assert missing == ["no_such_tool_exists"]

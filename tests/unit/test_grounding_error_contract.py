@@ -10,7 +10,10 @@ def test_parse_v4_query_directive_stripping():
     q = "Highlight the small red vehicle located at the bottom middle of the image."
     parsed = parse_v4_query(q)
     assert parsed["category"] == "vehicle"
-    assert parsed["clean_prompt"] == "vehicle."
+    # Deliberate contract change (project/pre-demo.md 3f): the colour stays in the
+    # detector prompt so "red vehicle" and "yellow vehicle" are distinguishable.
+    # Previously "vehicle." — the directive and modifiers are still stripped.
+    assert parsed["clean_prompt"] == "red vehicle."
     assert parsed["position"] == "bottom-middle"
     assert parsed["size"] == "small"
     assert parsed["color"] == "red"

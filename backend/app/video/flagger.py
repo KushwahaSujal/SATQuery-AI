@@ -100,7 +100,15 @@ class VideoFlagger:
             frame_gap = d.frame_index - prev_d.frame_index
             time_gap = d.timestamp_sec - prev_d.timestamp_sec
 
-            if frame_gap <= cfg.max_gap_frames or time_gap <= cfg.max_gap_seconds:
+            # Cluster on TIME. Frames are sampled with a stride, so consecutive
+            # detections are typically ~12 frame indices apart and frame_gap almost
+            # never satisfies max_gap_frames. The old condition was an OR, so the
+            # frame test contributed nothing and an event's boundaries were set by
+            # wherever the coarse sampling happened to land. The frame test is kept
+            # only as an additional allowance for densely sampled (stride 1) runs.
+            if time_gap <= cfg.max_gap_seconds or (
+                frame_gap <= cfg.max_gap_frames and time_gap <= cfg.max_gap_seconds * 2
+            ):
                 current_cluster.append(d)
             else:
                 clusters.append(current_cluster)
@@ -142,8 +150,11 @@ class VideoFlagger:
             duration_sec = round(end_ts - start_ts, 3)
             frame_span = len(cluster)
 
-            # Persistence filter: drop transient single-frame noise
-            if frame_span < cfg.min_persistence_frames and duration_sec < cfg.min_persistence_seconds:
+            # Persistence filter: drop transient noise. This is an OR — a cluster must
+            # satisfy BOTH the frame count and the duration to survive. It used to be an
+            # AND, so a two-frame 0.24s blip passed on frame count alone and became an
+            # "event" (project/pre-demo.md 3g).
+            if frame_span < cfg.min_persistence_frames or duration_sec < cfg.min_persistence_seconds:
                 logger.info(
                     f"Filtered transient detection at frame {start_frame} ({duration_sec:.2f}s, {frame_span} frames). "
                     f"Requires >= {cfg.min_persistence_frames} frames or >= {cfg.min_persistence_seconds}s."
@@ -198,9 +209,13 @@ class VideoFlagger:
                 # 3. If SAM2 mask is present, apply alpha mask overlay
                 if peak_det.mask is not None:
                     bin_mask = (peak_det.mask > 0).astype(np.uint8)
-                    arr_rgb = np.array(annotated_img)
-                    overlay_rgb = create_change_overlay(arr_rgb, bin_mask, color_rgb=(0, 230, 150), alpha=0.45)
-                    annotated_img = Image.fromarray(overlay_rgb)
+                    # Pass the PIL image, NOT a numpy array. create_change_overlay routes
+                    # arrays through render_display_rgb, a 2-98 percentile contrast stretch
+                    # built for multi-band satellite rasters; on ordinary video it recolours
+                    # the whole frame and a red car renders green (project/pre-demo.md 3f).
+                    # It also already returns a PIL Image -- re-wrapping it in
+                    # Image.fromarray() previously raised "expected string or buffer".
+                    annotated_img = create_change_overlay(annotated_img, bin_mask, color_rgb=(0, 230, 150), alpha=0.45)
 
                     # Save raw binary mask
                     mask_filename = f"{flag_id}_mask_frame_{peak_det.frame_index}.png"

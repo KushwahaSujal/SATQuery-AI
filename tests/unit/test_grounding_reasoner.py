@@ -32,7 +32,10 @@ def test_parse_v4_query():
     assert p1["position"] == "top-left"
     assert p1["relation"] == "near"
     assert p1["reference_category"] == "runway"
-    assert p1["clean_prompt"] == "vehicle."
+    # Deliberate contract change (project/pre-demo.md 3f): the colour now stays in the
+    # prompt. It used to be stripped, which made "red car" and "yellow car" identical
+    # to the detector. This assertion previously read "vehicle."
+    assert p1["clean_prompt"] == "white vehicle."
 
     # 2. Ordinal query
     q2 = "locate the second largest airplane"
@@ -183,3 +186,33 @@ def test_reference_detection_distinction():
     assert evidence["method"] == "visual_region_heuristic"
     assert evidence["is_heuristic"] is True
     assert evidence["semantic_confidence"] is None
+
+
+def test_spot_is_treated_as_a_verb_not_part_of_the_object():
+    """'spot' was missing from the verb stoplist, so 'spot a red car' asked the
+    detector for a nonexistent "spot car" class (project/pre-demo.md 3f)."""
+    for verb in ("spot", "show", "highlight", "locate", "find"):
+        p = parse_v4_query(f"{verb} a car")
+        assert p["category"] == "car", f"{verb!r} leaked into the category: {p['category']!r}"
+
+
+def test_colour_reaches_the_detector_prompt():
+    """Colour was parsed then stripped, so 'red car' and 'yellow car' produced a
+    byte-identical prompt and the tool could not tell them apart (3f)."""
+    red = parse_v4_query("spot a red car")
+    yellow = parse_v4_query("spot a yellow car")
+    white = parse_v4_query("spot white cars")
+
+    assert red["color"] == "red" and yellow["color"] == "yellow" and white["color"] == "white"
+    assert red["category"] == "car" and yellow["category"] == "car"
+
+    assert red["clean_prompt"] == "red car."
+    assert yellow["clean_prompt"] == "yellow car."
+    assert white["clean_prompt"] == "white cars."
+    assert red["clean_prompt"] != yellow["clean_prompt"], "red and yellow must differ"
+
+
+def test_colourless_queries_are_unchanged():
+    """Regression guard: queries without a colour keep the bare category prompt."""
+    assert parse_v4_query("find all vehicles")["clean_prompt"] == "vehicles."
+    assert parse_v4_query("storage tank.")["clean_prompt"] == "storage tank."

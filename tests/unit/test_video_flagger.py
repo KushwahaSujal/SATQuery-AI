@@ -74,3 +74,31 @@ def test_flagger_clustering_and_transient_filtering(tmp_path):
     assert flag.event_score > 0.0
     assert flag.metadata["event_score_type"] == "heuristic_ranking_score"
     assert flag.metadata["calibrated_model_probability"] is False
+
+
+def test_annotated_overlay_preserves_true_colour():
+    """Pixels outside the mask must keep their original colour.
+
+    flagger.py passed a numpy array to create_change_overlay, which routes arrays
+    through render_display_rgb -- a 2-98 percentile contrast stretch intended for
+    multi-band satellite rasters. On ordinary video that recolours the whole frame:
+    a red car rendered green, which is actively misleading for colour queries.
+    (project/pre-demo.md 3f)
+    """
+    import numpy as np
+    from PIL import Image
+    from backend.app.geo.rendering import create_change_overlay
+
+    # A red car on grey asphalt, in miniature.
+    base = np.full((40, 40, 3), 90, dtype=np.uint8)
+    base[5:15, 5:15] = (200, 30, 30)
+    base_pil = Image.fromarray(base)
+
+    mask = np.zeros((40, 40), dtype=np.uint8)
+    mask[30:35, 30:35] = 1          # mask somewhere else entirely
+
+    out = np.array(create_change_overlay(base_pil, mask, color_rgb=(0, 230, 150), alpha=0.45).convert("RGB"))
+
+    car = out[5:15, 5:15].reshape(-1, 3).mean(axis=0)
+    assert car[0] > car[1] and car[0] > car[2], f"car is no longer red: RGB={car}"
+    assert abs(float(car[0]) - 200) < 25, f"red channel shifted too far: {car[0]}"
