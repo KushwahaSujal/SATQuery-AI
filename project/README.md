@@ -26,4 +26,4 @@ public-facing specification and model dossiers.
   `NOT MEASURED`.
 - Where `docs/SATQUERY_AI_MASTER_DOCUMENTATION.md` and the source disagree, these docs follow the
   **source** and flag the divergence.
-- Major changes are gated on a written Q&A entry — see `rules.md` §6.
+- Major changes are recorded in `qna.md`, a transcript that never gates the work — see `rules.md` §6.

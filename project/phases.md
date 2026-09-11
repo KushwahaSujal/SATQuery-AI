@@ -39,7 +39,7 @@ exist to change that. Everything else is secondary.
 **Goal:** stop failing requirement #1 and requirement #5.
 
 ### P1a · Remote-sensing adaptation (D-101) — **highest priority in the project**
-- [ ] Decide the approach (quiz-gated; see `rules.md` §6). Recommendation: LoRA fine-tune the BLIP
+- [ ] Decide the approach (record the decision in `qna.md`; see `rules.md` §6). Recommendation: LoRA fine-tune the BLIP
       VQA head on RSVQA + BigEarthNet-derived Q/A for the deadline
 - [ ] Build the adaptation dataset (BigEarthNet S1+S2 with label→question templating; RSVQA train split)
 - [ ] Write `training/vlm/` mirroring the existing `training/vqa/` layout

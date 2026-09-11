@@ -114,7 +114,8 @@ implementations stay untouched — materially smaller blast radius than original
 
 **Also:** delete `scripts/setup_checkpoints.py` — both teams agreed. Estimate: **half a day.**
 
-**Status: blocked on the `rules.md` §6 quiz** (model-registry change).
+**Status: ready to start.** (The `rules.md` §6 quiz gate was retired 2026-09-11 — record the
+change in `qna.md` as you make it; nothing is held waiting.)
 
 ---
 
@@ -341,7 +342,7 @@ production adapter:
 
 Delta **-0.6491**. The script's own verdict: *"the inference path is wrong."* The two-image flow
 **runs** end-to-end and produces overlays, masks and a report, but the change map it draws is not
-correct. This is §1.3, still quiz-gated.
+correct. This is §1.3.
 
 ### VRSBench (visual grounding) — **works, and there are two scripts**
 There is no VRSBench *video* — the dataset is referring / VQA / captioning over still images
@@ -709,7 +710,7 @@ Foundation first, per the decision on 2026-09-07.
 
 1. ~~§2.4 boot validation~~ — **done 2026-09-07**, 120/120 green
 2. §1.4 real availability check — half a day
-3. §1.3 vendor upstream ChangeFormer — half a day *(quiz-gated)*
+3. §1.3 vendor upstream ChangeFormer — half a day
 4. ~~§2.1 diagnose video zero-detections~~ — **done 2026-09-07**; spawned §2.1a/b/c, ~1 day remaining
 5. §1.1 optical–SAR build — 1–2 days *(**Option A** chosen 2026-09-07)*
 6. §1.2 wire BigEarthNet, lead with CDVQA — 1–2 days
@@ -725,9 +726,10 @@ fall outside them.
 
 ---
 
-## 4b. Open quiz gates (`rules.md` §6)
+## 4b. Changes to record in `qna.md` (`rules.md` §6)
 
-Both are changes the author must be able to defend; neither is answered yet.
+The quiz gate was retired 2026-09-11 — **neither of these is blocked.** Both are large enough to
+earn a transcript entry, written as the change is made, not before it.
 
 - `[ ]` **§1.3 ChangeFormer** — vendor upstream `wgcban/ChangeFormer`, repoint the adapter,
   switch preprocessing to 256/`[-1,1]`, retire `network.py`. ~5 files.

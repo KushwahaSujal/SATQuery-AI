@@ -115,41 +115,57 @@ Code compiles → relevant tests pass **with output shown** → `decisions.md` e
 
 ---
 
-## 6. The verification protocol — written Q&A, not a live quiz
+## 6. The change transcript — `qna.md` is a record, not a gate
 
-> Before any **major** change merges, the AI writes a Q&A entry in **`QNA.md`**: the questions a
-> reviewer would ask, and the answers. The author reads it and signs off. The author's decision
-> authority is final once they can restate the entry unaided.
+> `qna.md` is a **stenographic transcript** of every major change: the questions a reviewer would
+> ask, and the answers, written down as the change is made. It records. It does not approve.
 
-**Applies to:** anything in the "must ask first" list above, plus any change spanning >3 files,
+**Revised 2026-09-11.** The previous version of this section held a change in **Pending review**
+until the author signed off, and blocked the merge until they did. **That gate is retired.** There
+is no pending state, no sign-off, no held merge, no gated push. Entries are recorded and the work
+continues.
+
+**Recorded:** anything in the "must ask first" list above, plus any change spanning >3 files,
 touching the routing/capability logic, altering a model contract, or changing anything that will be
-claimed in the paper.
+claimed in the paper or on stage.
 
-**Does not apply to:** typos, comments, docs, formatting, single-file localised fixes, added tests.
+**Not recorded:** typos, comments, docs, formatting, single-file localised fixes, added tests.
 
 **Procedure**
 
-1. AI presents the change: what, why, files, blast radius, what could break.
-2. AI writes a `QNA.md` entry with **4–6 questions and their answers**, covering:
+1. The AI writes the entry at the time of the change — 4–6 questions with answers, covering:
    - *Mechanism* — what does this code actually do, step by step?
    - *Rationale* — why this approach over the alternative that was rejected?
    - *Blast radius* — what else breaks if this is wrong?
    - *Verification* — how do we know it worked? What specific check proves it?
    - *Defence* — how do you answer a mentor or reviewer who challenges this?
-3. Entry starts as **Pending review**. The change does not merge while it is pending.
-4. Author reads it. Anything that contradicts their understanding is a flag — either the change is
-   wrong or the explanation is, and both are worth catching pre-merge. Mark **Reviewed** with
-   initials and date once they can restate it unaided.
-5. Answers must be specific: file paths, line numbers, commands, measured numbers. "It works
+2. Answers must be specific: file paths, line numbers, commands, measured numbers. "It works
    because it's cleaner" is not an answer.
+3. The change proceeds. Recording the entry never blocks a commit, merge or push.
+4. The author reads entries whenever they like. If one contradicts their understanding, that is
+   still worth catching — it just happens on their schedule now, not the merge's.
 
-**Why written rather than interactive:** a live quiz evaporates once answered. `QNA.md` survives —
+**The four properties that make it a transcript**
+
+- **Contemporaneous** — written as the change happens, not reconstructed later.
+- **Append-only** — a past entry is never edited or deleted. If it turns out wrong, file a new entry
+  that supersedes it and cross-link both ways. The mistake stays in the record; that is the point.
+- **Non-blocking** — see above. The record has no veto.
+- **Verbatim on the facts** — measured numbers as measured, including the unflattering ones. A
+  transcript that launders results is worthless as a defence, and this project's credibility rests
+  on `pre-demo.md` being honest.
+
+**Requesting an official copy.** Ask for "an official copy of the transcript" and you get a clean
+standalone extract — by entry ID, date range, topic, or the whole record — with each entry's date
+and the commit it describes. Extracted, not re-argued; anything missing is stated plainly.
+
+**Why written rather than interactive:** a live quiz evaporates once answered. `qna.md` survives —
 it can be read the night before a viva, onboards teammates without a meeting, and becomes the
-defence section of the paper. Writing the answer is also a harder test than picking a correct option
-from a list.
+defence section of the paper.
 
 Underlying rationale is unchanged: this gets defended live in front of ISRO mentors and later
 submitted as a paper. Code the author cannot explain is a liability regardless of whether it works.
+The record exists so the explanation exists — not so that someone has to sign a form first.
 
 ---
 

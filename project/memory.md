@@ -181,13 +181,18 @@ table because the split kept causing the question "so how much is actually built
 
 ## 5. Verification record
 
-Lives in **[`QNA.md`](QNA.md)** — written question-and-answer entries per `rules.md` §6, replacing
-the old interactive quiz. A major change does not merge while its entry is *Pending review*.
+Lives in **[`qna.md`](qna.md)** — a stenographic transcript of every major change, per `rules.md`
+§6. It records; it does not approve. The *Pending review* gate was retired 2026-09-11: entries are
+written as the change happens and nothing is ever held waiting on them. Ask for "an official copy
+of the transcript" to get a clean standalone extract.
 
-| Entry | Change | Status |
+| Entry | Change | Record |
 |---|---|---|
-| Q-001 | S0 — removal of dead planner/router/workflow-class layers | Pending review |
-| Q-002 | D-113 — asyncpg prepared-statement cache behind Supabase's pooler | Pending review |
+| Q-001 | S0 — removal of dead planner/router/workflow-class layers | Recorded 2026-09-04 |
+| Q-002 | D-113 — asyncpg prepared-statement cache behind Supabase's pooler | Recorded 2026-09-04 |
+| Q-003 | Video & visualization tables migration (f1b7463d221d) | Recorded 2026-09-07 |
+| Q-004 | Colour reaches the detector prompt; verb stoplist; overlay fidelity | Recorded 2026-09-07 |
+| Q-005 | Absent colours report NOT_APPLICABLE (colour gate) | Recorded 2026-09-07 |
 
 ---
 

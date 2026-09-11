@@ -1,38 +1,52 @@
-# QNA — Change Verification Record
+# QNA — Change Transcript
 
-Replaces the interactive quiz gate. Every **major** change to this codebase gets an entry here:
-the questions a reviewer (or an ISRO mentor, or a paper reviewer) would ask, and the answers,
-written down.
+A **stenographic record** of every major change to this codebase: the questions a reviewer (or an
+ISRO mentor, or a paper reviewer) would ask, and the answers, written down as the change is made.
 
-**Why this format:** a live quiz is gone the moment it's answered. A written Q&A survives, can be
+It **records; it does not approve.** There is no pending state, no sign-off, and no change is ever
+held waiting on this file.
+
+> **Protocol change, 2026-09-11.** This file previously ran an approval gate: entries started as
+> *Pending review* and the change did not merge until the author signed off. That gate is retired
+> (`rules.md` §6). The five entries below were migrated from *Pending review* to *Recorded* on that
+> date — their content is unchanged, only the retired status field was converted. Nothing about
+> them was re-argued or rewritten.
+
+**Why this format:** a live quiz is gone the moment it's answered. A written record survives, can be
 read the night before a viva, onboards Ayushman and the frontend team without a meeting, and turns
 into the "defence" section of the paper. It also forces the answer to be *written*, which is a
 harder test than recognising a correct option in a list.
 
-**What counts as major** (same trigger as before): anything in `agent/`, `orchestration/`, or
-`models/registry.py` · changes spanning more than 3 files · model or dataset swaps · schema or
-migration changes · anything that will be claimed in the paper.
-**Not major:** typos, comments, docs, formatting, single-file localised fixes, added tests.
+**What gets recorded:** anything in `agent/`, `orchestration/`, or `ml/registry.py` · changes
+spanning more than 3 files · model or dataset swaps · schema or migration changes · anything that
+will be claimed in the paper or on stage.
+**Not recorded:** typos, comments, docs, formatting, single-file localised fixes, added tests.
 
-**How to use it**
-1. Before merging a major change, the AI writes the entry: 4–6 questions covering *mechanism,
-   rationale, blast radius, verification, defence* — with answers.
-2. You read it. Anything that doesn't match your understanding is a flag: either the change is
-   wrong, or the explanation is, and both are worth catching before merge.
-3. Mark the entry **Reviewed** with your initials and the date once you can restate it unaided.
-   Until then it stays **Pending review** and the change does not merge.
+**The rules of the record**
+
+1. **Contemporaneous** — written as the change happens, not reconstructed afterwards.
+2. **Append-only** — no entry is ever edited or deleted. If one turns out to be wrong, a new entry
+   supersedes it and both are cross-linked. The mistake stays in the record; that is what makes
+   this a transcript and not a brochure.
+3. **Non-blocking** — recording an entry is never a reason to pause a commit, merge or push.
+4. **Verbatim on the facts** — measured numbers as measured, including the unflattering ones.
+
+**Requesting an official copy.** Ask for "an official copy of the transcript" and you get a clean
+standalone extract — by entry ID, date range, topic, or the whole record — with each entry's date
+and the commit it describes. Extracted, never re-litigated; anything missing is stated plainly.
 
 ---
 
 ## Index
 
-| ID | Change | Date | Status |
+| ID | Change | Date | Record |
 |---|---|---|---|
-| [Q-001](#q-001--s0-removal-of-the-dead-planner-router-and-workflow-class-layers) | S0 — removal of the dead planner, router and workflow-class layers | 2026-09-04 | Pending review |
-| [Q-002](#q-002--d-113-disabling-asyncpgs-prepared-statement-cache-behind-supabases-pooler) | D-113 — asyncpg prepared-statement cache behind Supabase's pooler | 2026-09-04 | Pending review |
-| [Q-003](#q-003--video-and-visualization-tables-migration) | Video & visualization tables migration (f1b7463d221d) | 2026-09-07 | Pending review |
-| [Q-004](#q-004--colour-reaches-the-detector-prompt) | Colour reaches the detector prompt; verb stoplist; overlay colour fidelity | 2026-09-07 | Pending review |
-| [Q-005](#q-005--absent-colours-report-not_applicable) | Absent colours report NOT_APPLICABLE (colour gate) | 2026-09-07 | Pending review |
+| [Q-001](#q-001--s0-removal-of-the-dead-planner-router-and-workflow-class-layers) | S0 — removal of the dead planner, router and workflow-class layers | 2026-09-04 | Recorded |
+| [Q-002](#q-002--d-113-disabling-asyncpgs-prepared-statement-cache-behind-supabases-pooler) | D-113 — asyncpg prepared-statement cache behind Supabase's pooler | 2026-09-04 | Recorded |
+| [Q-003](#q-003--video-and-visualization-tables-migration) | Video & visualization tables migration (f1b7463d221d) | 2026-09-07 | Recorded |
+| [Q-004](#q-004--colour-reaches-the-detector-prompt) | Colour reaches the detector prompt; verb stoplist; overlay colour fidelity | 2026-09-07 | Recorded |
+| [Q-005](#q-005--absent-colours-report-not_applicable) | Absent colours report NOT_APPLICABLE (colour gate) | 2026-09-07 | Recorded |
+| [Q-006](#q-006--retiring-the-approval-gate-qnamd-becomes-a-transcript) | Retiring the approval gate; `qna.md` becomes a transcript | 2026-09-11 | Recorded |
 
 ---
 
@@ -130,7 +144,7 @@ invites exactly the criticism the question implies. Removing it makes the real r
 The proof it was dead is in the tests: the routing behaviour is unchanged, because the deleted code
 never ran.
 
-**Status: Pending review** — sign off here once you can restate answers 1, 2 and 4 unaided.
+**Recorded** 2026-09-04. (Migrated from the retired *Pending review* gate on 2026-09-11.)
 
 ---
 
@@ -191,7 +205,7 @@ fail later under real query load. That is the failure mode most likely to appear
 and least likely to appear during a smoke test — which is the argument for probing with repeated
 and concurrent queries rather than a single connectivity check.
 
-**Status: Pending review**
+**Recorded** 2026-09-04. (Migrated from the retired *Pending review* gate on 2026-09-11.)
 
 
 ---
@@ -437,3 +451,74 @@ we reject below 0.45 and report NOT_APPLICABLE with the reason. The detector's o
 The honest caveat to volunteer: this covers colour attributes. A request for an object class that is
 simply not present is still not rejected — that is open, and two approaches to it have already been
 measured and rejected.
+
+---
+
+## Q-006 · Retiring the approval gate; `qna.md` becomes a transcript
+
+**Recorded** 2026-09-11. First entry filed under the new protocol, and a record of the protocol
+change itself.
+
+### 1. Mechanism — what actually changed, file by file?
+
+The *Pending review* state and the merge block are gone. Nine files:
+
+- `~/.claude/CLAUDE.md` — **new**, global. Loads in every project, every session; defines transcript
+  mode and declares it supersedes the old gate everywhere.
+- `project/rules.md` §6 — rewritten from "The verification protocol" to "The change transcript".
+  Step 3 used to read *"Entry starts as Pending review. The change does not merge while it is
+  pending."* It now reads *"The change proceeds. Recording the entry never blocks a commit, merge
+  or push."*
+- `project/qna.md` — preamble rewritten; index column `Status` → `Record`; Q-001..Q-005 converted
+  from `Pending review` to `Recorded` with their original dates.
+- `project/memory.md` §5, `project/README.md:29`, `project/phases.md:42`, `project/tasks.md` — stale
+  gate references updated; two "Quiz-gated" reasons dropped from the tasks ownership table.
+- `project/pre-demo.md` — §1.4 changed from *"blocked on the `rules.md` §6 quiz"* to *"ready to
+  start"*; §4b retitled from "Open quiz gates" to "Changes to record"; the `(quiz-gated)` marker
+  removed from ordering step 3.
+- `/home/natsu/dev/synth-veda/docs/rules.md` — the same cross-project rule, updated.
+
+Claude's own memory files were updated to match: `feedback_major_change_gate.md` (global) rewritten,
+`quiz-before-major-changes.md` deleted and replaced by `qna-transcript-mode.md`.
+
+### 2. Rationale — why drop a gate that was working?
+
+It was not working; it was queueing. Q-003, Q-004 and Q-005 were written on 2026-09-07 and still sat
+*Pending review* on 2026-09-11, which meant a branch carrying a database migration, a working video
+pipeline and the restored `frontend/src/lib` could not merge — while three new people were waiting
+to start and the demo was days away. The gate's cost had become "a six-person team is blocked", and
+its benefit — the author having a written explanation to defend — is fully preserved by the record
+alone. The ceremony was separable from the value, so it was cut.
+
+### 3. Blast radius — what is genuinely lost?
+
+The pre-merge catch. Under the old rule, an entry whose explanation contradicted the code stopped
+the merge, and that disagreement was the signal. Now a wrong change gets recorded and merged, and
+the contradiction surfaces whenever someone reads the entry — which may be after it has shipped.
+
+That is a real reduction in safety and is stated here rather than glossed. What offsets it: the
+suite gates merges instead (132 passed, and Sujal's Track B1 puts that in CI so it gates on every
+PR, not just on one machine), and the append-only rule means a wrong entry cannot be quietly tidied
+up later — it stays in the record with its superseding entry beside it.
+
+### 4. Verification — what proves the gate is actually gone?
+
+`grep -rn -iE 'pending review|quiz' project/ backend/ README.md` returns two hits, both inside
+sentences explaining why a *written* record beats a *live* quiz — the rationale that survived. No
+hit asserts a pending state or a blocked merge. `project/qna.md` shows five entries marked
+`Recorded`, none `Pending review`. The branch that the gate was blocking,
+`refactor/s0-remove-dead-layers`, pushed at `a42b28e`.
+
+### 5. Defence — a mentor asks whether you removed the check because it was inconvenient.
+
+"Partly, and the inconvenience was the evidence. The check had two parts: writing down a defensible
+explanation, and a sign-off ritual before merge. The first part is the one that makes the work
+defensible, and we kept it in full — every major change still gets mechanism, rationale, blast
+radius, verification and defence, written when the change is made, appended and never rewritten. The
+second part was costing us a blocked branch and three idle engineers four days before a demo, and it
+was never what made the explanation good. We also made the record strictly append-only at the same
+time, so the trade is: we gave up a pre-merge stop, and in exchange the history can no longer be
+edited after the fact. Test coverage now does the merge-gating, which is a better tool for it."
+
+The caveat to volunteer: this only works if entries actually get written at the time. A transcript
+nobody keeps is worse than a gate nobody passes.

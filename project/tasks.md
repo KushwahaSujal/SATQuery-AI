@@ -7,9 +7,9 @@ Read `pre-demo.md` §0 first — it is the only honest baseline. Numbers in the 
 
 - Branch off `refactor/s0-remove-dead-layers`, not `main`. `main` is 15 commits stale.
 - One branch per track: `feat/<name>-<topic>`. Do not push to `main`.
-- `rules.md` §6 applies: any change spanning >3 files, touching routing/capability logic, or
-  altering a model contract needs a `qna.md` entry **before** it merges. None of the tasks below
-  are meant to cross that line — if yours starts to, stop and talk to Ushnik.
+- `rules.md` §6: any change spanning >3 files, touching routing/capability logic, or altering a
+  model contract gets recorded in `qna.md`. It is a transcript, not a gate — it never blocks your
+  merge. None of the tasks below are meant to reach that size; if yours starts to, talk to Ushnik.
 - Baseline to beat, every time, before you open a PR: `pytest -q` → **132 passed, 0 failed**.
 - Do not touch: `ml/adapters/changeformer*`, `checkpoints/optical_sar/*`, the agent DAG routing, or
   `frontend/src/components/**` (D-111 — frontend components belong to Sandipan).
@@ -142,9 +142,9 @@ official records). Leaving both is a trap for whoever runs the obvious-looking o
 | Item | Owner | Why not delegated |
 |---|---|---|
 | §1.1 optical–SAR rule-based fusion | Ushnik | Mandatory req #5, currently random weights |
-| §1.3 ChangeFormer vendor + rewire | Ushnik | Quiz-gated; blocked on Ayushman's validation set |
+| §1.3 ChangeFormer vendor + rewire | Ushnik | Blocked on Ayushman's validation set |
 | §1.2 wire BigEarthNet, lead with CDVQA | Ushnik / Ayushman | Headline adaptation claim |
-| §1.4 model-registry verification | Ushnik | Quiz-gated, touches the registry contract |
+| §1.4 model-registry verification | Ushnik | Touches the registry contract |
 | §2.1e SAM 2.1 bidirectional propagation | Ushnik | Model-level; the temporal claim depends on it |
 | Frontend design pass (§3 item 1) | Sandipan | D-111 — his components |
 | §3 items 3/4 trace + audit report | open | Pick up after Track A lands the payload work |
