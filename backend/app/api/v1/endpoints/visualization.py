@@ -13,6 +13,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, s
 from fastapi.responses import FileResponse, JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from backend.app.geo.rendering import create_change_overlay
 from backend.app.schemas.requests import AnalyzeRequest
 from backend.app.schemas.responses import (
     UploadResponse,
