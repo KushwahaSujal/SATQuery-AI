@@ -30,6 +30,9 @@ migration changes · anything that will be claimed in the paper.
 |---|---|---|---|
 | [Q-001](#q-001--s0-removal-of-the-dead-planner-router-and-workflow-class-layers) | S0 — removal of the dead planner, router and workflow-class layers | 2026-09-04 | Pending review |
 | [Q-002](#q-002--d-113-disabling-asyncpgs-prepared-statement-cache-behind-supabases-pooler) | D-113 — asyncpg prepared-statement cache behind Supabase's pooler | 2026-09-04 | Pending review |
+| [Q-003](#q-003--video-and-visualization-tables-migration) | Video & visualization tables migration (f1b7463d221d) | 2026-09-07 | Pending review |
+| [Q-004](#q-004--colour-reaches-the-detector-prompt) | Colour reaches the detector prompt; verb stoplist; overlay colour fidelity | 2026-09-07 | Pending review |
+| [Q-005](#q-005--absent-colours-report-not_applicable) | Absent colours report NOT_APPLICABLE (colour gate) | 2026-09-07 | Pending review |
 
 ---
 
@@ -189,3 +192,248 @@ and least likely to appear during a smoke test — which is the argument for pro
 and concurrent queries rather than a single connectivity check.
 
 **Status: Pending review**
+
+
+---
+
+## Q-003 · Video and visualization tables migration
+
+**Revision:** `f1b7463d221d_add_video_and_visualization_tables` · revises `002_enable_rls`
+**Scope:** 1 migration file. Creates `videos`, `video_frames`, `video_flags`,
+`visualization_layers`; enables RLS on all four.
+**Result:** `GET /api/video/{job_id}` went from HTTP 500 to 200; browser shows `1 events`.
+
+### 1. Mechanism — the POST returned 200 with a correct flag while the DB write failed. Where was the result lost?
+
+`POST /api/video/analyze` computes the whole result in memory and returns it directly from
+`VideoAnalysisWorkflow.execute()`. Persistence is wrapped in a `try/except` that logs a warning and
+continues (`video.py`, "Database persistence for video job ... encountered error"), so a failed
+write cannot fail the request. The response the caller receives is therefore correct and complete.
+
+The loss happens at the *next* step. The frontend does not keep that response — it navigates to
+`/video/{job_id}`, which calls `GET /api/video/{job_id}`, and that endpoint reads from the database.
+With no `videos` table the read raised `UndefinedTableError` → HTTP 500 → the page fell back to its
+default object, which hardcodes `status: "NO_DATA"` and `events: []`.
+
+So the pipeline was correct end-to-end and the *handoff* was broken. Every API test in the session
+passed because they read the POST response; only driving the browser exercised the GET.
+
+### 2. Rationale — `ensure_db_tables()` already creates all ten tables. Why write a migration instead of calling it on startup?
+
+`ensure_db_tables()` is `metadata.create_all()`. It creates what is missing and is fine for the
+SQLite test database, which is disposable. Against the live Supabase database it is the wrong tool:
+
+- It only ever *adds*. It cannot alter or drop, so the first time a column changes it silently does
+  nothing and the schema diverges from the models with no error.
+- It leaves no version record. `alembic_version` is how we know which schema a given deployment has;
+  `create_all` writes nothing, so "which migration is this database on?" becomes unanswerable.
+- It would run on every boot against production, which is a schema write executed by any process
+  that happens to start — including a developer's laptop pointed at the shared database.
+
+The migration also gave a safety property `create_all` cannot: `--autogenerate` **diffed the models
+against the live database** and reported exactly four added tables and their indexes, with **no
+changes to the existing seven**. That diff is the evidence the change is additive.
+
+### 3. Blast radius — what breaks if the new tables go in without RLS, and what breaks if `downgrade()` runs later?
+
+**Without RLS:** `002_enable_rls` enabled row-level security on all seven original tables, which on
+Supabase is what stops the public `anon` key reading a table directly through PostgREST. Four tables
+without it would have been the only openly readable ones in the database — and they hold job ids,
+filenames and file paths. `_enable_rls()` in the migration closes that. Verified after applying:
+all 11 tables report `rowsecurity = true`.
+
+**If `downgrade()` runs:** it drops the four tables and every video job and visualization layer row
+in them. The artifacts on disk under `results/` survive, so re-running an analysis regenerates the
+records, but the history is gone. The FKs are `ondelete='CASCADE'` from `videos` to
+`video_frames`/`video_flags`, so dropping in the generated order is safe; the risk is data loss, not
+constraint failure.
+
+### 4. Verification — what single check proves it worked, and why aren't the tests enough?
+
+The check: `GET /api/video/{job_id}` returns **HTTP 200 with `flags` populated**, and the browser
+page shows `Detected Events: 1 events`. Measured: `status COMPLETED`, one flag at 0.00–29.76s
+labelled `vehicles`, score 0.8577.
+
+The tests are not sufficient because `conftest.py` sets `SATQUERY_ENV=test`, which routes to
+SQLite, and SQLite gets its schema from `ensure_db_tables()` — **so the test suite creates the
+tables it needs and can never observe the missing migration.** The suite was 125 passed while the
+production schema was broken. Any check that proves this class of bug has to run against Postgres.
+
+### 5. Defence — why were four tables defined in code but never migrated, and does anything else have the same gap?
+
+The models were added after `001_initial_schema` and no migration followed; `002_enable_rls` lists
+its seven tables by hand, so it did not notice either. Nothing enforced the link, and the test suite
+structurally could not (see 4).
+
+How to check for recurrence: `alembic revision --autogenerate` and confirm it produces an **empty**
+migration. A non-empty diff means the models and the database have drifted again. Run after applying
+this one: the next autogenerate is clean. Making that a CI check is the durable fix.
+
+---
+
+## Q-004 · Colour reaches the detector prompt
+
+**Scope:** `workflows/grounding_reasoner.py`, `video/flagger.py`, 3 test files.
+**Result:** suite 125 → 129 passed. VRSBench mIoU 0.2755 → **0.2834**, R@0.5 0.29 → **0.31**
+(same seed 42, same "all" subset, 100 records, 0 errors).
+
+### 1. Mechanism — three colour queries returned the identical box. What exactly was thrown away?
+
+`parse_v4_query` correctly extracted `color` for all three queries, then built the detector prompt
+from `category` alone:
+
+```
+'spot a red car'    -> clean_prompt='spot car.'   color='red'
+'spot a yellow car' -> clean_prompt='spot car.'   color='yellow'
+```
+
+Red and yellow produced a **byte-identical prompt**, so Grounding DINO received the same input and
+returned the same box, at the same detector score (0.879 for both). Two separate defects:
+
+1. `"spot"` was missing from the verb stoplist, so it survived into the category and the detector
+   was asked for a nonexistent `"spot car"` class. `"find"` was in the list, which is why
+   `find all vehicles` behaved correctly and masked the problem.
+2. The colour was dropped from the prompt entirely.
+
+### 2. Rationale — the reasoner already has a 0.15 `color` weight. Why change the prompt instead of relying on it?
+
+Because that weight only *re-orders candidates that already exist*. `rank_v4_candidates` scores each
+candidate and sorts; with one candidate per frame there is nothing to re-order, so the colour score
+changes no outcome. It also cannot *reject* — the top-ranked candidate is selected regardless of how
+poorly it scores.
+
+Putting the colour in the prompt attacks it upstream, where Grounding DINO is genuinely
+colour-conditioned. The measured difference: `"spot a red car"` now flags **14.40–18.24s**, and the
+raw frame at index 228 is a red car. Previously it flagged 0.00–9.60s, boxing a white one.
+
+### 3. Blast radius — this changes the prompt for every grounding query. What could regress?
+
+Every query carrying a colour now sends a longer prompt, which is the main grounding path and is
+scored on VRSBench — the number that goes in the paper. So it was re-measured on the same
+seed/subset rather than assumed: **mIoU 0.2755 → 0.2834, R@0.5 0.29 → 0.31**, detection rate 0.86
+unchanged, 0 errors. A small improvement, no regression.
+
+Two existing tests asserted the old behaviour (`clean_prompt == "vehicle."` for a query containing
+"white"). Those are **deliberate contract changes**, updated with a comment naming the reason rather
+than quietly relaxed. The added stopwords (`spot, track, count, look, search, where, give, me, any`)
+are a real risk if a target class is ever named by one of them; `ground-track-field` is safe because
+it tokenises as a single hyphenated token.
+
+### 4. Verification — what proves the colour is actually being used?
+
+Three checks, in increasing strength:
+1. `parse_v4_query('spot a red car')['clean_prompt'] == 'red car.'` and yellow differs — unit test
+   `test_colour_reaches_the_detector_prompt`.
+2. On the real video the three queries now return **different** flags and timestamps, where before
+   all three returned 0.00–9.60s peaking at frame 60.
+3. The decisive one: `"spot a red car"` peaks at frame 228, and the **raw decoded frame 228 is a red
+   car**. Checked against the image, not the label.
+
+### 5. Defence — a mentor asks "does it really understand colour?" What is the honest answer?
+
+"It now conditions the detector on colour, and that is measurable: asking for a red car returns the
+red car at 14.4–18.2s, asking for white returns the white ones. It is not a colour classifier — the
+attribute is passed to an open-vocabulary detector that was trained to handle it."
+
+And the limitation, unprompted: **asking for a yellow car — which is not in the footage — still
+returns a confident flag at 0.79.** Grounding DINO ranks the best-matching region and has no "nothing
+here" output. That is tracked as `pre-demo.md` §2.1a; RemoteCLIP verification was built for it and
+measured unreliable, so open-set rejection remains open. The colour fix makes the *right* answer
+right; it does not make the *absent* answer safe.
+
+### 6. Why did the overlay show a red car as green?
+
+`flagger.py` passed a numpy array into `create_change_overlay`, which routes arrays through
+`render_display_rgb` — a 2–98 percentile per-band contrast stretch built for multi-band satellite
+rasters. Applied to an ordinary video frame it recoloured the entire image. Passing the PIL image
+takes the branch that skips the stretch. Guarded by `test_annotated_overlay_preserves_true_colour`,
+which asserts a red region stays red when the mask is elsewhere.
+
+The car still renders green *inside* the mask — that is the SAM 2.1 segmentation highlight,
+`color_rgb=(0, 230, 150)` at alpha 0.45, working as designed. Worth reconsidering for colour demos,
+since painting the target green hides the attribute being asked about.
+
+
+---
+
+## Q-005 · Absent colours report NOT_APPLICABLE
+
+**Scope:** `schemas/video.py`, `workflows/video_analysis.py`, `api/v1/endpoints/video.py`,
+`frontend/.../video/[jobId]/page.tsx`, `lib/types.ts`, 1 test file.
+**Result:** suite 129 → **131 passed**. `spot a yellow car` on footage with no yellow car returns
+0 flags and "Not applicable"; red and white still detect correctly.
+
+### 1. Mechanism — the detector is confident about a car that isn't there. What actually separates present from absent?
+
+Not confidence. Grounding DINO is open-vocabulary: it ranks the best-matching region in the frame
+and has no "nothing here" output, so it always returns *something*. Measured over 32 frames of
+`real_aerial_footage.mp4`, its score does not separate the two cases at all:
+
+| colour | in clip? | max colour score | max detector score |
+|---|---|---|---|
+| red | yes | **1.000** | 0.895 |
+| white | yes | **0.969** | 0.916 |
+| yellow | no | 0.230 | 0.827 |
+| blue | no | 0.260 | 0.906 |
+| green | no | 0.209 | 0.892 |
+
+Detector score spans 0.83–0.92 for present and absent alike. **Photometric colour score separates
+them 4:1 with nothing in between**, so the threshold sits at 0.45, in clear air.
+
+`color_score()` takes the mean RGB inside the candidate box and compares channels — for yellow,
+`min(r,g) - b`. It already existed and was used only as a 0.15 *ranking* weight. Ranking cannot
+reject: with one candidate, that candidate always wins regardless of score. The change makes it a
+**gate** as well as a weight.
+
+### 2. Rationale — RemoteCLIP verification was the obvious answer. Why pixel statistics instead?
+
+RemoteCLIP was built first and measured unreliable: on a blank white image "a cat" scored 0.677, and
+on a LEVIR-CD scene "a purple flying saucer" (0.430) outscored "buildings" (0.207). Both the
+negation and distractor formulations failed in the same direction — out-of-distribution text lands
+far from the remote-sensing cluster and softmax rewards it. It was reverted (`pre-demo.md` 2.1a).
+
+Option B (making `reasoning_score` discriminative) was a genuine bug and is fixed, but for
+modifier-free queries the weights normalise to detector-only, so it moved the gap the *wrong* way:
+real 0.6802 → 0.4972 while nonsense only fell 0.7445 → 0.6134.
+
+The pixel test wins on three counts: it is the only one that measurably separates the cases, it is
+deterministic and inspectable (a mentor can be shown the mean RGB), and it reuses code already in
+the repo rather than adding a model to the inference path.
+
+### 3. Blast radius — what breaks if the threshold is wrong, and what does this NOT cover?
+
+Too high and real detections are rejected — a dark red car under shadow could fall below 0.45.
+`test_present_colour_still_detected` guards that with the red car at ~17.4s. Too low and it stops
+rejecting. The measured margin (0.26 absent vs 0.97 present) means a mistake needs to be large;
+`min_colour_score` is configurable per request if a clip needs it.
+
+The gate only fires when the query names a colour the scorer knows (white, black, red, blue, green,
+yellow, grey/silver). Every colourless query is untouched — `find all vehicles` behaves exactly as
+before. **It does not do class-level rejection:** asking for a "purple flying saucer" parses no
+known colour and still returns a flag, which is why `test_video_workflow_no_events_found` remains
+`xfail`. That limit is stated in `pre-demo.md` rather than papered over.
+
+### 4. Verification — what proves it, beyond the unit test?
+
+Three layers:
+1. `test_absent_colour_reports_not_applicable` — yellow on real footage → 0 flags,
+   `NOT_APPLICABLE` in the reason.
+2. `test_present_colour_still_detected` — red on the same footage still flags.
+3. Driven through the browser with Playwright, which is the only layer that exercises persistence
+   and rendering: red → `0:15.4 — red car` 0.89; white → 4 events; yellow → "**Not applicable** ·
+   no yellow car found in this footage."
+
+Layer 3 caught two things the tests could not: `GET /api/video/{job_id}` overwrote the reason with
+"Retrieved 0 persisted event flags", and the UI printed a bare "No events detected". Both fixed.
+
+### 5. Defence — a mentor asks how the system knows a colour is absent rather than just undetected.
+
+"The detector proposes regions; it will propose one for any prompt. We then check the pixels inside
+the proposed region against the requested colour — mean RGB, a fixed rule per colour, no model. On
+this clip, colours that are present score 0.97–1.00 and colours that are absent score 0.21–0.26, so
+we reject below 0.45 and report NOT_APPLICABLE with the reason. The detector's own confidence was
+0.83–0.92 in both cases, which is exactly why we do not gate on it."
+
+The honest caveat to volunteer: this covers colour attributes. A request for an object class that is
+simply not present is still not rejected — that is open, and two approaches to it have already been
+measured and rejected.

@@ -85,3 +85,11 @@ Thumbs.db
 .coverage
 htmlcov/
 
+
+# Playwright MCP session output (browser-driven QA scratch)
+.playwright-mcp/
+
+# Root-level UI screenshots from manual/Playwright walkthroughs — scratch, not docs
+/analysis.png
+/home.png
+/satquery-home.png
