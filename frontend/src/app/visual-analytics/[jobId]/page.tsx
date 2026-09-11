@@ -18,7 +18,7 @@ const provenanceColor: Record<string, string> = {
 export default function VisualAnalyticsPage() {
   const { jobId } = useParams<{ jobId: string }>();
   const layersQuery = useLayers(jobId);
-  const [activeId, setActiveId] = useState("change_prob");
+  const [activeId, setActiveId] = useState("true_color");
   const [opacity, setOpacity] = useState(85);
   const [showHistogram, setShowHistogram] = useState(false);
   const [imgError, setImgError] = useState(false);
@@ -52,6 +52,26 @@ export default function VisualAnalyticsPage() {
   };
 
   const visualizationUrl = activeLayer?.artifact_url || api.visualizationUrl(jobId, activeId);
+  
+  // Show loading or empty state
+  if (layersQuery.isLoading) {
+    return (
+      <div className="flex items-center justify-center h-[calc(100vh-80px)] border border-[#1a1a1a] rounded-lg">
+        <span className="font-mono-data text-[12px] text-[#737373]">Loading visual analytics...</span>
+      </div>
+    );
+  }
+  
+  if (!activeLayer) {
+    return (
+      <div className="flex items-center justify-center h-[calc(100vh-80px)] border border-[#1a1a1a] rounded-lg">
+        <div className="text-center">
+          <span className="font-mono-data text-[12px] text-[#737373] block mb-2">No visualization layers available</span>
+          <span className="font-mono-data text-[10px] text-[#404040]">Upload imagery and run analysis to generate layers</span>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex border border-[#1a1a1a] rounded-lg overflow-hidden animate-fade-in" style={{ height: "calc(100vh - 80px)" }}>

@@ -29,8 +29,55 @@ export default function AnalysisWorkspacePage() {
     execution_trace: job.data?.execution_steps || [],
   };
 
-  const steps = job.data?.execution_steps || data.execution_trace || data.trace || [];
-  const overlayUrl = api.visualizationUrl(jobId, "change_overlay");
+  // Map execution steps to TraceStep format
+  const mapStep = (s: any): any => ({
+    name: s.step_name || s.name || "unknown",
+    status: s.status || "skipped",
+    duration_ms: s.duration_ms ?? s.duration_seconds ? Math.round(s.duration_seconds * 1000) : undefined,
+    message: s.details || s.message,
+  });
+  
+  const steps = (job.data?.execution_steps || data.execution_trace || data.trace || []).map(mapStep);
+  
+  // Determine appropriate visualization based on task type
+  const getVisualizationLayer = (task: string): string => {
+    const taskLower = (task || "").toLowerCase();
+    if (taskLower.includes("change") || taskLower.includes("temporal")) {
+      return "change_overlay";
+    }
+    if (taskLower.includes("grounding") || taskLower.includes("detection")) {
+      return "grounding_overlay";
+    }
+    if (taskLower.includes("segmentation") || taskLower.includes("mask")) {
+      return "sam2_segmentation_overlay";
+    }
+    // Default to true color for VQA and other single-image tasks
+    return "true_color";
+  };
+
+  const visualizationLayer = getVisualizationLayer(data.task);
+  const overlayUrl = api.visualizationUrl(jobId, visualizationLayer);
+  
+  // Show loading state
+  if (job.isLoading || result.isLoading) {
+    return (
+      <div className="flex items-center justify-center h-[calc(100vh-80px)] border border-[#1a1a1a] rounded-lg">
+        <span className="font-mono-data text-[12px] text-[#737373]">Loading analysis...</span>
+      </div>
+    );
+  }
+  
+  // Show error state
+  if (job.isError && result.isError) {
+    return (
+      <div className="flex items-center justify-center h-[calc(100vh-80px)] border border-[#1a1a1a] rounded-lg">
+        <div className="text-center">
+          <span className="font-mono-data text-[12px] text-[#f87171] block mb-2">Failed to load analysis</span>
+          <span className="font-mono-data text-[10px] text-[#404040]">The job may not exist or the backend is unreachable</span>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col gap-0 border border-[#1a1a1a] rounded-lg overflow-hidden animate-fade-in">
@@ -103,6 +150,7 @@ export default function AnalysisWorkspacePage() {
             <div className="absolute bottom-4 left-4 bg-[#0a0a0a]/90 border border-[#222] px-3 py-2 rounded font-mono-data text-[10px] text-[#737373]">
               <div>Target Job ID: {jobId}</div>
               <div>Status: {status}</div>
+              <div>Layer: {visualizationLayer}</div>
             </div>
           </div>
         </div>

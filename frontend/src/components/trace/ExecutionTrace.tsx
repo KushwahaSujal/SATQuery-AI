@@ -32,7 +32,7 @@ export default function ExecutionTrace({ steps }: { steps: TraceStep[] }) {
           const dotColor = isSuccess ? "var(--green)" : isFailed ? "var(--red)" : isRunning ? "var(--accent)" : "var(--t4)";
 
           return (
-            <div key={step.name} style={{ display: "flex", alignItems: "center", gap: 0 }}>
+            <div key={`${step.name}-${i}`} style={{ display: "flex", alignItems: "center", gap: 0 }}>
               {/* Node */}
               <div style={{
                 display: "flex", alignItems: "center", gap: 5,
