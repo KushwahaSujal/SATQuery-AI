@@ -30,7 +30,22 @@ export default function VideoIntelligencePage() {
     keyframes: [],
     models_used: ["SAM 2.1", "Grounding DINO"],
   };
-  const totalSec = 45.2;
+  // The backend returns `flags` (VideoFlag), not `events`, and the shapes differ.
+  // Map once here so the renderer below is untouched.
+  const events =
+    videoJob?.flags?.map((f) => ({
+      id: f.flag_id,
+      timestamp_sec: f.start_timestamp,
+      end_sec: f.end_timestamp,
+      label: f.label,
+      score: f.event_score,
+      keyframe_url: f.keyframe_url,
+      // Backend emits no track id; SAM 2.1 propagation is anchored, not tracked.
+      track_id: undefined as string | undefined,
+    })) ?? results.events ?? [];
+
+  // Real duration from the decoded stream, not a hardcoded 45.2s.
+  const totalSec = videoJob?.video_metadata?.duration_sec ?? 45.2;
   const videoStreamUrl = api.videoStreamUrl(jobId);
 
   return (
@@ -88,14 +103,18 @@ export default function VideoIntelligencePage() {
               <span className="font-mono-data text-[10px] text-[#333]">0:00 → {fmt(totalSec)}</span>
             </div>
             <div className="relative h-1.5 bg-[#111] rounded-full">
-              {results.events?.map((ev) => {
+              {events.map((ev) => {
                 const pct = Math.min((ev.timestamp_sec / totalSec) * 100, 98);
                 return (
                   <div
                     key={ev.id}
                     className="absolute -translate-x-1/2 w-2.5 h-2.5 rounded-full bg-[#60a5fa] -top-0.5 cursor-pointer hover:scale-125 transition-transform"
                     style={{ left: `${pct}%` }}
-                    title={`${fmt(ev.timestamp_sec)} — ${ev.label}`}
+                    title={
+                      "end_sec" in ev && typeof ev.end_sec === "number" && ev.end_sec > ev.timestamp_sec
+                        ? `${fmt(ev.timestamp_sec)} → ${fmt(ev.end_sec)} — ${ev.label}`
+                        : `${fmt(ev.timestamp_sec)} — ${ev.label}`
+                    }
                   />
                 );
               })}
@@ -107,15 +126,26 @@ export default function VideoIntelligencePage() {
         <div className="w-[280px] shrink-0 flex flex-col min-h-0">
           <div className="panel-header shrink-0">
             <span className="panel-label">Detected Events</span>
-            <span className="font-mono-data text-[10px] text-[#333]">{results.events?.length ?? 0} events</span>
+            <span className="font-mono-data text-[10px] text-[#333]">{events.length} events</span>
           </div>
 
           <div className="flex-1 overflow-y-auto divide-y divide-[#1a1a1a]">
-            {results.events && results.events.length > 0 ? (
-              results.events.map((ev) => (
+            {events.length > 0 ? (
+              events.map((ev) => (
                 <div key={ev.id} className="p-4 hover:bg-[#0d0d0d] transition-colors">
                   <div className="flex items-center justify-between mb-1.5">
-                    <span className="font-mono-data text-[11px] text-[#60a5fa]">{fmt(ev.timestamp_sec)}</span>
+                    <span className="font-mono-data text-[11px] text-[#60a5fa]">
+                      {fmt(ev.timestamp_sec)}
+                      {"end_sec" in ev && typeof ev.end_sec === "number" && ev.end_sec > ev.timestamp_sec && (
+                        <>
+                          <span className="text-[#2a2a2a]"> → </span>
+                          {fmt(ev.end_sec)}
+                          <span className="text-[#404040] ml-1.5">
+                            ({(ev.end_sec - ev.timestamp_sec).toFixed(1)}s)
+                          </span>
+                        </>
+                      )}
+                    </span>
                     {ev.track_id && <span className="font-mono-data text-[10px] text-[#2a2a2a]">{ev.track_id}</span>}
                   </div>
                   <p className="text-[12px] text-[#737373] leading-relaxed">{ev.label}</p>
@@ -133,7 +163,35 @@ export default function VideoIntelligencePage() {
                 </div>
               ))
             ) : (
-              <div className="p-4 text-center font-mono-data text-[11px] text-[#404040]">No events detected</div>
+              (() => {
+                // Distinguish "the thing you asked for is not here" from "something
+                // went wrong" and from a bare empty result. The backend says which in
+                // workflow_reason (NOT_APPLICABLE / DETECTION_FAILED).
+                const reason = videoJob?.workflow_reason ?? "";
+                const notApplicable = reason.startsWith("NOT_APPLICABLE");
+                const failed = reason.startsWith("DETECTION_FAILED");
+                const heading = notApplicable
+                  ? "Not applicable"
+                  : failed
+                    ? "Detection failed"
+                    : "No events detected";
+                const detail = reason.includes(":") ? reason.slice(reason.indexOf(":") + 1).trim() : "";
+                return (
+                  <div className="p-4 text-center">
+                    <p
+                      className={cn(
+                        "font-mono-data text-[11px] mb-1.5",
+                        notApplicable ? "text-[#fbbf24]" : failed ? "text-[#f87171]" : "text-[#404040]"
+                      )}
+                    >
+                      {heading}
+                    </p>
+                    {detail && (
+                      <p className="text-[11px] text-[#525252] leading-relaxed text-left">{detail}</p>
+                    )}
+                  </div>
+                );
+              })()
             )}
           </div>
 

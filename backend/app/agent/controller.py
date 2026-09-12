@@ -2,7 +2,6 @@ from typing import List, Optional
 from datetime import datetime
 import time
 from backend.app.agent.state import AgentState
-from backend.app.agent.planner import RuleBasedPlanner, BasePlanner
 from backend.app.agent.validator import PlanValidator
 from backend.app.agent.executor import SafeToolExecutor
 from backend.app.geo.modality import ModalityDetector
@@ -34,9 +33,6 @@ class AgentController:
     Drives job state machine: QUEUED -> VALIDATING -> PLANNING -> RUNNING -> GENERATING_EVIDENCE -> COMPLETED / FAILED.
     Synchronizes observable execution states, model runs, results, and artifacts with PostgreSQL.
     """
-    def __init__(self, planner: Optional[BasePlanner] = None):
-        self.planner = planner or RuleBasedPlanner()
-
     async def _safe_db_op(self, coro_func):
         """Helper to execute database operations without crashing pipeline if DB is unavailable."""
         try:

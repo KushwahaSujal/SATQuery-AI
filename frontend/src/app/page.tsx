@@ -62,6 +62,14 @@ export default function CommandCenterPage() {
         const filenames = rasters.map((r) => r.filename);
         const reqId = rasters[0]?.request_id || rasters[0]?.id;
 
+        // Validate all rasters share the same job workspace
+        const mismatched = rasters.filter(r => r.request_id !== reqId);
+        if (mismatched.length > 0) {
+          setError("All images must be uploaded together in a single batch. Please clear and re-upload all images at once.");
+          setAnalyzing(false);
+          return;
+        }
+
         const res = await api.analyze({
           query,
           image_filenames: filenames,
@@ -107,6 +115,7 @@ export default function CommandCenterPage() {
             video={video}
             onRasterUploaded={(r) => setRasters((p) => [...p, r])}
             onVideoUploaded={setVideo}
+            onClearRasters={() => setRasters([])}
           />
         </div>
 

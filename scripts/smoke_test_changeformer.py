@@ -20,7 +20,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 # Production import - strictly using production adapter
-from backend.app.models.changeformer import ChangeFormerAdapter
+from backend.app.ml.adapters.changeformer import ChangeFormerAdapter
 from backend.app.exceptions import ModelUnavailableError, InferenceError, InvalidInputError
 
 

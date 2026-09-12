@@ -201,7 +201,54 @@ class CapabilityRegistry:
         ]
         for c in defaults:
             self.register(c)
+        self._validate_all()
         logger.info(f"CapabilityRegistry initialized with {len(self._capabilities)} capabilities.")
+
+    def _validate_all(self) -> None:
+        """
+        Fails loudly at import time if a capability declares a tool that is not
+        registered, or has no DAG branch.
+
+        Previously neither was checked: DependencyChecker validates the tools on
+        the *DAG nodes*, not `required_tools`, and a capability with no DAG branch
+        silently fell through to a trivial inspect->report plan. That is how
+        multispectral_analysis and sar_analysis came to route successfully and then
+        do nothing (project/decisions.md D-104, D-105).
+        """
+        from backend.app.agent.tools import TOOL_REGISTRY
+        from backend.app.orchestration.dependency_graph import DependencyGraph
+
+        unknown_tools: dict = {}
+        without_dag: list = []
+        for cap in self._capabilities.values():
+            missing = sorted({t for t in cap.required_tools if t not in TOOL_REGISTRY})
+            if missing:
+                unknown_tools[cap.capability_id] = missing
+            if not DependencyGraph.has_branch_for(cap.capability_id):
+                without_dag.append(cap.capability_id)
+
+        # Warn rather than raise: some of these capabilities are reachable through
+        # their own endpoint rather than the agent DAG (video_* runs via
+        # /api/video/analyze -> VideoAnalysisWorkflow), and hard-failing at import
+        # would take down capabilities that do work. The point is that the gap is
+        # now visible on every boot instead of invisible forever.
+        for cap_id, missing in sorted(unknown_tools.items()):
+            logger.warning(
+                f"Capability '{cap_id}' declares tools with no implementation: {missing}. "
+                f"It cannot be executed by the agent DAG."
+            )
+        if without_dag:
+            logger.warning(
+                "Capabilities with no DAG branch fall back to a trivial "
+                f"inspect_raster -> generate_report plan and produce no real output: "
+                f"{sorted(without_dag)}"
+            )
+        if unknown_tools or without_dag:
+            logger.warning(
+                f"Capability health: {len(self._capabilities) - len(set(unknown_tools) | set(without_dag))}"
+                f"/{len(self._capabilities)} capabilities are fully agent-executable. "
+                f"See project/decisions.md D-104 and D-105."
+            )
 
 
 capability_registry = CapabilityRegistry()

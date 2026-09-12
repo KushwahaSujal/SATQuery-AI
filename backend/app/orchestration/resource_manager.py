@@ -5,8 +5,8 @@ Enforces GPU concurrency locks and prevents out-of-memory crashes.
 """
 import psutil
 from typing import Dict, Optional
-from backend.app.models.device import get_device
-from backend.app.models.concurrency import gpu_lock
+from backend.app.ml.device import get_device
+from backend.app.ml.concurrency import gpu_lock
 from backend.app.exceptions import SatQueryException
 from backend.app.logging import logger
 

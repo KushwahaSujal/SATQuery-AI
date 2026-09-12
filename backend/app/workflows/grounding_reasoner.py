@@ -5,6 +5,7 @@ deduplicates candidates, and performs multi-criteria geometric & spatial reasoni
 over Grounding DINO candidate boxes without using ground truth or chain-of-thought.
 """
 
+from pathlib import Path
 import re
 import math
 from typing import Any, Dict, List, Optional, Tuple, Union
@@ -169,6 +170,9 @@ def parse_v4_query(query: str) -> Dict[str, Any]:
         "the", "a", "an", "that", "this", "these", "those", "is", "of", "and", "in", "on", "at",
         "find", "locate", "detect", "ground", "all", "one", "please", "can", "you",
         "highlight", "segment", "outline", "identify", "pinpoint", "mark", "show",
+        # "spot" was absent, so "spot a red car" asked the detector for a
+        # nonexistent "spot car" class (project/pre-demo.md 3f).
+        "spot", "track", "count", "look", "search", "where", "give", "me", "any",
         "located", "situated", "positioned", "corner", "side", "part", "area", "portion",
         "image", "scene", "photo", "picture", "satellite", "colored", "colour", "color"
     }
@@ -186,8 +190,15 @@ def parse_v4_query(query: str) -> Dict[str, Any]:
         category = "object"
 
     parsed["category"] = category
-    # Normalized prompt suitable for Grounding DINO
-    parsed["clean_prompt"] = f"{category}."
+    # Normalized prompt suitable for Grounding DINO.
+    #
+    # The colour is kept IN the prompt. It used to be parsed and then stripped, so
+    # "a red car" and "a yellow car" produced the identical prompt "car." and the
+    # detector could not tell them apart -- all colour queries returned the same box
+    # (project/pre-demo.md 3f). Grounding DINO is colour-capable, and the ranking
+    # colour weight cannot recover this: it only re-orders candidates, and with one
+    # candidate per frame there is nothing to re-order.
+    parsed["clean_prompt"] = f"{parsed['color']} {category}." if parsed["color"] else f"{category}."
 
     return parsed
 

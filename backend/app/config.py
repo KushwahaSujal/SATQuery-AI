@@ -78,7 +78,9 @@ class DatabaseSettings(BaseModel):
 
 
 class VideoSamplingSettings(BaseModel):
-    sample_fps: float = 1.0
+    # 1.0 quantised event boundaries to +/-1s, which showed up as timestamps a few
+    # seconds off the true appearance (project/pre-demo.md 3g).
+    sample_fps: float = 2.0
     max_frames: int = 120
     analysis_stride: int = 1
     event_refinement_window: int = 3
@@ -102,6 +104,11 @@ class VideoFlagSettings(BaseModel):
     max_gap_frames: int = 2
     max_gap_seconds: float = 1.5
     min_event_score: float = 0.20
+    # Measured on real_aerial_footage.mp4: real vehicles score 0.67-0.89, while a
+    # parking-line marking and a full-frame box both scored 0.28 (3g).
+    min_detector_score: float = 0.35
+    # A box covering nearly the whole frame is not an object detection.
+    max_box_area_ratio: float = 0.90
 
 
 class VideoSettings(BaseModel):

@@ -1,364 +1,261 @@
-import { API_ENDPOINTS, apiUrl } from "@/lib/endpoints";
+import { endpoints, API_BASE } from "./endpoints";
 import type {
+  AnalyzeRequest,
   AnalysisResult,
-  ExportFormat,
+  HealthResponse,
+  HistogramResponse,
   Layer,
-  LocalJobRecord,
+  LegendResponse,
   ModelInfo,
   PixelInspectionRequest,
-  PixelInspectionResult,
-  TaskType,
+  PixelInspectionResponse,
   UploadedRaster,
   UploadedVideo,
+  VideoAnalyzeRequest,
   VideoJobResult,
-} from "@/lib/types";
+} from "./types";
 
-const JSON_HEADERS = { Accept: "application/json" };
-
-async function fetchJson<T>(input: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(input, {
+async function http<T>(path: string, init?: RequestInit): Promise<T> {
+  const response = await fetch(`${API_BASE}${path}`, {
     ...init,
     headers: {
-      ...JSON_HEADERS,
-      ...(init?.headers ?? {}),
+      Accept: "application/json",
+      ...init?.headers,
     },
   });
 
-  if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    throw new Error(text || `Request failed with status ${res.status}`);
+  if (!response.ok) {
+    const bodyText = await response.text();
+    let message = `Request failed (${response.status}): ${response.statusText}`;
+    try {
+      const errJson = JSON.parse(bodyText);
+      if (errJson.error?.message) {
+        message = errJson.error.message;
+      } else if (errJson.detail) {
+        message = typeof errJson.detail === "string" ? errJson.detail : JSON.stringify(errJson.detail);
+      }
+    } catch {}
+    throw new Error(message);
   }
 
-  return (await res.json()) as T;
-}
-
-function buildFallbackRaster(file: File, requestId?: string): UploadedRaster {
-  return {
-    id: `rast_${crypto.randomUUID().slice(0, 8)}`,
-    filename: file.name,
-    width: 1024,
-    height: 1024,
-    bands: 3,
-    dtype: "uint8",
-    crs: "EPSG:32636",
-    georeferenced: true,
-    valid_raster: true,
-    modality: "Optical RGB",
-    temporal_role: "T1",
-    preview_url: URL.createObjectURL(file),
-    request_id: requestId,
-  };
-}
-
-function buildFallbackVideo(file: File): UploadedVideo {
-  return {
-    id: `vid_${crypto.randomUUID().slice(0, 8)}`,
-    filename: file.name,
-    duration_sec: 45.2,
-    fps: 30,
-    width: 1920,
-    height: 1080,
-    frames: 1356,
-    codec: "H264",
-  };
-}
-
-function buildJobFallback(jobId: string, task: string, query: string): LocalJobRecord {
-  return {
-    job_id: jobId,
-    task,
-    query,
-    status: "COMPLETED",
-    created_at: new Date().toISOString(),
-    models_used: ["Grounding DINO", "SAM 2.1"],
-  };
-}
-
-function normalizeJobPayload<T extends { job_id?: string; id?: string; status?: string; task?: string; query?: string }>(payload: T | null | undefined): T | null {
-  if (!payload) return payload ?? null;
-  if (!payload.job_id && payload.id) {
-    return { ...payload, job_id: payload.id } as T;
-  }
-  return payload;
+  return response.json() as Promise<T>;
 }
 
 export const api = {
-  async health(): Promise<{
-    api: string;
-    status: string;
-    database?: string;
-    storage?: string;
-    models_ready?: number;
-    models_total?: number;
-    active_requests?: number;
-    device?: string;
-    version?: string;
-    environment?: string;
-  }> {
-    try {
-      return await fetchJson<{
-        api: string;
-        status: string;
-        database?: string;
-        storage?: string;
-        models_ready?: number;
-        models_total?: number;
-        active_requests?: number;
-        device?: string;
-        version?: string;
-        environment?: string;
-      }>(apiUrl(API_ENDPOINTS.health));
-    } catch {
-      return {
-        api: "online",
-        status: "ok",
-        database: "connected",
-        storage: "available",
-        models_ready: 5,
-        models_total: 6,
-        active_requests: 0,
-        device: "CPU",
-        version: "1.0.0",
-        environment: "development",
-      };
-    }
+  health: async (): Promise<HealthResponse> => {
+    const raw = await http<any>(endpoints.health);
+    const modelsAvail = raw.models_available || {};
+    const readyCount = Object.values(modelsAvail).filter(Boolean).length;
+    const totalCount = Object.keys(modelsAvail).length;
+
+    return {
+      api: raw.status === "ok" ? "online" : "degraded",
+      database: raw.database_connected ? "connected" : "disconnected",
+      storage: "available",
+      models_ready: readyCount,
+      models_total: totalCount,
+      version: raw.version,
+      environment: raw.environment,
+      device: raw.device,
+      models_available: modelsAvail,
+      database_connected: raw.database_connected,
+    };
   },
 
-  async models(): Promise<{ models: ModelInfo[] }> {
-    try {
-      return await fetchJson<{ models: ModelInfo[] }>(apiUrl(API_ENDPOINTS.models));
-    } catch {
+  models: async (): Promise<ModelInfo[]> => {
+    const raw = await http<any>(endpoints.models);
+    const list = Array.isArray(raw) ? raw : (raw.models || []);
+    return list.map((m: any) => {
+      const isAvailable = Boolean(m.available || m.availability || m.status === "AVAILABLE");
+      const isLoaded = Boolean(m.loaded);
       return {
-        models: [
-          {
-            name: "GeoChat",
-            version: "7B-v1.5",
-            task: "single_image_vqa",
-            status: "AVAILABLE",
-            available: true,
-            loaded: false,
-            device: "cuda:0",
-          },
-          {
-            name: "Grounding DINO",
-            version: "1.0",
-            task: "grounding",
-            status: "AVAILABLE",
-            available: true,
-            loaded: false,
-            device: "cuda:0",
-          },
-        ],
+        name: m.name,
+        task: m.task || (m.supported_tasks ? m.supported_tasks.join(", ") : "Remote Sensing"),
+        device: m.device,
+        status: isAvailable ? "AVAILABLE" : "NOT_CONFIGURED",
+        loaded: isAvailable,
+        description: `Input: ${m.input_relationship} (${m.input_count}), Modalities: ${(m.supported_modalities || []).join(", ")}`,
+        capabilities: m.supported_tasks || [],
       };
-    }
+    });
   },
 
-  async listJobs(): Promise<LocalJobRecord[]> {
+  uploadRasters: async (files: File[]): Promise<{ rasters: UploadedRaster[] }> => {
+    const formData = new FormData();
+    for (const file of files) {
+      formData.append("files", file);
+    }
+
+    const res = await http<any>(endpoints.upload, {
+      method: "POST",
+      body: formData,
+    });
+
+    const requestId = res.request_id || res.job_id || crypto.randomUUID().slice(0, 8);
+    const metadataList = res.metadata || [];
+
+    const rasters: UploadedRaster[] = files.map((file, i) => {
+      const meta = metadataList[i] || {};
+      const preview = meta.preview_url
+        ? meta.preview_url.startsWith("http")
+          ? meta.preview_url
+          : `${API_BASE}${meta.preview_url}`
+        : undefined;
+
+      return {
+        id: `${requestId}-${i}`,
+        request_id: requestId,
+        filename: meta.filename || file.name,
+        width: meta.width || 1024,
+        height: meta.height || 1024,
+        bands: meta.bands || 3,
+        dtype: meta.dtype || "uint8",
+        crs: meta.crs || "EPSG:4326",
+        bounds: meta.bounds,
+        transform: meta.transform,
+        resolution: meta.resolution,
+        modality: meta.detected_modality || "Optical",
+        modality_confidence: meta.modality_confidence,
+        preview_url: preview,
+        georeferenced: Boolean(meta.crs),
+        valid_raster: true,
+      };
+    });
+
+    return { rasters };
+  },
+
+  uploadVideo: async (file: File): Promise<{ video: UploadedVideo }> => {
+    const formData = new FormData();
+    formData.append("file", file);
+
+    const res = await http<any>(endpoints.videoUpload, {
+      method: "POST",
+      body: formData,
+    });
+
+    const meta = res.video_metadata || {};
+    const video: UploadedVideo = {
+      id: res.job_id || crypto.randomUUID().slice(0, 8),
+      request_id: res.job_id,
+      filename: res.filename || file.name,
+      duration_sec: meta.duration_sec || 0,
+      fps: meta.fps || 30,
+      width: meta.width || 1920,
+      height: meta.height || 1080,
+      frames: meta.frame_count || 0,
+      codec: meta.codec || "h264",
+      preview_url: `${API_BASE}${res.video_url || endpoints.videoStream(res.job_id)}`,
+    };
+
+    return { video };
+  },
+
+  analyze: async (payload: AnalyzeRequest): Promise<{ job_id: string }> => {
+    const image_filenames = payload.image_filenames || payload.raster_ids || [];
+    const body: Record<string, unknown> = {
+      query: payload.query,
+      image_filenames,
+      parameters: payload.params || {},
+    };
+    if (payload.request_id) body.request_id = payload.request_id;
+    if (payload.task && payload.task !== "AUTO") body.override_task = payload.task;
+
+    const res = await http<any>(endpoints.analyze, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(body),
+    });
+
+    return { job_id: res.request_id || res.job_id };
+  },
+
+  analyzeVideo: async (payload: VideoAnalyzeRequest): Promise<{ job_id: string }> => {
+    const formData = new FormData();
+    formData.append("query", payload.query);
+    if (payload.video_id) formData.append("request_id", payload.video_id);
+    if (payload.sampling_fps) formData.append("sample_fps", String(payload.sampling_fps));
+    if (payload.confidence_threshold) formData.append("min_event_score", String(payload.confidence_threshold));
+
+    const res = await http<any>(endpoints.videoAnalyze, {
+      method: "POST",
+      body: formData,
+    });
+
+    return { job_id: res.job_id || payload.video_id };
+  },
+
+  job: (jobId: string) =>
+    http<{ job_id: string; status: string; task?: string; query?: string; progress?: number; execution_steps?: any[]; models_used?: string[] }>(
+      endpoints.job(jobId),
+    ),
+
+  result: (jobId: string) =>
+    http<AnalysisResult>(endpoints.result(jobId)),
+
+  layers: async (jobId: string): Promise<{ layers: Layer[] }> => {
+    const raw = await http<any>(endpoints.layers(jobId));
+    const list = Array.isArray(raw) ? raw : (raw.layers || []);
+    const layers: Layer[] = list.map((l: any) => ({
+      id: l.layer_id || l.id,
+      name: l.title || l.name || l.layer_id,
+      category: l.layer_type || "ANALYTICS",
+      provenance: l.provenance || "MODEL_OUTPUT",
+      description: `${l.units || ""} ${l.layer_type ? "(" + l.layer_type + ")" : ""}`.trim(),
+      available: true,
+      legend_available: Boolean(l.legend_url),
+      artifact_url: l.artifact_url ? `${API_BASE}${l.artifact_url}` : `${API_BASE}${endpoints.visualization(jobId, l.layer_id)}`,
+      legend_url: l.legend_url ? `${API_BASE}${l.legend_url}` : undefined,
+    }));
+    return { layers };
+  },
+
+  legend: (jobId: string, layerId: string) =>
+    http<LegendResponse>(endpoints.legend(jobId, layerId)),
+
+  inspectPixel: (jobId: string, payload: PixelInspectionRequest) =>
+    http<PixelInspectionResponse>(endpoints.inspectPixel(jobId), {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    }),
+
+  histogram: (jobId: string, layerId: string) =>
+    http<HistogramResponse>(endpoints.histogram(jobId, layerId)),
+
+  visualizationUrl: (jobId: string, layerId: string) =>
+    `${API_BASE}${endpoints.visualization(jobId, layerId)}`,
+
+  exportUrl: (
+    jobId: string,
+    layerId: string,
+    format: "png" | "geotiff" | "geojson",
+  ) =>
+    `${API_BASE}${endpoints.exportLayer(jobId, layerId)}?format=${format}`,
+
+  videoJob: (jobId: string) =>
+    http<VideoJobResult>(endpoints.videoJob(jobId)),
+
+  videoResults: (jobId: string) =>
+    http<VideoJobResult>(endpoints.videoResults(jobId)),
+
+  videoStreamUrl: (jobId: string) =>
+    `${API_BASE}${endpoints.videoStream(jobId)}`,
+
+  listJobs: async (): Promise<any[]> => {
     try {
-      const payload = await fetchJson<{ jobs?: LocalJobRecord[] }>(apiUrl(API_ENDPOINTS.jobs));
-      return (payload.jobs ?? []).map(normalizeJobPayload).filter(Boolean) as LocalJobRecord[];
+      const raw = await http<any>(endpoints.jobs);
+      return Array.isArray(raw) ? raw : [];
     } catch {
       return [];
     }
   },
 
-  async clearJobs(): Promise<void> {
-    try {
-      await fetchJson<void>(apiUrl(API_ENDPOINTS.clearJobs), { method: "POST" });
-    } catch {
-      return;
-    }
-  },
-
-  async job(jobId: string): Promise<LocalJobRecord> {
-    try {
-      const payload = await fetchJson<LocalJobRecord>(apiUrl(API_ENDPOINTS.job(jobId)));
-      return normalizeJobPayload(payload) ?? buildJobFallback(jobId, "ANALYSIS", "Satellite intelligence query");
-    } catch {
-      return buildJobFallback(jobId, "ANALYSIS", "Satellite intelligence query");
-    }
-  },
-
-  async result(jobId: string): Promise<AnalysisResult> {
-    try {
-      const payload = await fetchJson<AnalysisResult>(apiUrl(API_ENDPOINTS.result(jobId)));
-      return payload ?? {
-        job_id: jobId,
-        task: "ANALYSIS",
-        answer: "Analysis complete and ready for review.",
-        confidence: 0.9,
-        metrics: { regions: 1 },
-        evidence: [],
-        models_used: ["Grounding DINO"],
-      };
-    } catch {
-      return {
-        job_id: jobId,
-        task: "ANALYSIS",
-        answer: "Analysis complete and ready for review.",
-        confidence: 0.9,
-        metrics: { regions: 1 },
-        evidence: [],
-        models_used: ["Grounding DINO"],
-      };
-    }
-  },
-
-  async layers(jobId: string): Promise<{ layers: Layer[] }> {
-    try {
-      const payload = await fetchJson<{ layers: Layer[] }>(apiUrl(API_ENDPOINTS.layers(jobId)));
-      return payload ?? { layers: [{ id: "change_prob", name: "Change Probability", provenance: "DERIVED_INDEX" }] };
-    } catch {
-      return {
-        layers: [
-          { id: "change_prob", name: "Change Probability", provenance: "DERIVED_INDEX", artifact_url: this.visualizationUrl(jobId, "change_prob") },
-          { id: "ndvi", name: "NDVI", provenance: "DERIVED_INDEX", artifact_url: this.visualizationUrl(jobId, "ndvi") },
-        ],
-      };
-    }
-  },
-
-  async inspectPixel(jobId: string, payload: PixelInspectionRequest): Promise<PixelInspectionResult> {
-    try {
-      return await fetchJson<PixelInspectionResult>(apiUrl(API_ENDPOINTS.inspectPixel(jobId)), {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-    } catch {
-      return {
-        col: payload.col,
-        row: payload.row,
-        crs: "EPSG:4326",
-        coordinates: [35.52184, 33.90112],
-        bands: { R: 142, G: 118, B: 94 },
-        indices: { NDVI: 0.4125, NDWI: -0.1023 },
-        model: { probability: 0.8942, prediction: "Changed" },
-      };
-    }
-  },
-
-  async histogram(jobId: string, layerId: string): Promise<{ min: number; max: number; mean: number; std: number; bins: number[] }> {
-    try {
-      return await fetchJson<{ min: number; max: number; mean: number; std: number; bins: number[] }>(apiUrl(API_ENDPOINTS.histogram(jobId, layerId)));
-    } catch {
-      return {
-        min: 0.0,
-        max: 0.998,
-        mean: 0.314,
-        std: 0.341,
-        bins: Array.from({ length: 50 }, (_, i) => 0.01 * i),
-      };
-    }
-  },
-
-  async uploadRaster(file: File): Promise<{ raster: UploadedRaster }> {
-    const form = new FormData();
-    form.append("files", file);
-
-    try {
-      const payload = await fetchJson<{ raster?: UploadedRaster; metadata?: Array<{ filename: string; width?: number; height?: number; bands?: number; crs?: string; modality?: string; preview_url?: string }> }>(apiUrl(API_ENDPOINTS.upload), {
-        method: "POST",
-        body: form,
-      });
-
-      const info = payload?.metadata?.[0];
-      const raster = payload?.raster ?? {
-        ...buildFallbackRaster(file),
-        width: info?.width ?? 1024,
-        height: info?.height ?? 1024,
-        bands: info?.bands ?? 3,
-        crs: info?.crs ?? "EPSG:32636",
-        modality: info?.modality ?? "Optical RGB",
-        preview_url: info?.preview_url ?? URL.createObjectURL(file),
-      };
-
-      return { raster };
-    } catch {
-      return { raster: buildFallbackRaster(file) };
-    }
-  },
-
-  async uploadVideo(file: File): Promise<{ video: UploadedVideo }> {
-    const form = new FormData();
-    form.append("file", file);
-
-    try {
-      const payload = await fetchJson<{ video?: UploadedVideo }>(apiUrl(API_ENDPOINTS.videoUpload), {
-        method: "POST",
-        body: form,
-      });
-      return { video: payload?.video ?? buildFallbackVideo(file) };
-    } catch {
-      return { video: buildFallbackVideo(file) };
-    }
-  },
-
-  async analyze(payload: {
-    query: string;
-    image_filenames?: string[];
-    request_id?: string;
-    task?: TaskType;
-    parameters?: Record<string, unknown>;
-  }): Promise<{ job_id: string; status: string; task: string }> {
-    try {
-      return await fetchJson<{ job_id: string; status: string; task: string }>(apiUrl(API_ENDPOINTS.analyze), {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-    } catch {
-      const fallbackId = `job_${crypto.randomUUID().slice(0, 8)}`;
-      return { job_id: fallbackId, status: "COMPLETED", task: payload.task ?? "AUTO" };
-    }
-  },
-
-  async analyzeVideo(payload: {
-    video_id: string;
-    query: string;
-    sampling_fps?: number;
-    confidence_threshold?: number;
-  }): Promise<{ job_id: string; status: string; task: string }> {
-    try {
-      return await fetchJson<{ job_id: string; status: string; task: string }>(apiUrl(API_ENDPOINTS.videoAnalyze), {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-    } catch {
-      const fallbackId = `video_job_${crypto.randomUUID().slice(0, 8)}`;
-      return { job_id: fallbackId, status: "COMPLETED", task: "VIDEO" };
-    }
-  },
-
-  async videoJob(jobId: string): Promise<VideoJobResult> {
-    try {
-      return await fetchJson<VideoJobResult>(apiUrl(API_ENDPOINTS.videoJob(jobId)));
-    } catch {
-      return {
-        job_id: jobId,
-        status: "COMPLETED",
-        query: "Video intelligence analysis",
-        events: [
-          { id: `evt_${jobId}`, label: "Vehicle activity detected", timestamp_sec: 12.5, score: 0.91 },
-          { id: `evt_${jobId}_2`, label: "Flooding pattern observed", timestamp_sec: 24.1, score: 0.86 },
-        ],
-        models_used: ["SAM 2.1", "Grounding DINO"],
-      };
-    }
-  },
-
-  visualizationUrl(jobId: string, layerId: string) {
-    return apiUrl(API_ENDPOINTS.visualization(jobId, layerId));
-  },
-
-  exportUrl(jobId: string, layerId: string, format: ExportFormat) {
-    return apiUrl(API_ENDPOINTS.export(jobId, layerId, format));
-  },
-
-  videoStreamUrl(jobId: string) {
-    return apiUrl(API_ENDPOINTS.videoStream(jobId));
+  clearJobs: async (): Promise<{ status: string }> => {
+    return http<any>(endpoints.jobs, { method: "DELETE" });
   },
 };
-
-export default api;

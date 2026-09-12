@@ -29,6 +29,33 @@ class VideoFlagConfig(BaseModel):
     max_gap_frames: int = Field(default=2, ge=0, description="Maximum frame gap allowed within a single continuous event cluster.")
     max_gap_seconds: float = Field(default=1.5, ge=0.0, description="Maximum temporal gap in seconds within a single continuous event cluster.")
     min_event_score: float = Field(default=0.20, ge=0.0, le=1.0, description="Minimum heuristic event score required to flag a moment.")
+    min_detector_score: float = Field(
+        default=0.35, ge=0.0, le=1.0,
+        description=(
+            "Minimum detector confidence for a candidate to be considered. Measured on "
+            "real_aerial_footage.mp4: real vehicles score 0.67-0.89; a white parking-line "
+            "marking and a degenerate full-frame box both scored 0.28, and those produced "
+            "spurious events at 0-4s."
+        ),
+    )
+    max_box_area_ratio: float = Field(
+        default=0.90, gt=0.0, le=1.0,
+        description=(
+            "Reject candidates covering more than this fraction of the frame. Grounding DINO "
+            "returned a 99.8%-area box for 'white cars.' on empty asphalt."
+        ),
+    )
+    min_colour_score: float = Field(
+        default=0.45, ge=0.0, le=1.0,
+        description=(
+            "Minimum photometric colour-consistency score required to keep a detection when the "
+            "query names a colour. Grounding DINO returns a best-matching region for any prompt "
+            "and its confidence does not separate present from absent targets (measured 0.83-0.92 "
+            "for both). Pixel colour does: on datasets/samples/video/real_aerial_footage.mp4, "
+            "colours present in the clip score 0.97-1.00 (red 1.000, white 0.969) and colours "
+            "absent score 0.21-0.26 (yellow 0.230, blue 0.260, green 0.209). 0.45 sits in that gap."
+        ),
+    )
 
 
 class VideoFlag(BaseModel):

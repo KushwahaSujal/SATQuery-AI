@@ -5,8 +5,8 @@ Fails fast with structured errors rather than crashing mid-pipeline.
 """
 from typing import List, Optional
 from backend.app.orchestration.schemas import CapabilityDefinition, DAGPlanNode
-from backend.app.agent.registry import TOOL_REGISTRY
-from backend.app.models.registry import model_registry
+from backend.app.agent.tools import TOOL_REGISTRY
+from backend.app.ml.registry import model_registry
 from backend.app.exceptions import SatQueryException
 from backend.app.logging import logger
 

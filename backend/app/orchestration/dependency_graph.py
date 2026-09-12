@@ -58,6 +58,23 @@ class DependencyGraph:
 
         return stages
 
+    #: Capabilities that have a real DAG branch below. Anything not listed here
+    #: falls back to a trivial inspect_raster -> generate_report plan, which
+    #: produces no meaningful output — see has_branch_for().
+    KNOWN_CAPABILITIES = frozenset({
+        "single_image_grounding",
+        "temporal_change_vqa",
+        "temporal_change_detection",
+        "single_image_vqa",
+        "single_image_caption",
+        "optical_sar_analysis",
+    })
+
+    @classmethod
+    def has_branch_for(cls, capability_id: str) -> bool:
+        """True if this capability has a real execution plan rather than the fallback."""
+        return capability_id in cls.KNOWN_CAPABILITIES
+
     @classmethod
     def build_dag_for_capability(cls, capability_id: str) -> DAGExecutionPlan:
         """

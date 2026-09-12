@@ -9,7 +9,7 @@ _root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if _root not in sys.path:
     sys.path.insert(0, _root)
 
-from backend.app.models.cdvqa_model import CDVQA_ANSWER_CLASSES, ANSWER2IDX
+from backend.app.ml.adapters.cdvqa.network import CDVQA_ANSWER_CLASSES, ANSWER2IDX
 
 
 def verify_cdvqa_dataset(

@@ -1,0 +1,50 @@
+{
+  "type": "FeatureCollection",
+  "crs": {
+    "type": "name",
+    "properties": {
+      "name": "image_coordinates",
+      "source_crs": null,
+      "target_crs": "image_coordinates"
+    }
+  },
+  "features": [
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              339.0,
+              4.0
+            ],
+            [
+              378.0,
+              4.0
+            ],
+            [
+              378.0,
+              56.0
+            ],
+            [
+              339.0,
+              56.0
+            ],
+            [
+              339.0,
+              4.0
+            ]
+          ]
+        ]
+      },
+      "properties": {
+        "class": "detected_object",
+        "pixel_count": 1270,
+        "source_crs": null,
+        "target_crs": "image_coordinates",
+        "coordinate_space": "image_coordinates"
+      }
+    }
+  ]
+}

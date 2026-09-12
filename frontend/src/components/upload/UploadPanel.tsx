@@ -10,9 +10,10 @@ interface UploadPanelProps {
   video: UploadedVideo | null;
   onRasterUploaded: (r: UploadedRaster) => void;
   onVideoUploaded:  (v: UploadedVideo)  => void;
+  onClearRasters?: () => void;
 }
 
-export default function UploadPanel({ rasters, video, onRasterUploaded, onVideoUploaded }: UploadPanelProps) {
+export default function UploadPanel({ rasters, video, onRasterUploaded, onVideoUploaded, onClearRasters }: UploadPanelProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -24,20 +25,32 @@ export default function UploadPanel({ rasters, video, onRasterUploaded, onVideoU
     setError(null);
 
     try {
-      for (const file of Array.from(files)) {
-        const isVid  = /\.(mp4|mov)$/i.test(file.name);
-        const isRast = /\.(tif|tiff|png|jpe?g)$/i.test(file.name);
-        if (!isVid && !isRast) throw new Error(`Unsupported: ${file.name}`);
+      const fileArray = Array.from(files);
+      const rasterFiles = fileArray.filter(f => /\.(tif|tiff|png|jpe?g)$/i.test(f.name));
+      const videoFiles = fileArray.filter(f => /\.(mp4|mov)$/i.test(f.name));
+      const unsupported = fileArray.filter(f => !rasterFiles.includes(f) && !videoFiles.includes(f));
 
-        if (isVid) {
-          try { onVideoUploaded((await api.uploadVideo(file)).video); }
-          catch { onVideoUploaded({ id: "vid_" + crypto.randomUUID().slice(0,8), filename: file.name, duration_sec: 45.2, fps: 30, width: 1920, height: 1080, frames: 1356, codec: "H264" }); }
-        } else {
-          try { onRasterUploaded((await api.uploadRaster(file)).raster); }
-          catch {
+      if (unsupported.length) throw new Error(`Unsupported: ${unsupported.map(f => f.name).join(", ")}`);
+
+      // Batch upload all rasters in a single request so they share the same job workspace
+      if (rasterFiles.length > 0) {
+        try {
+          const { rasters } = await api.uploadRasters(rasterFiles);
+          for (const raster of rasters) {
+            onRasterUploaded(raster);
+          }
+        } catch {
+          // Fallback: add rasters with local preview
+          for (const file of rasterFiles) {
             onRasterUploaded({ id: "rast_" + crypto.randomUUID().slice(0,8), filename: file.name, width: 1024, height: 1024, bands: 3, dtype: "uint8", crs: "EPSG:32636", georeferenced: true, valid_raster: true, modality: "Optical RGB", temporal_role: rasters.length === 1 ? "T2" : "T1", preview_url: URL.createObjectURL(file) });
           }
         }
+      }
+
+      // Videos still upload one at a time
+      for (const file of videoFiles) {
+        try { onVideoUploaded((await api.uploadVideo(file)).video); }
+        catch { onVideoUploaded({ id: "vid_" + crypto.randomUUID().slice(0,8), filename: file.name, duration_sec: 45.2, fps: 30, width: 1920, height: 1080, frames: 1356, codec: "H264" }); }
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Upload failed");
@@ -226,9 +239,25 @@ export default function UploadPanel({ rasters, video, onRasterUploaded, onVideoU
           <span className="font-mono-data" style={{ fontSize: 9, color: "var(--t4)" }}>
             {assetCount} {assetCount === 1 ? "asset" : "assets"} registered
           </span>
-          <span className="font-mono-data" style={{ fontSize: 9, color: "var(--t4)" }}>
-            {rasters.length > 0 ? rasters[0].modality ?? "Optical" : video ? "Video" : "—"}
-          </span>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            {onClearRasters && rasters.length > 0 && (
+              <button
+                onClick={onClearRasters}
+                className="font-mono-data"
+                style={{
+                  fontSize: 9, color: "var(--t4)", cursor: "pointer",
+                  background: "none", border: "none", padding: 0,
+                }}
+                onMouseEnter={e => (e.currentTarget.style.color = "var(--t2)")}
+                onMouseLeave={e => (e.currentTarget.style.color = "var(--t4)")}
+              >
+                clear
+              </button>
+            )}
+            <span className="font-mono-data" style={{ fontSize: 9, color: "var(--t4)" }}>
+              {rasters.length > 0 ? rasters[0].modality ?? "Optical" : video ? "Video" : "—"}
+            </span>
+          </div>
         </div>
       )}
     </section>
