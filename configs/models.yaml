@@ -63,6 +63,25 @@ models:
     config_path: "checkpoints/sam2/sam2_hiera_b+.yaml"
     device: "auto"
 
+  locate_anything:
+    name: "LocateAnything"
+    version: "3B"
+    task: "grounding"
+    supported_tasks:
+      - "single_image_grounding"
+    supported_modalities:
+      - "optical"
+      - "multispectral"
+      - "sar"
+    input_count: 1
+    input_relationship: "single"
+    enabled: true
+    checkpoint_path: "checkpoints/locate_anything_3b"
+    model_id: "nvidia/LocateAnything-3B"
+    device: "auto"
+    box_threshold: 0.35
+    text_threshold: 0.25
+
   changeformer:
     name: "ChangeFormer"
     version: "v6"

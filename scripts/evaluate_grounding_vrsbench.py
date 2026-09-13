@@ -28,8 +28,30 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from backend.app.ml.adapters.grounding_dino import GroundingDINOAdapter
+from backend.app.ml.adapters.locate_anything import LocateAnythingAdapter
 from backend.app.ml.adapters.sam2 import SAM2Adapter
 from backend.app.workflows.grounding import run_grounding_pipeline
+
+# Per-model benchmark configuration. The default ("grounding_dino") is
+# unchanged for backward compatibility. "locate_anything" exercises the
+# LocateAnythingAdapter as a drop-in grounding adapter inside the production
+# pipeline (locate_anything.py emits the same xyxy/score/label schema).
+_MODEL_BENCH_CONFIG = {
+    "grounding_dino": {
+        "adapter_factory": GroundingDINOAdapter,
+        "pipeline": "GroundingDINO + V4 Reasoning + SAM2",
+        "models": ["IDEA-Research/grounding-dino-base", "facebook/sam2.1-hiera-small"],
+        "detailed_name": None,   # timestamped default
+        "summary_name": "vrsbench_grounding_summary.json",
+    },
+    "locate_anything": {
+        "adapter_factory": LocateAnythingAdapter,
+        "pipeline": "LocateAnything-3B + V4 Reasoning + SAM2",
+        "models": ["nvidia/LocateAnything-3B", "facebook/sam2.1-hiera-small"],
+        "detailed_name": "locate_anything_3b_metrics.json",
+        "summary_name": "locate_anything_3b_summary.json",
+    },
+}
 
 
 def compute_box_iou(box1: List[float], box2: List[float]) -> float:
@@ -187,11 +209,20 @@ def evaluate_grounding_vrsbench(
     search_dirs: List[Path],
     output_dir: Path,
     box_threshold: float = 0.20,
-    max_samples: Optional[int] = None
+    max_samples: Optional[int] = None,
+    model_name: str = "grounding_dino",
 ) -> Dict[str, Any]:
     """
-    Executes actual production grounding pipeline over VRSBench records and computes metrics.
+    Executes the production grounding pipeline over VRSBench records and computes metrics.
+
+    Pass ``model_name="locate_anything"`` to evaluate the LocateAnything-3B adapter
+    as a drop-in grounding detector (LocateAnything must have a CUDA GPU; the
+    default ``grounding_dino`` path is unchanged for backward compatibility).
     """
+    if model_name not in _MODEL_BENCH_CONFIG:
+        raise ValueError(f"Unknown --model '{model_name}'. Choose from {list(_MODEL_BENCH_CONFIG)}.")
+    bench = _MODEL_BENCH_CONFIG[model_name]
+
     output_dir.mkdir(parents=True, exist_ok=True)
     results_dir = output_dir
 
@@ -199,14 +230,16 @@ def evaluate_grounding_vrsbench(
     print("SATQUERY AI -- VRSBENCH REAL GROUNDING BENCHMARK EVALUATION")
     print("================================================================================")
     print(f"Total input records:      {len(records)}")
+    print(f"Grounding model:          {model_name}")
     if max_samples:
         print(f"Evaluation limit:         {max_samples} samples")
         records = records[:max_samples]
 
     # Pre-instantiate shared model adapters to avoid repeated weight reloading
     print("\n[1/3] Initializing production model adapters (Lazy Loading)...")
-    shared_gd = GroundingDINOAdapter()
+    shared_gd = bench["adapter_factory"]()
     shared_sam2 = SAM2Adapter()
+    print(f"Grounding adapter:         {shared_gd.__class__.__name__}")
 
     eval_samples = []
     ious = []
@@ -214,7 +247,7 @@ def evaluate_grounding_vrsbench(
     r50_hits = 0
     start_time = time.perf_counter()
 
-    print("\n[2/3] Executing production inference (Grounding DINO + V4 + SAM 2)...")
+    print("\n[2/3] Executing production inference ({})...".format(bench["pipeline"]))
     print("-" * 80)
     print(f"{'Idx':<4} | {'Image ID':<16} | {'IoU':<7} | {'GD Score':<9} | {'SAM2 Score':<10} | {'Strategy':<14}")
     print("-" * 80)
@@ -347,16 +380,19 @@ def evaluate_grounding_vrsbench(
         },
         "evaluation_config": {
             "box_threshold": box_threshold,
-            "pipeline": "GroundingDINO + V4 Reasoning + SAM2",
-            "models": ["IDEA-Research/grounding-dino-base", "facebook/sam2.1-hiera-small"]
+            "model": model_name,
+            "pipeline": bench["pipeline"],
+            "models": bench["models"]
         },
         "samples": eval_samples
     }
 
-    # Save detailed evaluation file
+    # Save detailed evaluation file (model-specific basename when provided)
     timestamp_str = time.strftime("%Y%m%d_%H%M%S")
-    eval_filepath = results_dir / f"vrsbench_grounding_eval_{timestamp_str}.json"
-    summary_filepath = results_dir / "vrsbench_grounding_summary.json"
+    detailed_name = bench["detailed_name"] or f"vrsbench_grounding_eval_{timestamp_str}.json"
+    summary_name = bench["summary_name"]
+    eval_filepath = results_dir / detailed_name
+    summary_filepath = results_dir / summary_name
 
     with open(eval_filepath, "w", encoding="utf-8") as f:
         json.dump(report, f, indent=2)
@@ -404,6 +440,14 @@ def main():
         help="Grounding DINO candidate box threshold"
     )
     parser.add_argument(
+        "--model",
+        type=str,
+        default="grounding_dino",
+        choices=list(_MODEL_BENCH_CONFIG.keys()),
+        help="Grounding detector model to benchmark (default: grounding_dino). "
+        "Use 'locate_anything' to evaluate LocateAnything-3B (requires CUDA).",
+    )
+    parser.add_argument(
         "--max-samples",
         type=int,
         default=None,
@@ -442,7 +486,8 @@ def main():
         search_dirs=search_dirs,
         output_dir=out_dir,
         box_threshold=args.box_threshold,
-        max_samples=args.max_samples
+        max_samples=args.max_samples,
+        model_name=args.model,
     )
 
 
