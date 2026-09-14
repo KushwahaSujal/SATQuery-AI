@@ -36,3 +36,37 @@ geospatial:
 logging:
   level: "INFO"
   structured_json: true
+
+# Second-agent verification: RemoteCLIP independently checks each Grounding DINO candidate.
+# Measured on 973 VRSBench GT crops at these settings (results/evaluations/detection_verifier_3way_20260914.json):
+#   true label → verified 80.7% / contradicted 13.2%;  wrong label → verified 6.3% / contradicted 84.2%.
+agent_verification:
+  enabled: true
+  top_k: 3
+  crop_pad: 1.0
+  min_crop_side: 96
+  # Video: an event is kept only if at least one of this many of its detections is VERIFIED.
+  video_frames_to_verify: 3
+  # Best-match labels that are scene context, not objects: losing to these means UNVERIFIED, not CONTRADICTED.
+  context_labels: [road, trees, building, water, bare land, parking lot, grass field]
+  max_candidates: 5
+  relaxed_box_threshold: 0.15
+  prompt_template: "a satellite photo of a {label}"
+  vocabulary: [airplane, airport, baseball diamond, basketball court, bridge, chimney,
+               container crane, dam, expressway service area, expressway toll station,
+               golffield, ground track field, harbor, helicopter, overpass, roundabout, ship,
+               soccer ball field, stadium, storage tank, swimming pool, tennis court,
+               trainstation, vehicle, windmill, road, trees, building, water, bare land,
+               parking lot, grass field]
+  synonyms:
+    - [vehicle, car, cars, vehicles, truck, bus, van, taxi]
+    - [airplane, plane, aircraft, jet, airplanes, planes]
+    - [ship, boat, vessel, ships, boats]
+    - [building, house, warehouse, buildings, houses, roof, structure]
+    - [storage tank, tank, oil tank, storage tanks]
+    - [swimming pool, pool]
+    - [road, street, highway, roads]
+    - [trees, tree, forest, vegetation]
+    - [water, river, lake, pond]
+    - [helicopter, helicopters]
+    - [bridge, bridges]

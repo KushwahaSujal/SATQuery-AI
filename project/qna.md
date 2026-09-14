@@ -48,6 +48,9 @@ and the commit it describes. Extracted, never re-litigated; anything missing is 
 | [Q-005](#q-005--absent-colours-report-not_applicable) | Absent colours report NOT_APPLICABLE (colour gate) | 2026-09-07 | Recorded |
 | [Q-006](#q-006--retiring-the-approval-gate-qnamd-becomes-a-transcript) | Retiring the approval gate; `qna.md` becomes a transcript | 2026-09-11 | Recorded |
 | [Q-007](#q-007--changeformer-ayushmans-epoch-20-checkpoint-on-vendored-upstream-architecture) | ChangeFormer — Ayushman's epoch-20 checkpoint on vendored upstream architecture | 2026-09-14 | Recorded |
+| [Q-010](#q-010--gpu-out-of-memory-recovery-for-resident-models) | GPU out-of-memory recovery for resident models | 2026-09-14 | Recorded |
+| [Q-008](#q-008--two-agent-detection-verification-backtracking-and-re-evaluation) | Two-agent detection: verification, backtracking and re-evaluation (stills + video) | 2026-09-14 | Recorded · superseded in part by Q-009 |
+| [Q-009](#q-009--two-agent-detection-attribute-queries-are-labelled-not-backtracked) | Two-agent detection: attribute queries are labelled, not backtracked (supersedes Q-008 rule) | 2026-09-14 | Recorded |
 
 ---
 
@@ -639,3 +642,288 @@ rather than shapes, and confirmed they fail on the old code."
 
 The caveat to volunteer: this is a building-change model, measured only on LEVIR-CD. Say that
 before anyone asks what it does on Sentinel-2.
+
+---
+
+## Q-008 · Two-agent detection: verification, backtracking and re-evaluation
+
+> **Superseded in part by [Q-009](#q-009--two-agent-detection-attribute-queries-are-labelled-not-backtracked)
+> (same night, before commit).** The rule below (R3) backtracked on every query type; measured per
+> query type it cost attribute queries 6.8 points of R@0.5. Q-009 keeps R3 for plain category queries
+> and only labels attribute queries. The headline numbers in this entry are R3's and are replaced there.
+
+**Recorded** 2026-09-14, written with the change on `refactor/s0-remove-dead-layers` atop `dee8e53`.
+Plan: `project/plan-2026-09-14-agent-parity-geo.md` phases 1–2.
+
+**Result, 300 present + 300 absent VRSBench queries:** absent-object queries that still return a box
+**64.7% → 28.0%**; present-object R@0.5 **38.7% → 36.0%**, mIoU **0.349 → 0.327**. Road-footage
+"find the airplane" **3 events → 0**, at the cost of **one real car event**.
+
+### 1. Mechanism — what are the two agents, and what exactly decides?
+
+- **Agent 1, detection:** Grounding DINO proposes boxes with a detector confidence; the existing V4
+  reasoner ranks them by query attributes (position, size, colour, relations).
+- **Agent 2, verification** (`backend/app/evidence/verifier.py`): RemoteCLIP (real weights: 302
+  tensors, 0 missing) crops each candidate and scores it against the query label *and* a 32-label
+  remote-sensing vocabulary. Synonym groups (car/vehicle/truck…) are collapsed by max before the
+  softmax. Verdict: **verified** (query group in top 3) · **contradicted** (not top 3, best match is
+  another object) · **unverified** (not top 3, best match is scene context: road, parking lot, trees…).
+- **Deliberation** (`workflows/grounding.py`), walking the reasoner's order:
+  - verified → **accept**;
+  - contradicted → **backtrack** to the next candidate; the box is excluded from later passes;
+  - unverified → hold the first one as a fallback and keep looking for a verified candidate;
+  - nothing verified and nothing held → **re-evaluate**: rerun Grounding DINO at box threshold 0.15
+    (from 0.25), and accept only a *verified* candidate from that pass;
+  - still nothing → **NOT_FOUND**, no mask.
+  Ordinal queries ("second from left") verify only the selected box, because another box would be a
+  different answer.
+- Every attempt is recorded in `evidence.metadata.agent_deliberation.attempts`, and in the trace as an
+  `agent_deliberation` step. Each record holds both confidences, the verifier's rank and top match,
+  and the decision. Answers name both agents' confidences; "with high precision" is gone.
+- **Video** (`video/flagger.py`): after the persistence/score filters, up to 3 of an event's
+  highest-detector-score frames are verified. The event is kept iff ≥1 frame is verified; that frame
+  becomes the keyframe (preferring one with a SAM 2 mask). Dropped events are listed in `warnings`
+  with detector score, frames confirmed and the verifier's best matches.
+- Config: `configs/app.yaml` `agent_verification` (top_k 3, crop_pad 1.0, min_crop_side 96, relaxed
+  threshold 0.15, 3 video frames, vocabulary, synonyms, context labels).
+
+### 2. Rationale — why this rule and not a simpler one? What was tried and rejected?
+
+Everything below was measured before it was wired in, and all files are in `results/evaluations/`.
+
+1. **Raw similarity floor, rejected.** On 973 VRSBench ground-truth crops (40 per class), raw
+   RemoteCLIP similarity separates true from wrong labels at AUC 0.928, but the scores sit in a narrow
+   band (mean 0.278 true vs 0.207 wrong). Contrastive ranking gives AUC 0.955
+   (`remoteclip_verifier_probe_20260914.json`).
+2. **Hard top-k veto, rejected.** The implemented verifier accepts 78.3% of true labels and 5.5% of
+   wrong ones. But it accepts only **42.5% of real vehicles**, the main demo class
+   (`detection_verifier_vrsbench_20260914.json`). No crop/top-k setting fixes that: getting vehicles
+   to 67% lets 27–35% of non-vehicles verify as "vehicle" (`detection_verifier_sweep_20260914.json`).
+3. **Three verdicts instead of two.** A real vehicle that fails usually loses to *context*; a wrong
+   label loses to *another object*. At pad 1.0 / min side 96
+   (`detection_verifier_3way_20260914.json`):
+
+   | crop vs label | verified | unverified | contradicted |
+   |---|---|---|---|
+   | true label | 80.7% | 6.2% | 13.2% |
+   | wrong label | 6.3% | 9.6% | 84.2% |
+   | real vehicle as "vehicle" | 55.5% | 25.5% | 19.0% |
+   | real vehicle as "airplane" | 3.5% | 46.5% | 50.0% |
+
+4. **The deliberation rule itself was chosen on 300 present + 300 absent queries**, with candidates
+   and verdicts cached once and six rules simulated
+   (`agent_deliberation_rules_vrsbench_20260914.json`). The first version (R1) also held unconfirmed
+   candidates in the relaxed pass. It returned a box for 45.0% of absent queries; R3, the shipped rule,
+   returns one for 28.0%, with identical present R@0.5. Stricter rules cut absent boxes further (R5:
+   18.7%) but drop present R@0.5 to 32.7%.
+5. **Simulation = implementation:** the real pipeline run on 40 cached records (80 queries) made the
+   same decision and the same box as the R3 simulation **80/80**.
+
+### 3. Blast radius — what does this cost, and what can go wrong?
+
+- **Present-object recall drops:** R@0.5 38.7% → 36.0%, mIoU 0.349 → 0.327. The verifier sometimes
+  contradicts the *correct* box. Worked example, VRSBench `05865_0000.png` "find the vehicle": the
+  first candidate overlaps the ground-truth red vehicle at IoU 0.704, but RemoteCLIP ranked "vehicle"
+  7th (best match "ship"). Under R1 it backtracked to a box with IoU 0.0. Under R3 the same case still
+  backtracks: it is a genuine failure mode, not a fixed one.
+- **12.7% of absent-object queries still return a box marked *verified*.** The second agent reduces
+  hallucination; it does not eliminate it. A further 15.3% return a box explicitly marked UNCONFIRMED.
+- **Video false rejection on the demo clip:** `real_aerial_footage.mp4` "find all vehicles" went from
+  3 events to 2. The dropped 4.80–7.68s event is a **real white car** (checked visually on the
+  single-agent keyframe `results/1de5e372…/video/flag_b034e517_annotated_frame_60.png`); RemoteCLIP
+  read it as building/ship on 0/3 frames. Keeping the crop window inside the frame did not change that
+  verdict. Most likely a domain gap: RemoteCLIP is satellite-nadir, and this is a low-altitude close-up.
+- `tests/unit/test_video_workflow.py::test_video_flag_mask_is_not_empty` sampled only the first
+  12s, whose only vehicle event is that car. Its window was widened to 40 frames (reaches the 14.9s
+  event), with the reason written in the test.
+- `tests/models/test_grounding_workflow.py::test_grounding_pipeline_execution` feeds a flat grey image
+  through a mock detector claiming a vehicle. The real verifier correctly found no vehicle, so this
+  plumbing test now injects a stub verifier.
+- Latency: ~8.6 ms per verification (measured over 1,946 verifications); up to 5 per pass. GPU: adds
+  RemoteCLIP ViT-B/32 to resident models; the change-detection OOM (plan phase 3) gets worse, not better.
+- **Not calibrated:** `verifier_confidence` is a softmax over the vocabulary, a relative score.
+- Found while checking masks, **not caused by this change:** with verification disabled, 64 sampled
+  frames give SAM 2 masks on only 1 of 3 vehicle events. Propagation runs forward from one anchor
+  (`pre-demo.md` §2.1e).
+
+### 4. Verification — what proves it?
+
+- `tests/unit/test_agent_deliberation.py`, 8 tests with scripted verdicts: accept first verified;
+  backtrack past contradicted; prefer a later verified over an earlier unconfirmed; unconfirmed
+  returned but labelled; re-evaluate when all contradicted (contradicted boxes not re-verified); relaxed
+  pass rejects unconfirmed; NOT_FOUND; no verifier → single-agent behaviour.
+- Live, VRSBench (`agent_deliberation_live_vrsbench_20260914.json`, run under R1): present objects
+  4/4 verified (airplane, vehicle, ship, storage tank); absent 3/4 NOT_FOUND, the fourth UNCONFIRMED
+  on a relaxed-pass box — the case that motivated R3.
+- Live video after the change: "find the airplane" 0 flags, with three warnings naming detector scores
+  0.71/0.52/0.73 and 0/3, 0/3, 0/2 frames confirmed; "find the red car" 1 flag (15.36–18.24s); "find
+  all vehicles" 2 flags (verified 2/3 and 1/2 frames).
+- `pytest -q` → 161 passed + the widened video test passing (7/7 in `test_video_workflow.py`).
+
+### 5. Defence — a mentor asks: "RemoteCLIP isn't trained for this. Why should its opinion override the detector's?"
+
+"It doesn't override it; it's a second, independent witness with a different failure pattern, and we
+measured exactly how good a witness it is before we let it vote. Grounding DINO will always return
+*something* for any prompt: on our set, it put a box on 64.7% of queries for objects that aren't in
+the image. RemoteCLIP, asked whether a crop is the named category rather than 32 alternatives, confirms
+a wrong label 6.3% of the time. So we only overrule the detector when the verifier positively says
+it's a *different object*; when it only sees background, we keep the detection but mark it unconfirmed.
+That cut hallucinated boxes to 28.0% and cost 2.7 points of recall, and every decision, with both
+confidences, is in the trace."
+
+The caveat to volunteer: it has a real blind spot on close-up, low-altitude footage. It rejected a
+genuine white car in our own demo video. Say so before the demo does.
+
+---
+
+## Q-009 · Two-agent detection: attribute queries are labelled, not backtracked
+
+**Recorded** 2026-09-14, same session as Q-008 and before either was committed. **Supersedes the
+deliberation rule and headline numbers of Q-008**; Q-008's verifier design, measurements and video
+behaviour stand.
+
+**Result, same 300 present + 300 absent VRSBench queries:**
+
+| | single agent | Q-008 rule (R3) | **this rule (R7)** |
+|---|---|---|---|
+| present R@0.5 | 38.7% | 36.0% | **40.7%** |
+| present mIoU | 0.349 | 0.327 | **0.371** |
+| absent queries that return a box | 64.7% | 28.0% | **28.0%** |
+
+### 1. Mechanism — what changed from Q-008?
+
+The deliberation now branches on the reasoner's strategy (`workflows/grounding.py::deliberate`).
+
+- **Attribute queries** (`multi_attribute_ranking`, or `ordinal_*`: "the largest building", "white car
+  at the bottom left", "second from left"): only the reasoner's selected box is verified, and it is
+  always returned. The verifier sets the label — **verified**, **unconfirmed**, or **DISPUTED** when
+  it contradicts. No backtrack, no relaxed re-evaluation.
+- **Plain category queries** ("find the ship"): Q-008's R3 rule, unchanged — backtrack on
+  contradiction, hold the first unconfirmed, relaxed re-evaluation accepts only verified, else
+  NOT_FOUND.
+
+`agent_deliberation.mode` records which branch ran; `decision` gains `accepted_disputed`; the tool adds
+a warning for disputed answers.
+
+### 2. Rationale — what showed Q-008's rule was wrong?
+
+The verifier judges *category*, not *attributes*. For "the largest building", backtracking replaces the
+largest box with a smaller building the verifier likes better, which answers a different question. The
+visible symptom was the demo image `GR_DINO_TEST/05945_0000.png`: "segment the largest building"
+backtracked past the two largest candidates and returned a 1,247 px box, and "find the white car at
+the bottom left" backtracked away from the car the single agent had found.
+
+Split by query type from the same cache (`agent_deliberation_rules_vrsbench_20260914_stdout.txt`):
+
+| rule | attribute R@0.5 (n=206) | plain R@0.5 (n=94) |
+|---|---|---|
+| single agent | 48.1% | 18.1% |
+| R3 — backtrack everywhere (Q-008) | 41.3% | 24.5% |
+| R6 — attribute: no backtrack, contradicted → NOT_FOUND | 37.9% | 24.5% |
+| **R7 — attribute: label only** | **48.1%** | **24.5%** |
+
+Backtracking helps plain queries (+6.4 points) and hurts attribute queries (−6.8). R7 takes the better
+branch for each, and beats the single agent on all three headline measures.
+
+### 3. Blast radius — what does R7 give up?
+
+- **Attribute queries for absent objects still return a box.** Measured on 220 absent attribute
+  queries (VRSBench referring expressions with the object class replaced by one not in the image;
+  `agent_verifier_absent_attribute_queries_20260914.json`): no candidates 26.4% · **DISPUTED 61.4%** ·
+  unconfirmed 7.3% · **verified 5.0%**. So 73.6% return a box, and the protection is the label, not a
+  refusal. A UI that ignores the label would show hallucinations again.
+- Every absent query in the headline 300 is a plain "find the X", so the 28.0% figure describes
+  category queries only.
+- On the demo image both previously regressed queries now return the single agent's original boxes,
+  **labelled DISPUTED** (verifier's best match "ground track field" and "roundabout"). Both boxes touch
+  the image edge; the black-padded crop is the likely cause. Keeping crops inside the frame was tested
+  on video frames only and did not change those verdicts, so it was not adopted.
+
+### 4. Verification
+
+- Implementation vs R7 simulation on 40 cached records (80 queries): **80/80** identical decision and
+  box.
+- `tests/unit/test_agent_deliberation.py` now 11 tests: the Q-008 eight, plus attribute query →
+  DISPUTED with no backtrack and a single verification, attribute verified, and mode recorded.
+
+### 5. Defence — "So when the agents disagree on 'the largest building', you just ignore the verifier?"
+
+"We don't ignore it; we stop letting it answer a question it can't evaluate. The verifier knows whether
+a crop looks like a building. It has no idea which building is largest. When it vetoed attribute
+answers, accuracy on those queries fell from 48.1% to 41.3%, because it kept swapping the right answer
+for a smaller building it liked better. So on attribute queries it tells the user it disagrees, and on
+plain 'find the X' queries, where category is the whole question, it is allowed to backtrack. That split
+is measured, not assumed, and it is better than one agent on every number we track."
+
+---
+
+## Q-010 · GPU out-of-memory recovery for resident models
+
+**Recorded** 2026-09-14. Committed *before* Q-008/Q-009's verifier, because the verifier adds another
+resident model and the suite is not reliably green without this.
+
+### 1. Mechanism
+
+- `ml/registry.py::release_gpu_memory(exclude)` — unloads every cached adapter except `exclude`
+  **in place**: instances stay registered, because other objects hold references (the verifier caches
+  its RemoteCLIP adapter), and they reload lazily. Besides `unload()`, it clears any attribute holding a
+  `torch.nn.Module` or a SAM 2 predictor (DOFA keeps weights in `_dofa_model`, which the base `unload()`
+  misses), then `gc.collect()` + `torch.cuda.empty_cache()`. Returns the released model keys.
+- `ml/adapters/changeformer/adapter.py::_forward_logits_resilient` — on `torch.OutOfMemoryError`:
+  release other models → retry native → 512 windows → 256 windows → raise. What happened is returned
+  in `metadata.oom_recovery` (`released_models`, `resolved_by`), and `inference_mode` becomes
+  `windowed_512`/`windowed_256` if accuracy was traded.
+- `agent/executor.py` — heavy inference tools get one retry after any error whose cause chain is a CUDA
+  OOM: release all models, add a warning trace step naming what was released, rerun the tool. Non-OOM
+  errors are not retried.
+
+### 2. Rationale
+
+Measured, not hypothesised. The in-process audit ran every demo query type in sequence
+(`scratchpad/audit_queries.py`). `temporal_change_vqa` failed both times with "CUDA out of memory. Tried
+to allocate 1024.00 MiB … 33.75 MiB is free" after BLIP, Grounding DINO and SAM 2 loaded. The API server
+keeps models resident across requests, so this is the demo configuration, not a test artefact.
+Chrome (333 MiB) and the Claude desktop app (73 MiB) also held GPU memory (`nvidia-smi`).
+
+Order of recovery is by accuracy cost. Releasing models costs a reload on the next query, but no
+accuracy. Windows cost 0.02–0.03 IoU at 256 px (Q-007). Resize-to-fit was not used: it measured IoU
+0.00–0.09 (Q-007).
+
+### 3. Blast radius
+
+- The first query after a release pays model load time again (not measured per model tonight).
+- If ChangeFormer itself cannot fit, results silently would have been an error; now they may be
+  `windowed_256`, which is visible in metadata but not yet surfaced in the answer text.
+- `release_gpu_memory` clears attributes by type. An adapter that keeps GPU tensors in a plain dict or
+  list would not be freed.
+- Suite flakiness observed before the fix: with RemoteCLIP resident, the full run failed 5–7 ChangeFormer
+  tests on OOM; after adding recovery but before isolating the accuracy fixture, one isolated run
+  failed the three `test_1024_scene_native_iou` cases and an identical rerun passed 146/146. The cause
+  of that one failure was not captured (a passing rerun leaves no assertion), most likely a windowed
+  fallback when free memory dipped. `tests/models/test_changeformer_accuracy.py`'s fixture now releases
+  other models before measuring accuracy.
+
+### 4. Verification
+
+- `tests/unit/test_gpu_oom_recovery.py`, 5 tests: recover by releasing; fall back to 512 windows when
+  release is not enough; no recovery metadata when memory is fine; executor releases + retries a heavy
+  tool once; executor does not retry non-OOM errors.
+- Live, same audit script, all models in one process: both change queries now `COMPLETED`, log
+  `Released GPU memory held by: ['general_rs_vlm', 'grounding_dino', 'sam2', 'remoteclip'] (kept:
+  ['changeformer'])` and later `['cdvqa']`.
+- Full suite with all of tonight's changes: 167 passed, 0 failed.
+
+### 5. Defence — "Isn't evicting models just hiding that you're over budget?"
+
+"We are over budget on an 8 GB card: nine models don't fit at once, and the demo server loads them
+lazily as queries arrive. The honest options are a bigger GPU, or managing memory and saying when we do
+it. We release models first, because that costs reload time and no accuracy. We only fall back to
+smaller windows if the model alone still can't fit, and when that happens the result says so in its
+metadata. The trace shows exactly which models were released for which query."
+
+**Addendum (same session, before commit).** The video workflow does not run through the agent
+executor, so it had no recovery: in an isolated suite run, Grounding DINO hit OOM on every sampled
+frame ("Tried to allocate 328.00 MiB … 157.00 MiB free") after the ChangeFormer tests, each frame was
+logged as a frame error, and 2–4 video tests failed. `workflows/video_analysis.py` now retries a frame
+once after releasing every model except `grounding_dino`, `sam2` and `remoteclip`, with a warning trace
+step. Isolated suite at the two-agent commit afterwards: 157 passed, 0 failed.

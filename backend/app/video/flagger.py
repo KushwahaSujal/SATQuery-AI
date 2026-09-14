@@ -127,7 +127,10 @@ class VideoFlagger:
         video_id: str,
         artifacts_video_dir: Path,
         config: Optional[VideoFlagConfig] = None,
-        scoring_config: Optional[VideoEventScoringSettings] = None
+        scoring_config: Optional[VideoEventScoringSettings] = None,
+        verifier: Optional[Any] = None,
+        target_label: Optional[str] = None,
+        rejections: Optional[List[Dict[str, Any]]] = None
     ) -> List[VideoFlag]:
         """
         Aggregates frame detections, filters transient noise, extracts peak representative keyframes,
@@ -179,6 +182,49 @@ class VideoFlagger:
                     f"Cluster at {start_ts:.2f}s-{end_ts:.2f}s dropped due to low event score ({event_score:.3f} < {cfg.min_event_score})."
                 )
                 continue
+
+            # Second-agent verification: RemoteCLIP checks the event's strongest detections. A single
+            # crop confirms a real vehicle 55.5% of the time but an absent class only 3.5% of the time
+            # (detection_verifier_3way_20260914.json), so requiring one confirmation among up to N
+            # frames keeps real events while dropping hallucinated ones. The confirmed frame becomes
+            # the keyframe, since it is the better evidence.
+            verification: Optional[Dict[str, Any]] = None
+            if verifier is not None:
+                n_check = settings.agent_verification.video_frames_to_verify
+                checked = sorted([d for d in cluster if d.image is not None], key=lambda d: -d.detector_score)[:n_check]
+                results = []
+                for det in checked:
+                    w_img, h_img = det.image.size
+                    ymin, xmin, ymax, xmax = det.box_2d
+                    v = verifier.verify(det.image, [xmin * w_img, ymin * h_img, xmax * w_img, ymax * h_img],
+                                        target_label or det.label)
+                    results.append((det, v))
+                confirmed = [(d, v) for d, v in results if v.status == "verified"]
+                verification = {
+                    "frames_checked": len(results),
+                    "frames_verified": len(confirmed),
+                    "statuses": [v.status for _, v in results],
+                    "verifier_confidence": round(max((v.target_probability for _, v in results), default=0.0), 4),
+                    "top_matches": [v.top_alternatives[0][0] for _, v in results],
+                }
+                if results and not confirmed:
+                    logger.info(f"Cluster at {start_ts:.2f}s-{end_ts:.2f}s dropped: verification agent confirmed 0/{len(results)} frames.")
+                    if rejections is not None:
+                        rejections.append({
+                            "start_timestamp": start_ts, "end_timestamp": end_ts,
+                            "label": peak_det.label, "event_score": event_score,
+                            "detector_score": round(peak_det.detector_score, 4), **verification,
+                        })
+                    continue
+                if confirmed:
+                    # Keyframe preference: a confirmed frame that also has a SAM 2 mask, then the original
+                    # peak if it carries the mask, then the most confident confirmed frame. SAM 2 only
+                    # masks some frames, and switching to an unmasked one silently dropped the mask.
+                    with_mask = [dv for dv in confirmed if dv[0].mask is not None]
+                    if with_mask:
+                        peak_det = max(with_mask, key=lambda dv: dv[1].target_probability)[0]
+                    elif peak_det.mask is None:
+                        peak_det = max(confirmed, key=lambda dv: dv[1].target_probability)[0]
 
             flag_id = f"flag_{uuid.uuid4().hex[:8]}"
 
@@ -249,10 +295,14 @@ class VideoFlagger:
                     "segmentation_score": round(peak_det.segmentation_score, 4),
                     "persistence_seconds": duration_sec,
                     "frame_span": frame_span,
+                    **({"verifier_confidence": verification["verifier_confidence"],
+                        "verified_frames": f"{verification['frames_verified']}/{verification['frames_checked']}"}
+                       if verification else {}),
                 },
                 metadata={
                     "event_score_type": "heuristic_ranking_score",
                     "calibrated_model_probability": False,
+                    "agent_verification": verification,
                     "peak_frame": peak_det.frame_index,
                     "job_id": job_id
                 }

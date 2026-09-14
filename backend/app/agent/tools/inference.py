@@ -95,6 +95,13 @@ def run_grounding(state: AgentState) -> None:
 
     state.answer = pipeline_res.get("answer")
     state.confidence = pipeline_res.get("sam2_score") or pipeline_res.get("grounding_score")
+    deliberation = pipeline_res.get("agent_deliberation") or {}
+    if deliberation.get("decision") == "accepted_disputed":
+        state.warnings.append("The verification agent disputes the detected category; treat the result as doubtful.")
+    elif deliberation.get("decision") == "accepted_unconfirmed":
+        state.warnings.append("Detection not confirmed by the verification agent; treat the result as unconfirmed.")
+    elif deliberation.get("decision") == "not_found":
+        state.warnings.append("Verification agent contradicted every detector candidate; nothing was segmented.")
     ev_dict = pipeline_res.get("evidence", {})
 
     # Connect grounding workflow output to Evidence Engine
@@ -114,6 +121,7 @@ def run_grounding(state: AgentState) -> None:
             "candidate_boxes": [c["xyxy"] for c in ev_dict.get("all_candidates", [])],
             "candidate_scores": [c["score"] for c in ev_dict.get("all_candidates", [])],
             "query": state.query,
+            "agent_deliberation": pipeline_res.get("agent_deliberation"),
         }
     )
 

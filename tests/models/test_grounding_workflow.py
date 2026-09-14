@@ -18,6 +18,17 @@ class MockGroundingDINOAdapter:
         return {"boxes": self.boxes}
 
 
+class AlwaysVerifies:
+    def is_available(self):
+        return True
+
+    def verify(self, image, box, target_label):
+        from backend.app.evidence.verifier import VERIFIED, VerificationVerdict
+        return VerificationVerdict(status=VERIFIED, accepted=True, target_label=target_label,
+                                   target_group=target_label, target_probability=0.9, target_rank=1, top_k=3,
+                                   top_alternatives=[(target_label, 0.9)], crop_box=[0, 0, 1, 1])
+
+
 class MockSAM2Adapter:
     def __init__(self, score=0.92):
         self.name = "sam2"
@@ -48,7 +59,11 @@ def test_grounding_pipeline_execution():
         image=img,
         query=query,
         grounding_adapter=MockGroundingDINOAdapter(),
-        sam2_adapter=MockSAM2Adapter(score=0.94)
+        sam2_adapter=MockSAM2Adapter(score=0.94),
+        # Plumbing test with a mock detector on a flat grey image: the real verification agent
+        # (correctly) finds no vehicle there, so it is stubbed to confirm. Deliberation itself is
+        # covered in tests/unit/test_agent_deliberation.py.
+        verifier=AlwaysVerifies(),
     )
 
     # Verify return structure

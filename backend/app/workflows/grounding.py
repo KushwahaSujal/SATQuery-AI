@@ -19,6 +19,8 @@ from backend.app.schemas.responses import AnalyzeResponse
 from backend.app.schemas.evidence import EvidencePackage, SpatialEvidence, BoundingBoxEvidence, AreaStatistics
 from backend.app.evidence.fusion import EvidenceFusionEngine
 from backend.app.exceptions import InvalidInputError, InferenceError
+from backend.app.config import settings
+from backend.app.evidence.verifier import CONTRADICTED, UNVERIFIED, VERIFIED, DetectionVerifier
 from backend.app.logging import logger
 
 
@@ -59,6 +61,14 @@ def _validate_image(image_input: Any) -> Tuple[Image.Image, np.ndarray, Tuple[in
     return pil_img, arr_rgb, (w, h)
 
 
+def _box_iou(a: List[float], b: List[float]) -> float:
+    ix = max(0.0, min(a[2], b[2]) - max(a[0], b[0]))
+    iy = max(0.0, min(a[3], b[3]) - max(a[1], b[1]))
+    inter = ix * iy
+    union = (a[2] - a[0]) * (a[3] - a[1]) + (b[2] - b[0]) * (b[3] - b[1]) - inter
+    return inter / union if union > 0 else 0.0
+
+
 def run_grounding_pipeline(
     image: Any,
     query: str,
@@ -66,7 +76,8 @@ def run_grounding_pipeline(
     text_threshold: float = 0.25,
     iou_nms_threshold: float = 0.50,
     grounding_adapter: Optional[GroundingDINOAdapter] = None,
-    sam2_adapter: Optional[SAM2Adapter] = None
+    sam2_adapter: Optional[SAM2Adapter] = None,
+    verifier: Optional[DetectionVerifier] = None
 ) -> Dict[str, Any]:
     """
     Production Grounding Pipeline connecting Grounding DINO, V4 Multi-Attribute
@@ -132,115 +143,226 @@ def run_grounding_pipeline(
         "modifiers": {k: v for k, v in parsed.items() if v and k not in ("category", "target_category", "raw_query", "clean_prompt")}
     })
 
-    # Step 4: Call GroundingDINOAdapter
     gd_adapter = grounding_adapter or model_registry.get_adapter("grounding_dino")
     prompt = clean_prompt
-    record_step("call_grounding_dino", "started", tool="GroundingDINOAdapter", details={"prompt": prompt})
 
-    try:
-        det_result = gd_adapter.predict(
-            image_or_context=pil_img,
-            prompt=prompt,
-            box_threshold=box_threshold,
-            text_threshold=text_threshold
-        )
+    def detect_and_rank(threshold: float, attempt: str) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
+        """Steps 4-6: Grounding DINO proposals -> full-frame filter -> V4 reasoner ranking."""
+        record_step("call_grounding_dino", "started", tool="GroundingDINOAdapter",
+                    details={"prompt": prompt, "box_threshold": threshold, "attempt": attempt})
+        try:
+            det_result = gd_adapter.predict(
+                image_or_context=pil_img,
+                prompt=prompt,
+                box_threshold=threshold,
+                text_threshold=text_threshold
+            )
+        except Exception as e:
+            record_step("call_grounding_dino", "error", tool="GroundingDINOAdapter", details={"error": str(e)})
+            raise InferenceError(f"Grounding DINO inference error: {e}", model_name="grounding_dino") from e
         record_step("call_grounding_dino", "success", tool="GroundingDINOAdapter", details={
-            "raw_detections": len(det_result.get("boxes", []))
+            "raw_detections": len(det_result.get("boxes", [])), "attempt": attempt
         })
-    except Exception as e:
-        record_step("call_grounding_dino", "error", tool="GroundingDINOAdapter", details={"error": str(e)})
-        raise InferenceError(f"Grounding DINO inference error: {e}", model_name="grounding_dino") from e
 
-    # Step 5: Obtain multiple candidate boxes
-    raw_candidates = det_result.get("boxes", [])
-    candidates = []
-    for c in raw_candidates:
-        b = c.get("xyxy", [0, 0, 0, 0])
-        box_w = max(0.0, float(b[2] - b[0]))
-        box_h = max(0.0, float(b[3] - b[1]))
-        box_area = box_w * box_h
-        img_area = float(w * h)
-        coverage = box_area / img_area if img_area > 0 else 0.0
-        # Filter out edge-to-edge full-frame background fallback boxes (>85% coverage)
-        # unless user query specifically asks for the entire image/scene/background
-        if coverage > 0.85 and target_category not in ("scene", "image", "area", "background", "entire"):
-            logger.info(f"Filtering out full-frame candidate box {b} (coverage: {coverage:.2%}) for discrete target '{target_category}'")
-            continue
-        candidates.append(c)
+        found = []
+        for c in det_result.get("boxes", []):
+            b = c.get("xyxy", [0, 0, 0, 0])
+            coverage = (max(0.0, float(b[2] - b[0])) * max(0.0, float(b[3] - b[1]))) / float(w * h)
+            # Filter out edge-to-edge full-frame background fallback boxes (>85% coverage)
+            # unless user query specifically asks for the entire image/scene/background
+            if coverage > 0.85 and target_category not in ("scene", "image", "area", "background", "entire"):
+                logger.info(f"Filtering out full-frame candidate box {b} (coverage: {coverage:.2%}) for discrete target '{target_category}'")
+                continue
+            found.append(c)
+        record_step("obtain_candidate_boxes", "success", details={
+            "candidate_count": len(found),
+            "scores": [round(c.get("score", 0.0), 4) for c in found],
+            "attempt": attempt
+        })
+        if not found:
+            return [], {"selected_box": None, "strategy": "no_candidates_detected", "candidates": [],
+                        "reference_evidence": {"reference_boxes": [], "reference_count": 0, "method": "none"}}
 
-    record_step("obtain_candidate_boxes", "success", details={
-        "candidate_count": len(candidates),
-        "scores": [round(c.get("score", 0.0), 4) for c in candidates]
-    })
+        record_step("run_grounding_reasoner", "started", tool="grounding_reasoner", details={
+            "query": norm_query, "input_candidates": len(found), "attempt": attempt
+        })
+        res = run_v4_reasoning(
+            candidates=found,
+            query=norm_query,
+            img_shape=(h, w),
+            image=pil_img,
+            adapter=gd_adapter,
+            iou_nms_threshold=iou_nms_threshold
+        )
+        record_step("run_grounding_reasoner", "success", tool="grounding_reasoner", details={
+            "strategy": res.get("strategy"),
+            "reasoning_scores": res.get("reasoning_scores", {}),
+            "attempt": attempt
+        })
+        return found, res
 
-    if not candidates:
-        empty_evidence = {
-            "target_category": target_category,
-            "selected_box": None,
-            "candidates_count": 0,
-            "reasoning_strategy": "no_candidates_detected",
-            "reference_evidence": {"reference_boxes": [], "reference_count": 0, "method": "none"}
-        }
-        record_step("select_target_candidate", "skipped", details={"reason": "no_detector_candidates"})
+    candidates, reasoning_res = detect_and_rank(box_threshold, "initial")
+
+    # Step 7: Two-agent deliberation — the reasoner ranks, the verification agent confirms,
+    # contradicts (-> backtrack) or cannot confirm each candidate; all rejected -> re-evaluate.
+    if verifier is None and settings.agent_verification.enabled:
+        verifier = DetectionVerifier()
+    use_verifier = verifier is not None and verifier.is_available()
+    deliberation: Dict[str, Any] = {
+        "agents": {
+            "detector": "Grounding DINO (proposes boxes, detector confidence)",
+            "reasoner": "V4 reasoner (ranks by query attributes)",
+            "verifier": "RemoteCLIP contrastive verification" if use_verifier else None,
+        },
+        "verification_enabled": use_verifier,
+        "attempts": [],
+        "backtracks": 0,
+        "re_evaluated": False,
+        "decision": None,
+    }
+
+    def deliberate(res: Dict[str, Any], attempt: str, exclude: List[List[float]],
+                   allow_unconfirmed: bool) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
+        ranked = list(res.get("candidates", []))
+        first = res.get("selected_box")
+        order = ([first] if first else []) + [c for c in ranked if first is None or c["xyxy"] != first["xyxy"]]
+        strategy = str(res.get("strategy", ""))
+        attribute_query = strategy == "multi_attribute_ranking" or strategy.startswith("ordinal_")
+        if attribute_query:
+            # Attribute queries ("the largest building", "white car bottom left", "second from left"):
+            # the reasoner's choice encodes the attributes, which the verifier cannot judge, so another
+            # box would answer a different question. The verifier labels the answer instead of replacing
+            # it. Measured on 206 VRSBench attribute queries: backtracking cut R@0.5 from 48.1% to 41.3%;
+            # labelling keeps 48.1% (agent_deliberation_rules_vrsbench_20260914.json, R3 vs R7).
+            order = order[:1]
+        deliberation["mode"] = "attribute_query_label_only" if attribute_query else "category_query_backtracking"
+        order = [c for c in order if not any(_box_iou(c["xyxy"], x) > 0.5 for x in exclude)]
+        order = order[: settings.agent_verification.max_candidates]
+
+        fallback = None
+        for rank_idx, cand in enumerate(order, start=1):
+            entry = {
+                "attempt": attempt,
+                "reasoner_rank": rank_idx,
+                "box": [round(float(v), 2) for v in cand["xyxy"]],
+                "detector_confidence": round(float(cand.get("score", 0.0)), 4),
+                "reasoning_score": cand.get("reasoning_score"),
+            }
+            if not use_verifier:
+                entry.update(verifier_status="not_run", decision="accepted")
+                deliberation["attempts"].append(entry)
+                return cand, "unverified_no_verifier"
+            v = verifier.verify(pil_img, cand["xyxy"], target_category)
+            entry.update(
+                verifier_status=v.status,
+                verifier_confidence=v.target_probability,
+                verifier_rank=v.target_rank,
+                verifier_top_matches=v.as_dict()["top_alternatives"],
+            )
+            if v.status == VERIFIED:
+                entry["decision"] = "accepted"
+                deliberation["attempts"].append(entry)
+                record_step("agent_deliberation", "success", tool="DetectionVerifier", details=entry)
+                return cand, VERIFIED
+            if v.status == CONTRADICTED and attribute_query:
+                entry["decision"] = "accepted_disputed"
+                deliberation["attempts"].append(entry)
+                record_step("agent_deliberation", "warning", tool="DetectionVerifier", details=entry)
+                return cand, CONTRADICTED
+            if v.status == CONTRADICTED:
+                entry["decision"] = "backtrack"
+                deliberation["backtracks"] += 1
+                exclude.append(cand["xyxy"])
+                record_step("agent_deliberation", "warning", tool="DetectionVerifier", details=entry)
+            elif allow_unconfirmed:
+                entry["decision"] = "held_unconfirmed"
+                record_step("agent_deliberation", "warning", tool="DetectionVerifier", details=entry)
+                if fallback is None:
+                    fallback = cand
+            else:
+                # Relaxed-threshold proposals are low-confidence by construction: only a candidate the
+                # verification agent confirms is worth reporting. Measured: holding unconfirmed ones here
+                # returned a box for 45.0% of absent-object queries vs 28.0% without, at identical
+                # present-object recall (agent_deliberation_rules_vrsbench_20260914.json, R1 vs R3).
+                entry["decision"] = "rejected_unconfirmed_after_relaxation"
+                record_step("agent_deliberation", "warning", tool="DetectionVerifier", details=entry)
+            deliberation["attempts"].append(entry)
+        return (fallback, UNVERIFIED) if fallback is not None else (None, None)
+
+    rejected: List[List[float]] = []
+    selected_cand, verdict = deliberate(reasoning_res, "initial", rejected, allow_unconfirmed=True)
+
+    relaxed = settings.agent_verification.relaxed_box_threshold
+    if use_verifier and selected_cand is None and relaxed < box_threshold:
+        deliberation["re_evaluated"] = True
+        record_step("agent_re_evaluate", "started", details={
+            "reason": "no candidate confirmed by both agents",
+            "box_threshold": {"from": box_threshold, "to": relaxed}
+        })
+        relaxed_candidates, relaxed_res = detect_and_rank(relaxed, "re_evaluate")
+        candidates = candidates or relaxed_candidates
+        selected_cand, verdict = deliberate(relaxed_res, "re_evaluate", rejected, allow_unconfirmed=False)
+        if selected_cand is not None:
+            reasoning_res = relaxed_res
+            candidates = relaxed_candidates
+
+    deliberation["decision"] = {
+        VERIFIED: "accepted_verified",
+        UNVERIFIED: "accepted_unconfirmed",
+        CONTRADICTED: "accepted_disputed",
+        "unverified_no_verifier": "accepted_without_verification",
+        None: "not_found",
+    }[verdict]
+
+    if selected_cand is None:
+        contradicted_by = sorted({
+            m["label"] for a in deliberation["attempts"] for m in a.get("verifier_top_matches", [])[:1]
+        })
+        reason = "all_candidates_contradicted_by_verifier" if deliberation["attempts"] else (
+            "no_detector_candidates" if not candidates else "reasoner_filtered_all")
+        record_step("select_target_candidate", "warning", details={"reason": reason})
+        if deliberation["attempts"]:
+            answer = (
+                f"No {target_category} found for '{norm_query}'. The detector proposed "
+                f"{len(deliberation['attempts'])} candidate(s)"
+                f"{' including a relaxed re-evaluation' if deliberation['re_evaluated'] else ''}, "
+                f"and the verification agent contradicted every one "
+                f"(best matches instead: {', '.join(contradicted_by) or 'other categories'})."
+            )
+        elif not candidates:
+            answer = f"No {target_category} detected in the satellite image matching '{norm_query}'."
+        else:
+            answer = f"Candidates detected but none satisfied the reasoning criteria for '{norm_query}'."
         return {
             "task": "grounding",
-            "answer": f"No {target_category} detected in the satellite image matching '{norm_query}'.",
+            "answer": answer,
             "selected_box": None,
             "segmentation_mask": None,
             "grounding_score": None,
             "sam2_score": None,
             "strategy": "V4_RELATIONAL",
-            "evidence": empty_evidence,
-            "trace": trace
-        }
-
-    # Step 6: Pass candidates to grounding_reasoner
-    record_step("run_grounding_reasoner", "started", tool="grounding_reasoner", details={
-        "query": norm_query,
-        "input_candidates": len(candidates)
-    })
-    reasoning_res = run_v4_reasoning(
-        candidates=candidates,
-        query=norm_query,
-        img_shape=(h, w),
-        image=pil_img,
-        adapter=gd_adapter,
-        iou_nms_threshold=iou_nms_threshold
-    )
-    record_step("run_grounding_reasoner", "success", tool="grounding_reasoner", details={
-        "strategy": reasoning_res.get("strategy"),
-        "reasoning_scores": reasoning_res.get("reasoning_scores", {})
-    })
-
-    # Step 7: Select the target candidate
-    selected_cand = reasoning_res.get("selected_box")
-    if not selected_cand:
-        empty_evidence = {
-            "target_category": target_category,
-            "selected_box": None,
-            "candidates_count": len(candidates),
-            "reasoning_strategy": "reasoner_filtered_all",
-            "reference_evidence": reasoning_res.get("reference_evidence", {})
-        }
-        record_step("select_target_candidate", "warning", details={"reason": "all_candidates_filtered"})
-        return {
-            "task": "grounding",
-            "answer": f"Candidates detected but none satisfied the reasoning criteria for '{norm_query}'.",
-            "selected_box": None,
-            "segmentation_mask": None,
-            "grounding_score": None,
-            "sam2_score": None,
-            "strategy": "V4_RELATIONAL",
-            "evidence": empty_evidence,
+            "evidence": {
+                "target_category": target_category,
+                "selected_box": None,
+                "candidates_count": len(candidates),
+                "reasoning_strategy": reason,
+                "reference_evidence": reasoning_res.get("reference_evidence", {}),
+                "agent_deliberation": deliberation,
+            },
+            "agent_deliberation": deliberation,
             "trace": trace
         }
 
     selected_box = selected_cand["xyxy"]
     grounding_score = float(selected_cand.get("score", 0.0))
+    accepted_attempt = next((a for a in reversed(deliberation["attempts"]) if a["decision"] in ("accepted", "held_unconfirmed", "accepted_disputed")
+                             and a["box"] == [round(float(v), 2) for v in selected_box]), {})
     record_step("select_target_candidate", "success", details={
         "selected_box": selected_box,
         "detector_score": round(grounding_score, 4),
-        "reasoning_score": selected_cand.get("reasoning_score")
+        "reasoning_score": selected_cand.get("reasoning_score"),
+        "decision": deliberation["decision"],
+        "verifier_confidence": accepted_attempt.get("verifier_confidence"),
     })
 
     # Step 8: Call SAM2Adapter with that REAL selected box
@@ -289,6 +411,7 @@ def run_grounding_pipeline(
         "sam2_confidence": round(sam2_score, 4),
         "reasoning_scores": selected_cand.get("reasoning_scores", {}),
         "reference_evidence": reasoning_res.get("reference_evidence", {}),
+        "agent_deliberation": deliberation,
         "all_candidates": [
             {
                 "xyxy": [round(float(c), 2) for c in cand["xyxy"]],
@@ -308,11 +431,28 @@ def run_grounding_pipeline(
     record_step("complete_pipeline", "success", details={"elapsed_seconds": elapsed_total})
 
     # Step 12: Return structured result
-    answer = (
-        f"Grounded and segmented {target_category} with high precision "
-        f"at [{selected_box[0]:.1f}, {selected_box[1]:.1f}, {selected_box[2]:.1f}, {selected_box[3]:.1f}] "
-        f"(detector confidence: {grounding_score:.4f}, SAM 2 score: {sam2_score:.4f}, area: {mask_pixel_count:,} pixels)."
-    )
+    box_txt = f"[{selected_box[0]:.1f}, {selected_box[1]:.1f}, {selected_box[2]:.1f}, {selected_box[3]:.1f}]"
+    scores_txt = (f"detector confidence {grounding_score:.3f}, SAM 2 mask score {sam2_score:.3f}, "
+                  f"area {mask_pixel_count:,} px")
+    if verdict == VERIFIED:
+        answer = (f"Found {target_category} at {box_txt}, confirmed by two agents: "
+                  f"{scores_txt}, verification agent confidence {accepted_attempt.get('verifier_confidence'):.3f} "
+                  f"(rank {accepted_attempt.get('verifier_rank')}).")
+    elif verdict == CONTRADICTED:
+        top = (accepted_attempt.get("verifier_top_matches") or [{}])[0]
+        answer = (f"DISPUTED {target_category} at {box_txt}: the detector and reasoner selected it for the query's "
+                  f"attributes ({scores_txt}), but the verification agent reads this region as "
+                  f"'{top.get('label', 'another category')}' (rank {accepted_attempt.get('verifier_rank')} for {target_category}).")
+    elif verdict == UNVERIFIED:
+        top = (accepted_attempt.get("verifier_top_matches") or [{}])[0]
+        answer = (f"UNCONFIRMED {target_category} at {box_txt}: {scores_txt}; the verification agent could not "
+                  f"confirm the category (best match: {top.get('label', 'scene context')}).")
+    else:
+        answer = f"Segmented {target_category} at {box_txt} ({scores_txt}); verification agent unavailable."
+    if deliberation["backtracks"]:
+        answer += f" Backtracked past {deliberation['backtracks']} candidate(s) the verification agent contradicted."
+    if deliberation["re_evaluated"]:
+        answer += " Re-evaluated with a relaxed detector threshold."
 
     return {
         "task": "grounding",
@@ -323,6 +463,7 @@ def run_grounding_pipeline(
         "sam2_score": round(sam2_score, 4),
         "strategy": "V4_RELATIONAL",
         "evidence": evidence,
+        "agent_deliberation": deliberation,
         "trace": trace
     }
 
