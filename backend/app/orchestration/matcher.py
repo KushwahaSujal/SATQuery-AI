@@ -61,6 +61,18 @@ class CapabilityMatcher:
             reason = f"Single image provided with spatial grounding/referral query targeting '{target_obj}'."
             return cap, reason
 
+        if intent.task in ("multispectral_analysis", "sar_analysis"):
+            from backend.app.orchestration.dependency_graph import DependencyGraph
+            wanted = "multispectral" if intent.task == "multispectral_analysis" else "sar"
+            modality_ok = input_facts.overall_modality_type == (
+                ModalityType.MULTISPECTRAL_RASTER if wanted == "multispectral" else ModalityType.SAR_RASTER)
+            if not (modality_ok and DependencyGraph.has_branch_for(intent.task)):
+                # Previously fell through to generic VQA, which answered "compute NDVI" with "No." (Q-013).
+                cap = capability_registry.get("unsupported_analysis")
+                why = "no executable branch" if modality_ok else f"input is {input_facts.overall_modality_type.value}, not {wanted}"
+                reason = f"Requested {intent.task.replace('_', ' ')} cannot run ({why}); explaining instead of answering with an unrelated model."
+                return cap, reason
+
         if input_facts.overall_modality_type == ModalityType.MULTISPECTRAL_RASTER and intent.task == "multispectral_analysis":
             cap = capability_registry.get("multispectral_analysis")
             reason = "Multispectral raster (>3 bands) provided with spectral index/composite request."

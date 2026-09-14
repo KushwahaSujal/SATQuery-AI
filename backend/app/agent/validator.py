@@ -24,6 +24,8 @@ class PlanValidator:
         "calculate_statistics",
         "generate_overlay",
         "generate_report",
+        # Reads raster metadata and writes an explanatory answer; no model, no side effects (Q-013).
+        "explain_unsupported_request",
     }
 
     PERMITTED_MODELS: Set[str] = {

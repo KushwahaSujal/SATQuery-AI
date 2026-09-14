@@ -51,6 +51,7 @@ and the commit it describes. Extracted, never re-litigated; anything missing is 
 | [Q-010](#q-010--gpu-out-of-memory-recovery-for-resident-models) | GPU out-of-memory recovery for resident models | 2026-09-14 | Recorded |
 | [Q-011](#q-011--geotiff-georeferencing-without-rasterio-and-geojson-area-of-interest-input) | GeoTIFF georeferencing without rasterio; GeoJSON area-of-interest input | 2026-09-14 | Recorded |
 | [Q-012](#q-012--change-detection-two-agents-changeformer-vs-cdvqa-adjudication) | Change detection two agents: ChangeFormer vs CDVQA adjudication | 2026-09-14 | Recorded |
+| [Q-013](#q-013--routing-scene-description-and-honest-refusal-for-unsupported-analyses) | Routing: scene description, and honest refusal for unsupported analyses | 2026-09-14 | Recorded |
 | [Q-008](#q-008--two-agent-detection-verification-backtracking-and-re-evaluation) | Two-agent detection: verification, backtracking and re-evaluation (stills + video) | 2026-09-14 | Recorded · superseded in part by Q-009 |
 | [Q-009](#q-009--two-agent-detection-attribute-queries-are-labelled-not-backtracked) | Two-agent detection: attribute queries are labelled, not backtracked (supersedes Q-008 rule) | 2026-09-14 | Recorded |
 
@@ -1167,3 +1168,76 @@ it. The point of two agents is not to average them; it's to catch the one that's
 
 The caveat to volunteer: we cannot yet measure the adjudicator's accuracy end to end. No dataset here
 has both building masks and change questions.
+
+---
+
+## Q-013 · Routing: scene description, and honest refusal for unsupported analyses
+
+**Recorded** 2026-09-14, atop `23d105d`. Ushnik's item 2 in `split-ushnik-ayushman.md`.
+
+### 1. Mechanism
+
+- **Caption wording** (`orchestration/intent_classifier.py`): a single image now routes to
+  `single_image_caption` for "describe … image/scene/picture/area/this", "description of", "what does
+  this image show/contain/depict", "what do you see", "summarise". Before, only "caption", "summarize",
+  "overview of scene" and "brief description" did. Grounding is still checked first, so "describe the red
+  car at the bottom" stays grounding.
+- **New capability `unsupported_analysis`** — definition, DAG branch
+  (`inspect_raster → explain_unsupported_request → generate_report`), `KNOWN_CAPABILITIES`,
+  `TaskType.UNSUPPORTED` mapping, and a tool whitelist entry.
+- **Matcher:** when intent is `multispectral_analysis` or `sar_analysis` and either the input modality
+  is wrong or the capability has no executable branch (`DependencyGraph.has_branch_for`), route to
+  `unsupported_analysis`. The routing reason says which case applied.
+- **Tool `explain_unsupported_request`** (`agent/tools/unsupported.py`) answers from raster metadata.
+  - For an index request it names the bands the index needs. On ≤3 bands: "cannot be computed from this
+    image". Otherwise: "not implemented in this version".
+  - For SAR polarimetry: "not implemented".
+  - Confidence `None` (`confidence_final`), plus a warning.
+
+### 2. Rationale
+
+Measured in tonight's audit (`scratchpad/audit_queries.py`): "compute NDVI for this scene" on an RGB PNG
+routed to `single_image_vqa`, and BLIP answered **"No."** with confidence 0.5962. The intent classifier
+had already identified `multispectral_analysis`; the matcher only honoured it for >3-band rasters, and
+that capability has no DAG branch anyway, so the query fell through to generic VQA. An unrelated
+model's answer with a confidence is worse than a refusal: it looks like a result. The refusal is the
+honest output until spectral indices exist, and it separates "impossible on this input" from "not built
+yet". "describe this image" also routed to VQA, not captioning.
+
+### 3. Blast radius
+
+- Queries matching the spectral/SAR patterns on single images no longer reach VQA at all. A query that
+  mentions "infrared" or "NIR" conversationally now gets the refusal.
+- **Caption quality is unchanged**: `run_caption` still prompts BLIP-VQA (`Salesforce/blip-vqa-base`)
+  for a caption, so answers are one or two words ("Football field." on `05945_0000.png`). Only the routing
+  was wrong here; captioning with a VQA model is `pre-demo.md` §1.2's problem.
+- **Found on the way:** `agent/validator.py::PlanValidator.PERMITTED_TOOLS` is a separate hand-kept
+  whitelist. The first live run failed with "Security violation: Proposed step
+  'explain_unsupported_request' is not in the authorized tool whitelist". `rules.md` §3 listed four files
+  for a new capability; it now lists five, and a test asserts every DAG tool is registered and
+  whitelisted.
+- `tests/integration/test_pipeline_end_to_end.py` hard-codes the tool count: 14 → 15.
+
+### 4. Verification
+
+- Live, through the agent controller (`scratchpad/routing_e2e.py`):
+
+  | query | input | result |
+  |---|---|---|
+  | "describe this image" | RGB PNG | `single_image_caption`, run_caption |
+  | "compute NDVI for this scene" | RGB PNG | `unsupported_analysis`: "NDVI needs red and near-infrared (NIR) bands, and this image has 3 band(s) (PNG) … cannot be computed from this image" |
+  | "compute NDVI for this scene" | 4-band uint16 GeoTIFF | "… This image has 4 band(s), but spectral-index computation is not implemented" |
+  | "show SAR backscatter in dB" | RGB PNG | "SAR polarimetric analysis … is not implemented" |
+  | "how many buildings are in this image?" | RGB PNG | unchanged: `single_image_vqa` |
+
+- `tests/unit/test_routing_unsupported.py`, 11 tests: 7 intent wordings, including grounding priority;
+  RGB spectral/SAR → unsupported; multispectral → unsupported while unimplemented; explanation text for
+  the RGB / multispectral / SAR cases; every tool in every executable DAG is registered and whitelisted.
+- `pytest -q` → **214 passed, 0 failed**.
+
+### 5. Defence — "Your system can't compute NDVI. Isn't a refusal a failure?"
+
+"It's a missing feature, and the system now says so precisely: NDVI needs a near-infrared band, and an
+RGB photo doesn't have one. Before this change the same question got 'No.' from a generic VQA model with
+59.6% confidence. That's the real failure, because it looks like an analysis result. We'd rather show
+what we can't do than dress up an unrelated model's output as a spectral index."

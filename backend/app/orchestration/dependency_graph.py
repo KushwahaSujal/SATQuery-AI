@@ -68,6 +68,7 @@ class DependencyGraph:
         "single_image_vqa",
         "single_image_caption",
         "optical_sar_analysis",
+        "unsupported_analysis",
     })
 
     @classmethod
@@ -130,6 +131,12 @@ class DependencyGraph:
                 DAGPlanNode(node_id="validate_optical_sar_pair", tool_name="validate_optical_sar_pair", dependencies=["inspect_raster"], timeout_seconds=10.0),
                 DAGPlanNode(node_id="run_optical_sar", tool_name="run_optical_sar", model_name="dofa", dependencies=["validate_optical_sar_pair"], timeout_seconds=90.0),
                 DAGPlanNode(node_id="generate_report", tool_name="generate_report", dependencies=["run_optical_sar"], timeout_seconds=20.0),
+            ]
+        elif capability_id == "unsupported_analysis":
+            nodes = [
+                DAGPlanNode(node_id="inspect_raster", tool_name="inspect_raster", timeout_seconds=15.0),
+                DAGPlanNode(node_id="explain_unsupported_request", tool_name="explain_unsupported_request", dependencies=["inspect_raster"], timeout_seconds=5.0),
+                DAGPlanNode(node_id="generate_report", tool_name="generate_report", dependencies=["explain_unsupported_request"], timeout_seconds=20.0),
             ]
         else:
             nodes = [
