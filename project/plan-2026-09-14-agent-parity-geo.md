@@ -23,7 +23,7 @@ Status legend: `[ ]` not started · `[~]` in progress · `[x]` done
 
 ---
 
-## Phase 1 · Verification agent + backtracking on still-image grounding `[ ]`
+## Phase 1 · Verification agent + backtracking on still-image grounding `[x]` — `9c7caf6`, Q-008/Q-009
 
 **Deliverable:** the same query goes to two independent agents — **Grounding DINO** (detector
 confidence) and **RemoteCLIP** (contrastive verification confidence). The system picks the best
@@ -49,7 +49,7 @@ Every attempt is visible in the trace with both confidences.
    run on a VRSBench image with present vs absent class; VRSBench grounding eval must not regress
    below the recorded mIoU 0.3532 / R@0.5 0.398 on 299 records (report the new number either way).
 
-## Phase 2 · Same verification on video flags `[ ]`
+## Phase 2 · Same verification on video flags `[x]` — `9c7caf6`, Q-008
 
 1. `workflows/video_analysis.py` / `video/flagger.py` — verify each flag's peak-frame box crop
    against the flag label before emitting; rejected flags are dropped and listed in
@@ -57,7 +57,7 @@ Every attempt is visible in the trace with both confidences.
 2. **Verify:** `real_aerial_footage.mp4` — "find all vehicles" keeps its events; "find the airplane"
    drops to 0 flags. Existing video tests stay green.
 
-## Phase 3 · Change-detection parity: ChangeFormer vs CDVQA `[ ]`
+## Phase 3 · Change-detection parity: ChangeFormer vs CDVQA `[~]` — OOM recovery done (`31dca84`, Q-010); adjudicator not started
 
 Prerequisite: change detection must run in the full app at all.
 
@@ -73,7 +73,7 @@ Prerequisite: change detection must run in the full app at all.
    mask-changed/CDVQA-says-no); live `temporal_change_vqa` on LEVIR 1024 scene 101 in-process with
    all models resident.
 
-## Phase 4 · GeoTIFF georeferencing without rasterio `[ ]`
+## Phase 4 · GeoTIFF georeferencing without rasterio `[x]` — `5d40ffe`, Q-011
 
 1. `geo/raster.py` tifffile path — parse GeoKeyDirectory (34735): `ProjectedCSTypeGeoKey` (3072) /
    `GeographicTypeGeoKey` (2048) → `EPSG:n`; transform from `ModelPixelScale` (33550) +
@@ -84,7 +84,7 @@ Prerequisite: change detection must run in the full app at all.
    bounds, area in m² = pixels × 0.25, GeoJSON coordinates inside expected lon/lat box; live
    `temporal_change_detection` on the georeferenced LEVIR pair.
 
-## Phase 5 · GeoJSON area-of-interest input `[ ]`
+## Phase 5 · GeoJSON area-of-interest input `[x]` — `5d40ffe`, Q-011
 
 1. `geo/aoi.py` — parse Feature / FeatureCollection / Polygon / MultiPolygon; CRS = EPSG:4326 per
    RFC 7946 unless a legacy `crs` member says otherwise; reproject with pyproj to raster CRS;
@@ -96,12 +96,21 @@ Prerequisite: change detection must run in the full app at all.
 4. **Verify:** tests for inside / partially outside / fully outside / non-georeferenced raster /
    4326→UTM reprojection correctness; live run with an AOI covering half of LEVIR scene 100.
 
-## Phase 6 · Record, verify, commit `[ ]`
+## Phase 6 · Record, verify, commit `[~]` — Q-008..Q-011 recorded, 180 passed; Phase 3 adjudicator pending
 
 - `project/qna.md` Q-008 (two-agent verification & backtracking, change adjudication) and Q-009
   (GeoTIFF georeferencing + GeoJSON AOI), measured numbers verbatim.
 - Full `pytest -q`; in-process end-to-end run of every demo query with all models resident.
 - One commit per phase.
+
+## Deviations from this plan (measured, see qna.md)
+
+- Phase 1's hard top-k veto was replaced by three verdicts (verified / unconfirmed / contradicted): the veto
+  kept only 42.5% of real vehicles.
+- Backtracking applies to plain category queries only; attribute queries are labelled (Q-009), because
+  backtracking cut attribute-query R@0.5 from 48.1% to 41.3%.
+- Phase 3's OOM fix was pulled forward: RemoteCLIP made the suite fail on GPU memory without it.
+- Phase 5 rasterisation uses an exact scanline; `cv2.fillPoly` over-filled by one pixel per edge.
 
 ## Order and cut line
 
