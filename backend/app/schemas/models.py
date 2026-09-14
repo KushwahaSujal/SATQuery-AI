@@ -39,6 +39,7 @@ class ModelResult(BaseModel):
     """Normalized output contract from all model adapters."""
     model_name: str
     task: str
+    status: Optional[str] = None
     answer: Optional[str] = None
     confidence: Optional[float] = None  # None if model doesn't compute true probability
     boxes: List[Dict[str, Any]] = Field(default_factory=list)

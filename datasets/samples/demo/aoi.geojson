@@ -1,0 +1,55 @@
+{
+  "type": "FeatureCollection",
+  "name": "satquery_demo_aoi",
+  "crs": {
+    "type": "name",
+    "properties": {
+      "name": "urn:ogc:def:crs:OGC:1.3:CRS84"
+    }
+  },
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Albufera Agricultural Parcel Basin",
+        "description": "Agricultural rice field basin exhibiting seasonal inundation and crop development between April and July 2024.",
+        "region": "Valencia, Spain",
+        "mgrs_tile": "30SYJ",
+        "native_crs": "EPSG:32630",
+        "area_sq_meters": 758800.0,
+        "area_hectares": 75.88
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              -0.3488445324050417,
+              39.315944943390484
+            ],
+            [
+              -0.3486065179796892,
+              39.322245778971926
+            ],
+            [
+              -0.3411897164092056,
+              39.322076493206765
+            ],
+            [
+              -0.3347991971541533,
+              39.3193176651761
+            ],
+            [
+              -0.3349393255841476,
+              39.31562721626964
+            ],
+            [
+              -0.3488445324050417,
+              39.315944943390484
+            ]
+          ]
+        ]
+      }
+    }
+  ]
+}

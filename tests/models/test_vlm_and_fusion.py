@@ -34,9 +34,6 @@ def test_general_rs_vlm_inference():
 
 def test_optical_sar_fusion_inference():
     adapter = model_registry.get_adapter("satquery_optical_sar_fusion")
-    # Synthetic optical (3-band) and SAR (2-band) arrays
-    opt_arr = np.random.randint(0, 255, (64, 64, 3), dtype=np.uint8)
-    sar_arr = np.random.rand(64, 64, 2).astype(np.float32)
     opt_feat = np.random.randn(1, 768).astype(np.float32)
     sar_feat = np.random.randn(1, 768).astype(np.float32)
 
@@ -46,6 +43,11 @@ def test_optical_sar_fusion_inference():
     })
     assert result.model_name in ("satquery_optical_sar_fusion", "OpticalSARFusionModel")
     assert result.task == "optical_sar_analysis"
-    assert "surface_roughness" in result.metadata
-    assert "builtup_index" in result.metadata
-    assert result.confidence is not None
+    assert result.status == "NOT_CONFIGURED"
+    assert result.metadata.get("status") == "NOT_CONFIGURED"
+    assert result.confidence is None
+    assert result.metadata.get("prediction") is None
+    assert "NOT_CONFIGURED" in result.answer
+    assert "%" not in result.answer
+    assert "reason" in result.metadata
+    assert len(result.metadata["reason"]) > 0
