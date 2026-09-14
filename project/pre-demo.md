@@ -6,6 +6,26 @@ Status legend: `[ ]` not started · `[~]` in progress · `[x]` done · `[!]` blo
 
 **Baseline measured 2026-09-07**, not quoted from docs. Every number below was run on this machine.
 
+## Progress log 2026-09-14
+
+Measured tonight; sections below keep their original 2026-09-07 text. Details and numbers:
+`qna.md` Q-007 … Q-011. Owners for what is left: `split-ushnik-ayushman.md`.
+
+| Item | Status | Evidence |
+|---|---|---|
+| §1.3 ChangeFormer inference | `[x]` | LEVIR-CD test (2,048 pairs) IoU **0.7385**, F1 **0.8496** — `dee8e53`, Q-007 |
+| Change detection crashed with other models on the GPU | `[x]` | OOM recovery; both change queries complete in the all-queries run — `31dca84`, Q-010 |
+| Two agents compare confidence / backtrack / re-evaluate | `[x]` | VRSBench 300+300: present R@0.5 38.7% → 40.7%, absent returning a box 64.7% → 28.0% — `9c7caf6`, Q-008/Q-009 |
+| Absent objects "found" in video | `[x]` | "find the airplane" on road footage: 3 events → 0; one real car event lost — Q-008 |
+| GeoTIFF georeferencing | `[x]` | UTM GeoTIFF reads EPSG:32614 + transform; masks and GeoJSON georeferenced — `5d40ffe`, Q-011 |
+| GeoJSON area-of-interest input | `[x]` | HTTP: in-AOI change 14,101 px = independent count, 3,525.25 m² exact — `5d40ffe`, Q-011 |
+| ChangeFormer ⇄ CDVQA adjudication | `[ ]` | adjudicator still unwired; Ushnik |
+| §1.1 Optical–SAR untrained head | `[ ]` | still emits "Permanently irrigated land (52.5%)" — do not demo; Ayushman |
+| Routing: caption / NDVI | `[ ]` | "describe this image" → VQA; "compute NDVI" → "No."; Ushnik |
+| §1.2 RS adaptation evidence | `[ ]` | Ayushman (adapter + score), Ushnik (wiring) |
+
+Test suite: **180 passed, 0 failed** (was 132 at the 2026-09-07 baseline).
+
 ---
 
 ## 0. Verified baseline

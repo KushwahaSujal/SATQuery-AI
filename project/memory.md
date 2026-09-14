@@ -1,7 +1,54 @@
 # Memory — Live Project State
 
-**Updated:** 2026-09-04 (Session 2)
+**Updated:** 2026-09-14 (night before the demo)
 **Read this first at the start of every session. Update it at the end of every session.**
+
+> **§0 below is the current state.** Sections 1–6 describe the project as of 2026-09-04 and are kept as
+> the record; where they disagree with §0 or with `pre-demo.md`, those win.
+
+---
+
+## 0. Current state — 2026-09-14
+
+| | |
+|---|---|
+| Branch | `refactor/s0-remove-dead-layers` → pushed to `origin` (`github.com/KushwahaSujal/SATQuery-AI`) |
+| Tests | `pytest -q` → **180 passed, 0 failed** |
+| GPU | RTX 3070 8 GB — models are released and reloaded on out-of-memory (Q-010) |
+| Measured status | [`pre-demo.md`](pre-demo.md) → "Progress log 2026-09-14" |
+| Change record | [`qna.md`](qna.md) Q-007 … Q-011 |
+| Who does what next | [`split-ushnik-ayushman.md`](split-ushnik-ayushman.md) |
+
+**Done 2026-09-14** (commits on the branch, oldest first)
+- `dee8e53` ChangeFormer fixed: Ayushman's epoch-20 checkpoint on vendored upstream architecture.
+  LEVIR-CD test IoU 0.019 → **0.7385** (his report 0.7386). Q-007.
+- `31dca84` GPU out-of-memory recovery: release resident models, retry; ChangeFormer falls back to
+  windows only if still needed. Q-010.
+- `9c7caf6` Two-agent detection: Grounding DINO + reasoner propose, RemoteCLIP verifies; backtracking
+  and relaxed re-evaluation for category queries, DISPUTED labels for attribute queries, verified-only
+  video events. VRSBench present R@0.5 38.7% → **40.7%**; absent-object queries returning a box
+  64.7% → **28.0%**. Q-008, Q-009.
+- `5d40ffe` GeoTIFF georeferencing without rasterio; GeoJSON area-of-interest input
+  (`POST /api/upload/aoi` or inline `aoi_geojson`). AOI change count and area exact end to end. Q-011.
+- `cd4ef93` Tonight's plan marked done ([`plan-2026-09-14-agent-parity-geo.md`](plan-2026-09-14-agent-parity-geo.md)).
+
+**Still open — owners in `split-ushnik-ayushman.md`**
+- ChangeFormer ⇄ CDVQA adjudication. `EvidenceAdjudicator` is still called by nothing, and CDVQA's
+  "60–70% change" can contradict ChangeFormer's ~4.6% unflagged. **Ushnik.**
+- Optical–SAR fusion still emits output from an untrained head — **do not demo**; return
+  NOT_CONFIGURED tonight, rule-based fusion after. **Ayushman.**
+- Routing: "describe this image" goes to VQA; "compute NDVI" gets "No." **Ushnik.**
+- RS adaptation evidence (BigEarthNet) — mandatory req #1. **Ayushman**, wired by Ushnik.
+- Image restoration agents + confidence critique agent + learned SR — design agreed in session,
+  post-demo.
+
+**Known weaknesses to state before anyone asks**
+- The verifier drops a real close-up white car at 4.8 s in `real_aerial_footage.mp4` (reads it as
+  building/ship).
+- On `GR_DINO_TEST/05945_0000.png`, "largest building" and "white car bottom left" return the right box
+  labelled DISPUTED (edge-padded crops).
+- ChangeFormer detects **building** change only; out-of-domain accuracy NOT MEASURED.
+- Close Chrome before the demo: it held 333 MB of GPU memory.
 
 ---
 
@@ -229,3 +276,18 @@ the documents follow the source and flag the divergence.
 mandatory requirements — remote-sensing adaptation and optical-SAR analysis — are currently
 satisfied by a generic model and a randomly-initialised network respectively. Fixing those two
 matters more than any new feature.
+
+### Session — 2026-09-14 · ChangeFormer, two-agent detection, GeoTIFF/AOI
+Verified Ayushman's ChangeFormer package: the two zips were byte-identical, the parameter count
+matched, and the reports were internally consistent. The in-repo network was the bug, not the
+weights: it loaded strict and computed wrong. Vendored the upstream network; reproduced his test
+score through the production adapter; produced mentor pass/fail panels (`results/evaluations/mentor/`).
+
+Audited every demo query type live and found: change detection crashing on GPU memory, no second
+agent, absent objects "found", GeoTIFF georeferencing dropped, no GeoJSON input. Built and measured
+fixes for all of them; every rule was chosen on cached VRSBench runs before it was wired in, and the
+implementation was checked against the simulation (80/80). Numbers in `qna.md` Q-007 … Q-011.
+
+Brainstormed (not built) the image-restoration subsystem: detectors, a fused single-pass matrix
+correction, salt-and-pepper for stills and video, and a confidence critique agent; upscaling is
+post-demo with learned SR. Wrote the Ushnik/Ayushman split.
