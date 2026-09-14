@@ -53,11 +53,11 @@ class ModelRegistry:
         },
         "changeformer": {
             "family": "ChangeFormerV6",
-            "source": "checkpoints/changeformer/satquery_changeformer_best.pt",
+            "source": "checkpoints/changeformer/changeformer_v6_levir_levircd256_epoch20_best.pt",
             "license": "MIT",
             "capabilities": ["bi_temporal_change_detection", "probability_mapping"],
-            "input_requirements": {"image_a": "RGB (512, 512, 3)", "image_b": "RGB (512, 512, 3)"},
-            "output_schema": {"change_mask": "ndarray (512, 512) uint8", "probability_map": "ndarray (512, 512) float32"},
+            "input_requirements": {"image_a": "RGB (H, W, 3), co-registered, native resolution", "image_b": "RGB (H, W, 3), same size as image_a"},
+            "output_schema": {"change_mask": "ndarray (H, W) uint8", "probability_map": "ndarray (H, W) float32"},
             "device_requirements": {"min_vram_gb": 4.0, "preferred": "cuda"},
         },
         "cdvqa": {

@@ -66,7 +66,13 @@ artifacts. That should become the headline adaptation story rather than an after
 Minimum viable fix: wire BigEarthNet into a real capability + DAG branch so the prescribed dataset
 is demonstrably used, and lead the narrative with CDVQA. Estimate: **1–2 days.**
 
-### 1.3 `[ ]` ChangeFormer inference is broken · **mandatory req #4 (change map)**
+### 1.3 `[x]` ChangeFormer inference is broken · **mandatory req #4 (change map)**
+
+> **Closed 2026-09-14 — `qna.md` Q-007.** Ayushman's epoch-20 checkpoint on vendored upstream
+> `ChangeFormerV6`, `[-1,1]`, native resolution, threshold 0.435. LEVIR-CD test (2,048 pairs):
+> **IoU 0.7385, F1 0.8496**, matching his report. Identical pair → 0 changed px. Caveat: building
+> change only; out-of-domain NOT MEASURED. The history below is kept as it was written.
+
 Change *description* works via CDVQA; the spatial change **map** does not.
 
 Measured today, 100 LEVIR-CD test pairs at 256px `[-1,1]`:
@@ -731,15 +737,16 @@ fall outside them.
 The quiz gate was retired 2026-09-11 — **neither of these is blocked.** Both are large enough to
 earn a transcript entry, written as the change is made, not before it.
 
-- `[ ]` **§1.3 ChangeFormer** — vendor upstream `wgcban/ChangeFormer`, repoint the adapter,
-  switch preprocessing to 256/`[-1,1]`, retire `network.py`. ~5 files.
+- `[x]` **§1.3 ChangeFormer** — recorded as Q-007 (2026-09-14). Native resolution rather than 256
+  turned out better (measured); 5 files + 1 test file.
 - `[ ]` **§1.4 model-registry verification** — wire `mark_verified()` as above.
 
 ---
 
 ## 5. Waiting on Ayushman
 
-1. Which validation set produced ChangeFormer IoU 0.687 — blocks closing §1.3
+1. ~~Which validation set produced ChangeFormer IoU 0.687~~ — moot: his epoch-20 package ships its
+   own validation/test reports, reproduced here (Q-007)
 2. The real training notebook (`handoff/changeformer/TRAINING_SCRIPT.py` is a reconstruction)
 3. A working `pip freeze` from the Kaggle/Colab environment — he sent version *ranges* that
    contradict our working install (transformers 5.16.1, torch 2.14.0, 117/0 passing)

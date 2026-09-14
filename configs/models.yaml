@@ -76,10 +76,12 @@ models:
     input_count: 2
     input_relationship: "temporal"
     enabled: true
-    checkpoint_path: "checkpoints/changeformer/satquery_changeformer_best.pt"
+    checkpoint_path: "checkpoints/changeformer/changeformer_v6_levir_levircd256_epoch20_best.pt"
+    # Frozen on LEVIR-CD validation, never tuned on test (reports/frozen_validation_threshold.json).
+    threshold: 0.435
+    # Scenes up to this side run in one native pass; larger ones are windowed at this size.
+    max_native_side: 1024
     device: "auto"
-    input_size: 512
-    threshold: 0.5
 
   cdvqa:
     name: "CDVQA"

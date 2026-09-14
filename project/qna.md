@@ -47,6 +47,7 @@ and the commit it describes. Extracted, never re-litigated; anything missing is 
 | [Q-004](#q-004--colour-reaches-the-detector-prompt) | Colour reaches the detector prompt; verb stoplist; overlay colour fidelity | 2026-09-07 | Recorded |
 | [Q-005](#q-005--absent-colours-report-not_applicable) | Absent colours report NOT_APPLICABLE (colour gate) | 2026-09-07 | Recorded |
 | [Q-006](#q-006--retiring-the-approval-gate-qnamd-becomes-a-transcript) | Retiring the approval gate; `qna.md` becomes a transcript | 2026-09-11 | Recorded |
+| [Q-007](#q-007--changeformer-ayushmans-epoch-20-checkpoint-on-vendored-upstream-architecture) | ChangeFormer — Ayushman's epoch-20 checkpoint on vendored upstream architecture | 2026-09-14 | Recorded |
 
 ---
 
@@ -522,3 +523,119 @@ edited after the fact. Test coverage now does the merge-gating, which is a bette
 
 The caveat to volunteer: this only works if entries actually get written at the time. A transcript
 nobody keeps is worse than a gate nobody passes.
+
+---
+
+## Q-007 · ChangeFormer — Ayushman's epoch-20 checkpoint on vendored upstream architecture
+
+**Recorded** 2026-09-14. Uncommitted at time of recording — working tree on
+`refactor/s0-remove-dead-layers` atop `977587d`. Closes `pre-demo.md` §1.3; resolves the finding in
+commit `9620919`.
+
+**Scope:** 5 files edited, 1 test file added · **Result:** LEVIR-CD test IoU **0.019 → 0.7385**
+(all 2,048 pairs); suite 132 → **141 passed, 0 failed**.
+
+### 1. Mechanism — what runs now, step by step?
+
+1. **Checkpoint.** `checkpoints/changeformer/changeformer_v6_levir_levircd256_epoch20_best.pt`
+   (492,691,833 bytes, sha256 `1d756d33…c63023f4b`), from Ayushman's
+   `SatQuery_ChangeFormer_Package.zip`. The two zips he sent are byte-identical (all 11 files
+   sha256-matched). Upstream trainer layout: `model_G_state_dict`, 373 tensors; 41,029,259 elements
+   − 2,585 BatchNorm buffer elements = **41,026,674 parameters**, exactly his claim.
+2. **Network.** `ml/adapters/changeformer/network.py` is replaced by the 15 definitions in
+   `ChangeFormerV6`'s dependency closure, extracted by AST from `wgcban/ChangeFormer` @ `afd1b7ed`
+   (MIT). Copied verbatim; the only change is `timm.models.layers` → `timm.layers`.
+3. **Preprocessing** (`adapter.py::preprocess_changeformer_input`): RGB → [0,1] →
+   `(x − 0.5) / 0.5`, the upstream `datasets/data_utils.py:18` contract. No resize.
+4. **Forward** (`adapter.py::_forward_logits`): whole scene in one pass if both sides ≤
+   `max_native_side` (1024, `configs/models.yaml`), else non-overlapping windows of that size.
+   Each window is reflect-padded to a multiple of 32 and cropped back. Takes `outputs[-1]`, the
+   full-resolution map of the 5 returned.
+5. **Threshold** 0.435 from `configs/models.yaml`, frozen on the LEVIR-CD validation split per his
+   `reports/frozen_validation_threshold.json`. Mask post-processing, quality flags and the
+   `ModelResult` shape are unchanged, so downstream tools needed no edits.
+
+### 2. Rationale — why vendor upstream instead of fixing the in-repo network, and why native resolution?
+
+**Vendor, not fix:** the in-repo reimplementation loads all 373 tensors `strict=True` yet computes
+something else. Head counts, for example, are `[1,2,5,8]` there vs `[1,2,4,8]` upstream, and head
+count changes no tensor shape. Hunting for every such divergence would still leave a hand-written
+network. Vendoring the exact source gives provable equivalence: max abs logit difference vs upstream
+is **0.0 at all five output scales** on random input. Same checkpoint, 200 LEVIR-CD test pairs,
+threshold 0.435 (`results/evaluations/changeformer_ab_upstream_vs_inrepo_levir200_20260914.json`):
+
+| network / normalisation | IoU | F1 | AUC | identical-pair changed |
+|---|---|---|---|---|
+| upstream / [-1,1] | **0.7260** | **0.8413** | **0.9905** | **0.0%** |
+| upstream / ImageNet | 0.3391 | 0.5065 | 0.9404 | ~0% |
+| in-repo / [-1,1] | 0.0206 | 0.0403 | 0.6968 | 2.3% |
+| in-repo / ImageNet *(old prod contract)* | 0.0189 | 0.0371 | 0.5093 | 3.2% |
+
+**The checkpoint also mattered.** On 2026-09-07, upstream code with the *old* epoch-10 checkpoint
+scored IoU 0.0737 (`pre-demo.md` §1.3). Neither the new weights alone nor the vendored network alone
+would have fixed this.
+
+**Native, not tiled or resized:** his contract says 256×256, but LEVIR-CD-256 is 1024 scenes cut
+4×4, and the network has no positional embeddings. Measured on his 1024 scenes
+(`…scale_strategy_levir1024_20260914.json`), raw-mask IoU:
+
+| strategy | test_100 | test_101 | test_105 |
+|---|---|---|---|
+| native 1024 | **0.8075** | **0.6300** | **0.7913** |
+| 256 tiles | 0.7883 | 0.5957 | 0.7671 |
+| resize to 256 | 0.0891 | 0.0000 | 0.0000 |
+
+Native wins on all three. Windowing is kept above 1024 because stage-4 attention (sr_ratio 1)
+grows quadratically with area.
+
+### 3. Blast radius — what breaks if this is wrong, and what does it not cover?
+
+- **It is a building-change detector.** LEVIR-CD labels only building construction and demolition.
+  On test_101 the largest false-positive cluster is bare construction ground: real change, but not a
+  building. Claiming general land-cover change on stage would overstate it.
+- **Out-of-domain accuracy is NOT MEASURED.** Every number here is LEVIR-CD: 0.5 m/px Google Earth
+  RGB over Texas. Sentinel-2 at 10 m, multispectral, or seasonal pairs are untested.
+- **Confidence is uncalibrated.** `ModelResult.confidence` is the mean change-probability over
+  predicted pixels (0.875 on test_100). It comes from real logits, but it is not a calibrated
+  probability of correctness.
+- **Windowed path is less accurate than native:** 256 windows cost 0.02–0.03 IoU above. 1024 windows
+  on >1024 scenes have seams and are NOT MEASURED against labels.
+- **Precision/recall differ slightly from his report** with the adapter's morphological filter:
+  P 0.8656 / R 0.8341 vs his 0.8608 / 0.8387, same IoU. Attributed to the filter, not isolated.
+- Files: `network.py` (replaced), `adapter.py`, `config.py` (`ModelSpec.max_native_side`),
+  `configs/models.yaml`, `ml/registry.py`. The old epoch-10 checkpoint stays on disk, unreferenced.
+
+A latent bug found on the way: `models.yaml` already held `threshold: 0.5` and `input_size: 512`
+*below* the new keys, and YAML keeps the last duplicate. The first comparison run silently used 0.5;
+`AgentState` metadata exposed it. Both stale keys are removed.
+
+### 4. Verification — what proves it?
+
+- **Full LEVIR-CD test split through the production adapter:**
+  `python scripts/evaluate_changeformer_levircd.py --limit 2048 --threshold 0.435` → IoU **0.7385**,
+  F1 **0.8496**, 0.039 s/pair (`results/evaluations/changeformer_levircd_20260914T161054Z.json`).
+  His report: IoU 0.7386, F1 0.8496.
+- **His scenes, old vs new production path** (`…old_vs_new_levir1024_20260914.json`): IoU 0.1061 →
+  0.8086, 0.0433 → 0.6289, 0.0546 → 0.7909 (filtered mask). The old path flagged ~68% of every scene
+  as changed; ground truth is 5–11%.
+- **Agent pipeline end-to-end** on test_100: `temporal_change_detection`, 6/6 tools succeed, 118,997
+  px changed vs 118,843 ground truth, overlay + 5 masks + GeoJSON + report produced.
+- **`tests/models/test_changeformer_accuracy.py`**, 9 tests: threshold is 0.435; IoU floor on 64
+  LEVIR pairs; per-scene floors; identical pair → 0 changed px; windowed path; non-multiple-of-32
+  sizes; mismatched sizes rejected. **Run against the old code with `git stash`: 8 of 9 fail.** The
+  one that passes checks only shapes and finite values, the kind of test that let the broken
+  network through before.
+- `pytest -q` → 141 passed, 0 failed.
+
+### 5. Defence — a reviewer asks: "it loaded strict=True before too. Why believe it now?"
+
+"Because we stopped treating loading as evidence. Strict loading proves the parameter *names and
+shapes* line up. It says nothing about the computation, and our old network proved that by loading
+cleanly and scoring 0.019 IoU. What we trust now is three measurements. First, the vendored network
+matches upstream's logits bit-for-bit. Second, the production adapter reproduces the checkpoint
+author's held-out test score on all 2,048 LEVIR-CD pairs to four decimal places. Third, an identical
+before/after pair produces exactly zero changed pixels. And we added tests that assert accuracy
+rather than shapes, and confirmed they fail on the old code."
+
+The caveat to volunteer: this is a building-change model, measured only on LEVIR-CD. Say that
+before anyone asks what it does on Sentinel-2.

@@ -145,6 +145,7 @@ class ModelSpec(BaseModel):
     text_threshold: Optional[float] = None
     threshold: Optional[float] = None
     input_size: Optional[int] = None
+    max_native_side: Optional[int] = None
     model_id: Optional[str] = None
 
 
