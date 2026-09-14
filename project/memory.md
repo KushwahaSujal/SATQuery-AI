@@ -1,6 +1,6 @@
 # Memory — Live Project State
 
-**Updated:** 2026-09-14 (night before the demo)
+**Updated:** 2026-09-15 (demo day, early hours)
 **Read this first at the start of every session. Update it at the end of every session.**
 
 > **§0 below is the current state.** Sections 1–6 describe the project as of 2026-09-04 and are kept as
@@ -13,7 +13,7 @@
 | | |
 |---|---|
 | Branch | `refactor/s0-remove-dead-layers` → pushed to `origin` (`github.com/KushwahaSujal/SATQuery-AI`) |
-| Tests | `pytest -q` → **180 passed, 0 failed** |
+| Tests | `pytest -q` → **215 passed, 0 failed** |
 | GPU | RTX 3070 8 GB — models are released and reloaded on out-of-memory (Q-010) |
 | Measured status | [`pre-demo.md`](pre-demo.md) → "Progress log 2026-09-14" |
 | Change record | [`qna.md`](qna.md) Q-007 … Q-011 |
@@ -32,15 +32,20 @@
   (`POST /api/upload/aoi` or inline `aoi_geojson`). AOI change count and area exact end to end. Q-011.
 - `cd4ef93` Tonight's plan marked done ([`plan-2026-09-14-agent-parity-geo.md`](plan-2026-09-14-agent-parity-geo.md)).
 
+**Done 2026-09-15 (Ushnik's pre-demo items)**
+- `23d105d` ChangeFormer ⇄ CDVQA adjudication. Measured: CDVQA says "yes, changes" for **53.9% of identical**
+  LEVIR pairs, so a counterfactual identity probe sets uninformative answers aside. Q-012.
+- `ca6f893` Routing: "describe this image" → caption; NDVI/SAR → explicit refusal naming missing bands. Q-013.
+- `45e745e` HTTP demo rehearsal 10/10 COMPLETED; found a silent 512-px window fallback (Q-011's AOI 14,101 px
+  was windowed; native is 13,902), and the inference mode is now reported. Q-014.
+
 **Still open — owners in `split-ushnik-ayushman.md`**
-- ChangeFormer ⇄ CDVQA adjudication. `EvidenceAdjudicator` is still called by nothing, and CDVQA's
-  "60–70% change" can contradict ChangeFormer's ~4.6% unflagged. **Ushnik.**
-- Optical–SAR fusion still emits output from an untrained head — **do not demo**; return
-  NOT_CONFIGURED tonight, rule-based fusion after. **Ayushman.**
-- Routing: "describe this image" goes to VQA; "compute NDVI" gets "No." **Ushnik.**
+- Optical–SAR fusion still emits output from an untrained head — **do not demo**; return NOT_CONFIGURED,
+  then rule-based fusion. **Ayushman.**
+- Real georeferenced demo GeoTIFF pair + AOI + expected answers. **Ayushman**; rehearse again with them.
 - RS adaptation evidence (BigEarthNet) — mandatory req #1. **Ayushman**, wired by Ushnik.
-- Image restoration agents + confidence critique agent + learned SR — design agreed in session,
-  post-demo.
+- Captions are one or two words (BLIP-VQA prompted as a captioner).
+- Image restoration agents + confidence critique agent + learned SR — post-demo.
 
 **Known weaknesses to state before anyone asks**
 - The verifier drops a real close-up white car at 4.8 s in `real_aerial_footage.mp4` (reads it as
@@ -49,6 +54,8 @@
   labelled DISPUTED (edge-padded crops).
 - ChangeFormer detects **building** change only; out-of-domain accuracy NOT MEASURED.
 - Close Chrome before the demo: it held 333 MB of GPU memory.
+- Don't demo VRSBench `05865` "find the vehicle": wrong box, labelled verified (Q-008 §3, Q-014 §3).
+- On LEVIR-like imagery CDVQA is at chance; change answers come from ChangeFormer (Q-012).
 
 ---
 
