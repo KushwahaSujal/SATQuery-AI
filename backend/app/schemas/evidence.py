@@ -70,7 +70,8 @@ class ConflictReport(BaseModel):
 class AdjudicationResult(BaseModel):
     adjudicated_answer: str
     adjudication_status: str = "NO_CONFLICT"  # "RESOLVED" | "AMBIGUOUS" | "CONFLICT" | "NO_CONFLICT"
-    confidence: float = Field(default=0.0, ge=0.0, le=1.0)
+    # None when the models conflict: there is no single calibrated confidence for contradictory evidence.
+    confidence: Optional[float] = Field(default=None, ge=0.0, le=1.0)
     contributing_evidence: List[Dict[str, Any]] = Field(default_factory=list)
     conflict_details: Optional[ConflictReport] = None
     applied_rule: str = "PASS_THROUGH"

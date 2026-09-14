@@ -70,3 +70,23 @@ agent_verification:
     - [water, river, lake, pond]
     - [helicopter, helicopters]
     - [bridge, bridges]
+
+# ChangeFormer vs CDVQA adjudication (project/qna.md Q-012).
+change_adjudication:
+  # ChangeFormer building-change ratio treated as "buildings changed". On the 1,113 no-change LEVIR-CD test
+  # pairs, 2.1% of predictions exceed 1.0% (a false claim); 0.1% is exceeded by 5.9%.
+  building_change_present_ratio: 0.01
+  # Below this, "no building change". 1.7% of real-change LEVIR-CD pairs have a true ratio below 0.1%.
+  building_change_absent_ratio: 0.001
+  # ChangeFormer precision on the full LEVIR-CD test split through the production adapter (Q-007).
+  changeformer_precision: 0.8656
+  # CDVQA accuracy per question type, SECOND-CDVQA test split (2,000 samples), docs/models/CDVQA.md §18.
+  cdvqa_accuracy_by_question_type:
+    change_or_not: 0.8357
+    increase_or_not: 0.7727
+    decrease_or_not: 0.7554
+    change_ratio_types: 0.7000
+    change_to_what: 0.6054
+    largest_change: 0.4694
+    change_ratio: 0.3776
+    smallest_change: 0.3129

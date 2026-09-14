@@ -50,6 +50,7 @@ and the commit it describes. Extracted, never re-litigated; anything missing is 
 | [Q-007](#q-007--changeformer-ayushmans-epoch-20-checkpoint-on-vendored-upstream-architecture) | ChangeFormer — Ayushman's epoch-20 checkpoint on vendored upstream architecture | 2026-09-14 | Recorded |
 | [Q-010](#q-010--gpu-out-of-memory-recovery-for-resident-models) | GPU out-of-memory recovery for resident models | 2026-09-14 | Recorded |
 | [Q-011](#q-011--geotiff-georeferencing-without-rasterio-and-geojson-area-of-interest-input) | GeoTIFF georeferencing without rasterio; GeoJSON area-of-interest input | 2026-09-14 | Recorded |
+| [Q-012](#q-012--change-detection-two-agents-changeformer-vs-cdvqa-adjudication) | Change detection two agents: ChangeFormer vs CDVQA adjudication | 2026-09-14 | Recorded |
 | [Q-008](#q-008--two-agent-detection-verification-backtracking-and-re-evaluation) | Two-agent detection: verification, backtracking and re-evaluation (stills + video) | 2026-09-14 | Recorded · superseded in part by Q-009 |
 | [Q-009](#q-009--two-agent-detection-attribute-queries-are-labelled-not-backtracked) | Two-agent detection: attribute queries are labelled, not backtracked (supersedes Q-008 rule) | 2026-09-14 | Recorded |
 
@@ -1047,3 +1048,122 @@ ten million."
 The caveat to volunteer: this is measured on RGB LEVIR scenes we georeferenced ourselves, to test the
 geometry. Real multispectral GeoTIFFs will read and clip correctly, but which three bands feed the
 model, and how accurate it is on them, is not measured.
+
+---
+
+## Q-012 · Change detection two agents: ChangeFormer vs CDVQA adjudication
+
+**Recorded** 2026-09-14, atop `3043c72`. Ushnik's item 1 in `split-ushnik-ayushman.md`.
+
+**Headline finding, measured before building:** on LEVIR-CD imagery, **CDVQA's change answers carry
+essentially no information**. It says "yes, changes are observed" for 57.8% of pairs with building
+change, 59.1% without, and **53.9% of identical image pairs**. The adjudicator is built around that fact
+rather than around the assumption that two models are two independent good witnesses.
+
+### 1. Mechanism
+
+`backend/app/evidence/adjudicator.py::EvidenceAdjudicator.adjudicate_change_vqa`, called from
+`run_change_vqa` after CDVQA answers. It is deterministic; rules are applied in order.
+
+1. **Identical inputs** (`np.array_equal` on the two rasters) → `INPUTS_IDENTICAL`, the answer is "No
+   change". A conflict is recorded if either model claimed change.
+2. **Counterfactual probe:** CDVQA is asked the same question with the first image twice. If it returns
+   the same change-claiming answer (anything except `no`/`0`), its answer does not depend on what changed
+   → `CDVQA_UNINFORMATIVE`; the answer comes from ChangeFormer only.
+3. **Answer-type check:** the question is classified into SECOND-CDVQA's types (change_or_not,
+   increase/decrease_or_not, change_ratio(_types), change_to_what, largest/smallest_change) and must get
+   the matching answer type (yes/no · ratio bucket · land-cover class). Otherwise
+   `CDVQA_ANSWER_TYPE_MISMATCH`, answered from ChangeFormer where a building mask can answer it
+   ("did it change?"). For increase/decrease it gives no answer, because a building mask has no direction.
+4. **Comparable claims only.** ChangeFormer measures *building* change (LEVIR-CD); CDVQA *all*
+   land-cover change (SECOND-CDVQA). Building change is a subset of all change, so:
+
+   | CDVQA says | ChangeFormer building change | verdict |
+   |---|---|---|
+   | no | ≥ 1.0% | CONFLICT |
+   | yes, general question | < 0.1% | CONSISTENT_WITH_CAVEAT (change is not buildings) |
+   | yes, building question | < 0.1% | CONFLICT |
+   | ratio bucket [lo, hi] | ratio × precision 0.8656 > hi (for "0%": ≥ 1.0%) | CONFLICT |
+   | ratio bucket, building question | ratio outside bucket | CONFLICT |
+   | "buildings" (class) | < 0.1% | CONFLICT |
+   | other class | — | NOT_COMPARABLE |
+   | otherwise | — | CONSISTENT |
+
+- **Confidence:** CDVQA's own softmax score when CONSISTENT / CONSISTENT_WITH_CAVEAT / NOT_COMPARABLE;
+  `None` for every other status. `AgentState.confidence_final` stops the controller from overwriting it.
+- **Output:** `evidence.metadata.change_adjudication` — both models' outputs, question type, probe
+  answer, thresholds, CDVQA's measured accuracy for that question type, rule, conflict details. Plus a
+  trace step. Disagreements add a warning and set `quality_status = REVIEW_REQUIRED`.
+- **Config:** `configs/app.yaml` `change_adjudication`.
+
+### 2. Rationale — what was measured, and why the design changed twice
+
+- **The old adjudicator was never called**, returned constant confidences (0.88, 0.35, `or 0.5`), and
+  read `masks[0]["changed_pixels"]` / `["change_ratio"]`, keys ChangeFormer never produces. Its three
+  tests asserted those invented values. It was replaced, not patched.
+- **Thresholds** from LEVIR-CD-256 test, 1,113 pairs with no building change (`scratchpad/perpair.json`,
+  production adapter): predicted ratio exceeds 1.0% on **2.1%** of them and 0.1% on 5.9%; 1.7% of
+  real-change pairs have a true ratio below 0.1%. A conflict claim uses the stricter 1.0%.
+- **CDVQA on LEVIR-CD** (`results/evaluations/cdvqa_on_levircd_test_20260914.json`, all 2,048 pairs):
+
+  | question → answers | yes-rate / distribution |
+  |---|---|
+  | "are there any changes?" — pairs with building change (935) | yes 57.8% |
+  | same — pairs with no building change (1,113) | yes 59.1% |
+  | same — **identical pairs** (1,113) | **yes 53.9%** |
+  | "what percentage of the area changed?" — all | "10–20%" 82.3% (1,686 / 2,048) |
+
+- **Probe measurement** (`cdvqa_counterfactual_probe_levircd_20260914.json`): it flags **45.95%** of yes/no
+  answers and **74.80%** of ratio answers as identical to the no-change answer. Yes/no agreement with
+  building ground truth: 48.58% overall, 44.95% on flagged, **51.67% on the 1,107 kept**. The probe
+  removes the least informative answers, but what remains is still near chance on this imagery.
+- **First design iteration (before the probe),** run live on LEVIR 1024 scenes 100/101 and an identical
+  pair: identical pairs came out "AGREE" (CDVQA "40–50%" vs 0 building px is not refuted by the subset
+  rule). That, plus the measurement above, led to rules 1–2, and to renaming AGREE → **CONSISTENT**
+  ("not refuted", not "confirmed").
+- **Confidence overwrite, found live:** the controller averaged every model's confidence after the tools
+  ran, mixing ChangeFormer's mean pixel probability with CDVQA's softmax. TYPE_MISMATCH showed 0.5163
+  instead of None. The same averaging is why single-image grounding has always returned
+  `confidence=None` (no model results to average). Grounding is deliberately **not** changed here.
+
+### 3. Blast radius
+
+- **On LEVIR-like imagery, nearly every change answer now comes from ChangeFormer alone.** Live, 9 of 12
+  queries were UNINFORMATIVE or INPUTS_IDENTICAL; the 3 CONSISTENT ones (scene 101) passed the probe
+  but, per the measurement, CDVQA is still ~chance there. **Do not present CDVQA as a second witness on
+  this imagery.** The honest demo claim is the opposite: the system detects that CDVQA isn't answering.
+- **CDVQA's measured accuracy is on SECOND-CDVQA only** (docs/models/CDVQA.md §18; the raw metrics JSON
+  is not on this machine). Answers say so explicitly.
+- **No ground truth for the adjudicator's own accuracy.** LEVIR-CD labels only buildings and has no
+  questions; SECOND-CDVQA is not on this machine. **Adjudication accuracy is NOT MEASURED.**
+- The probe costs one extra CDVQA forward pass per question (latency not measured separately).
+- The question classifier is keyword rules. Phrasings outside them classify as `unknown`, which skips
+  the type check (rules 1, 2 and 4 still apply).
+- `AdjudicationResult.confidence` is now `Optional`; its only consumer is this module.
+
+### 4. Verification
+
+- `tests/unit/test_adjudicator.py`, 26 tests. Nine question classifications; answer types; the audit
+  case (ratio answer to "has any new building been constructed?"); no direction guess for
+  increase/decrease; each CONFLICT rule; the non-building caveat; a small false-positive area not
+  triggering conflict; the 0% bucket needing ≥1.0%; the AOI pixel count as denominator; the measured
+  accuracy note; identical inputs; probe flags; probe passes; probe on ratio.
+- Live through the agent controller (`results/evaluations/change_adjudication_live_levir1024_20260914.json`),
+  4 questions × {scene 100, scene 101, identical pair}. Identical pair: 4/4 `INPUTS_IDENTICAL`, confidence
+  None. Scene 100: 4/4 `CDVQA_UNINFORMATIVE`, e.g. "Yes — building change is detected … 11.35% …
+  CDVQA's answer '60% to 70% change.' was set aside". Scene 101: 1 UNINFORMATIVE, 3 CONSISTENT with
+  CDVQA's own confidence (0.531 / 0.228 / 0.170).
+- `pytest -q` → **203 passed, 0 failed**.
+
+### 5. Defence — "You have two change models. Why does the answer only use one?"
+
+"Because we measured whether the second one was answering the question, and on this imagery it isn't.
+CDVQA says 'yes, changes are observed' for more than half of image pairs that are literally the same
+image twice. So before trusting any CDVQA answer, the system asks it again with nothing changed. If it
+gives the same answer, that answer can't be about the change, and we say so and answer from ChangeFormer,
+whose building-change accuracy we did measure: IoU 0.74. When CDVQA's answer does pass that check, we
+only call it 'consistent', because building change can bound total change from below but can't confirm
+it. The point of two agents is not to average them; it's to catch the one that's wrong."
+
+The caveat to volunteer: we cannot yet measure the adjudicator's accuracy end to end. No dataset here
+has both building masks and change questions.

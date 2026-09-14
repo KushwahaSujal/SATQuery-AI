@@ -127,6 +127,14 @@ class VisualizationSettings(BaseModel):
     supported_indices: List[str] = Field(default_factory=lambda: ["NDVI", "NDWI", "NDBI"])
 
 
+class ChangeAdjudicationSettings(BaseModel):
+    """ChangeFormer (building change) vs CDVQA (land-cover change VQA) adjudication. See project/qna.md Q-012."""
+    building_change_present_ratio: float = 0.01
+    building_change_absent_ratio: float = 0.001
+    changeformer_precision: float = 0.8656
+    cdvqa_accuracy_by_question_type: Dict[str, float] = Field(default_factory=dict)
+
+
 class AgentVerificationSettings(BaseModel):
     """Second-agent (RemoteCLIP) verification of detector candidates. See project/qna.md Q-008."""
     enabled: bool = True
@@ -177,6 +185,7 @@ class Config:
         self.database = self._load_database_config()
         self.video = self._load_video_config()
         self.agent_verification = self._load_agent_verification_config()
+        self.change_adjudication = self._load_change_adjudication_config()
         self.visualization = self._load_visualization_config()
         self.models: Dict[str, ModelSpec] = self._load_models_config()
         self.workflows: Dict[str, Any] = self._load_workflows_config()
@@ -217,6 +226,10 @@ class Config:
     def _load_database_config(self) -> DatabaseSettings:
         raw = self._load_yaml("app.yaml").get("database", {})
         return DatabaseSettings(**raw) if raw else DatabaseSettings()
+
+    def _load_change_adjudication_config(self) -> ChangeAdjudicationSettings:
+        raw = self._load_yaml("app.yaml").get("change_adjudication", {})
+        return ChangeAdjudicationSettings(**raw) if raw else ChangeAdjudicationSettings()
 
     def _load_agent_verification_config(self) -> AgentVerificationSettings:
         raw = self._load_yaml("app.yaml").get("agent_verification", {})

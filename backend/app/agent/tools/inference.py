@@ -308,6 +308,37 @@ def run_change_vqa(state: AgentState) -> None:
     if "cdvqa" not in state.selected_models:
         state.selected_models.append("cdvqa")
 
+    # Second agent on the same question: ChangeFormer's building-change evidence (Q-012).
+    changeformer_res = next((m for m in state.model_results if m.task == "change_detection"), None)
+    if changeformer_res is None:
+        state.warnings.append("CDVQA answer not cross-checked: no ChangeFormer result in this run.")
+        return
+    from backend.app.evidence.adjudicator import EvidenceAdjudicator
+    inputs_identical = arr1.shape == arr2.shape and bool(np.array_equal(arr1, arr2))
+    # Counterfactual probe: the same question with no change at all (first image twice).
+    identity_res = adapter.predict({"image1": img1, "image2": img1, "query": state.query})
+    verdict = EvidenceAdjudicator.adjudicate_change_vqa(
+        state.query, changeformer_res, res, job_id=state.request_id,
+        cdvqa_identity_result=identity_res, inputs_identical=inputs_identical)
+    state.answer = verdict.adjudicated_answer
+    state.confidence = verdict.confidence
+    state.confidence_final = True
+    state.evidence.metadata["change_adjudication"] = verdict.model_dump()
+    state.add_trace(
+        step_name=f"Change adjudication: {verdict.adjudication_status}",
+        status="warning" if verdict.conflict_details and verdict.conflict_details.has_conflict else "success",
+        tool="EvidenceAdjudicator",
+        details=(f"rule={verdict.applied_rule}; question_type={verdict.provenance.get('question_type')}; "
+                 f"CDVQA '{res.metadata.get('raw_answer')}' conf={res.confidence}; "
+                 f"ChangeFormer building change ratio={verdict.contributing_evidence[0]['building_change_ratio']} "
+                 f"conf={changeformer_res.confidence}"),
+    )
+    if verdict.adjudication_status in ("CONFLICT", "CDVQA_ANSWER_TYPE_MISMATCH", "CDVQA_UNINFORMATIVE", "INPUTS_IDENTICAL") \
+            and verdict.conflict_details and verdict.conflict_details.has_conflict:
+        state.warnings.append(f"Change agents disagree ({verdict.adjudication_status}): {verdict.conflict_details.description}")
+        if state.quality_status == "PASS":
+            state.quality_status = "REVIEW_REQUIRED"
+
 
 @register_tool("run_optical_sar")
 def run_optical_sar(state: AgentState) -> None:
