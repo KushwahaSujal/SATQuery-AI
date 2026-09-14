@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
-import { getLocalJobs, clearLocalJobs, type LocalJobRecord } from "@/lib/localJobs";
+import { useState } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 
 type Filter = "ALL" | "RUNNING" | "COMPLETED" | "FAILED";
@@ -15,59 +15,47 @@ const STATUS_CONFIG: Record<string, { pill: string; dot: string; label: string }
 };
 
 const TASK_COLORS: Record<string, string> = {
-  CHANGE:           "var(--accent-text)",
-  VQA:              "var(--cyan)",
-  GROUNDING:        "var(--purple)",
-  TEMPORAL_VQA:     "var(--cyan)",
-  VISUAL_ANALYTICS: "var(--amber)",
-  VIDEO:            "var(--red)",
+  bi_temporal_change: "var(--accent-text)",
+  bi_temporal_change_vqa: "var(--cyan)",
+  single_image_vqa: "var(--cyan)",
+  single_image_grounding: "var(--purple)",
+  single_image_caption: "var(--amber)",
+  video_grounding_tracking: "var(--red)",
+  ANALYSIS: "var(--t3)",
+  CHANGE: "var(--accent-text)",
+  VQA: "var(--cyan)",
+  GROUNDING: "var(--purple)",
+  VIDEO: "var(--red)",
 };
 
 export default function JobsPage() {
-  const [jobs, setJobs] = useState<LocalJobRecord[]>([]);
   const [filter, setFilter] = useState<Filter>("ALL");
-  const [loading, setLoading] = useState<boolean>(true);
+  const queryClient = useQueryClient();
 
-  const fetchJobs = async () => {
-    setLoading(true);
-    try {
-      const live = await api.listJobs();
-      const local = getLocalJobs();
-      // Merge unique by job_id
-      const map = new Map<string, LocalJobRecord>();
-      for (const item of [...live, ...local]) {
-        const id = (item as Record<string, unknown>).job_id || (item as Record<string, unknown>).id || "";
-        if (item && id) {
-          if (!map.has(id as string)) {
-            map.set(id as string, {
-              job_id: id as string,
-              task: ((item as Record<string, unknown>).task as string) || "ANALYSIS",
-              query: ((item as Record<string, unknown>).query as string) || "Geospatial Execution Job",
-              status: ((item as Record<string, unknown>).status as string) || "COMPLETED",
-              created_at: ((item as Record<string, unknown>).created_at as string) || new Date().toISOString(),
-            });
-          }
-        }
-      }
-      setJobs(Array.from(map.values()));
-    } catch {
-      setJobs(getLocalJobs());
-    } finally {
-      setLoading(false);
-    }
-  };
+  // Fetch jobs with React Query caching
+  const { data: jobs = [], isLoading } = useQuery<{ job_id: string; task?: string; query?: string; status?: string; created_at?: string }[]>({
+    queryKey: ["jobs"],
+    queryFn: async () => {
+      const raw = await api.listJobs();
+      return raw.map((item: Record<string, unknown>) => ({
+        job_id: (item.job_id || item.id || "") as string,
+        task: (item.task as string) || "ANALYSIS",
+        query: (item.query as string) || "Geospatial query",
+        status: (item.status as string) || "COMPLETED",
+        created_at: (item.created_at as string) || new Date().toISOString(),
+      }));
+    },
+    staleTime: 60_000,      // Cache for 1 minute
+    gcTime: 5 * 60_000,     // Keep in cache for 5 minutes
+    refetchOnWindowFocus: false,
+  });
 
-  useEffect(() => {
-    fetchJobs();
-  }, []);
-
-  const handleClearHistory = async () => {
-    try {
-      await api.clearJobs();
-    } catch {}
-    clearLocalJobs();
-    setJobs([]);
-  };
+  const clearMutation = useMutation({
+    mutationFn: () => api.clearJobs(),
+    onSuccess: () => {
+      queryClient.setQueryData(["jobs"], []);
+    },
+  });
 
   const filtered = filter === "ALL" ? jobs : jobs.filter(j => j.status === filter);
 
@@ -113,19 +101,11 @@ export default function JobsPage() {
           </span>
           {jobs.length > 0 && (
             <button
-              onClick={handleClearHistory}
-              style={{
-                background: "transparent",
-                border: "1px solid var(--b1)",
-                borderRadius: 4,
-                padding: "2px 8px",
-                fontSize: 10,
-                color: "#ef4444",
-                cursor: "pointer",
-                fontFamily: "var(--font-geist-mono), monospace",
-              }}
+              onClick={() => clearMutation.mutate()}
+              disabled={clearMutation.isPending}
+              className="font-mono-data text-[10px] px-2 py-1 rounded border border-[var(--b1)] bg-transparent text-[var(--red)] cursor-pointer hover:bg-[var(--red-dim)] transition-colors disabled:opacity-50"
             >
-              Clear All Jobs
+              {clearMutation.isPending ? "Clearing..." : "Clear All"}
             </button>
           )}
         </div>
@@ -187,8 +167,8 @@ export default function JobsPage() {
           </thead>
           <tbody>
             {filtered.map((job, rowIdx) => {
-              const status = STATUS_CONFIG[job.status] ?? STATUS_CONFIG.PENDING;
-              const taskColor = TASK_COLORS[job.task] ?? "var(--t3)";
+              const status = STATUS_CONFIG[job.status ?? "PENDING"] ?? STATUS_CONFIG.PENDING;
+              const taskColor = TASK_COLORS[job.task ?? "ANALYSIS"] ?? "var(--t3)";
 
               return (
                 <tr
@@ -251,7 +231,7 @@ export default function JobsPage() {
                   {/* Created */}
                   <td style={{ padding: "10px 14px", whiteSpace: "nowrap" }}>
                     <span className="font-mono-data" style={{ fontSize: 10, color: "var(--t3)" }}>
-                      {new Date(job.created_at).toLocaleString("en-US", { dateStyle: "short", timeStyle: "short" })}
+                      {job.created_at ? new Date(job.created_at).toLocaleString("en-US", { dateStyle: "short", timeStyle: "short" }) : "—"}
                     </span>
                   </td>
 
@@ -326,13 +306,23 @@ export default function JobsPage() {
           </tbody>
         </table>
 
-        {filtered.length === 0 && (
+        {isLoading ? (
+          <div className="flex items-center justify-center py-12">
+            <div className="flex items-center gap-2">
+              <span className="animate-spin-smooth w-3 h-3 border-2 border-[var(--accent-dim)] border-t-[var(--accent)] rounded-full" />
+              <span className="font-mono-data text-[11px] text-[var(--t3)]">Loading jobs...</span>
+            </div>
+          </div>
+        ) : filtered.length === 0 ? (
           <div style={{ padding: "48px 20px", textAlign: "center" }}>
-            <p className="font-mono-data" style={{ fontSize: 11, color: "var(--t4)" }}>
-              No {filter !== "ALL" ? filter.toLowerCase() : ""} jobs found
+            <p className="font-mono-data" style={{ fontSize: 11, color: "var(--t3)" }}>
+              {filter !== "ALL" ? `No ${filter.toLowerCase()} jobs` : "No jobs yet"}
+            </p>
+            <p className="font-mono-data text-[9px] text-[var(--t4)] mt-1">
+              Run an analysis to see jobs here
             </p>
           </div>
-        )}
+        ) : null}
       </div>
 
       {/* Footer */}
