@@ -177,7 +177,40 @@ class ChangeFormerAdapter(BaseModelAdapter):
         v = getattr(self.config, "max_native_side", None) if self.config else None
         return int(v) if v else self._DEFAULT_MAX_NATIVE_SIDE
 
-    def _forward_logits(self, t1: torch.Tensor, t2: torch.Tensor) -> torch.Tensor:
+    def _forward_logits_resilient(self, t1: torch.Tensor, t2: torch.Tensor) -> Tuple[torch.Tensor, Dict[str, Any]]:
+        """
+        `_forward_logits` with CUDA out-of-memory recovery, in order of accuracy cost:
+          1. release every other resident model and retry at native resolution (no accuracy cost);
+          2. fall back to 512- then 256-pixel windows (256 measured 0.02-0.03 IoU below native on
+             LEVIR-CD 1024 scenes, project/qna.md Q-007).
+        What happened is returned so it is reported, not hidden.
+        """
+        info: Dict[str, Any] = {"oom_recovery": None}
+        try:
+            return self._forward_logits(t1, t2), info
+        except torch.OutOfMemoryError:
+            pass
+        from backend.app.ml.registry import model_registry
+
+        torch.cuda.empty_cache()
+        released = model_registry.release_gpu_memory(exclude=("changeformer",))
+        info["oom_recovery"] = {"released_models": released}
+        try:
+            logits = self._forward_logits(t1, t2)
+            info["oom_recovery"]["resolved_by"] = "released_other_models"
+            return logits, info
+        except torch.OutOfMemoryError:
+            torch.cuda.empty_cache()
+        for window in (512, 256):
+            try:
+                logits = self._forward_logits(t1, t2, window=window)
+                info["oom_recovery"]["resolved_by"] = f"windowed_{window}"
+                return logits, info
+            except torch.OutOfMemoryError:
+                torch.cuda.empty_cache()
+        raise torch.OutOfMemoryError("ChangeFormer ran out of GPU memory even at 256-pixel windows after releasing other models.")
+
+    def _forward_logits(self, t1: torch.Tensor, t2: torch.Tensor, window: Optional[int] = None) -> torch.Tensor:
         """
         Full-resolution 2-class logits (1, 2, H, W) for a (1, 3, H, W) pair.
 
@@ -188,7 +221,7 @@ class ChangeFormerAdapter(BaseModelAdapter):
         logits cropped back, so arbitrary sizes are accepted.
         """
         _, _, h, w = t1.shape
-        win = self.max_native_side
+        win = window or self.max_native_side
         tile_h = min(h, win)
         tile_w = min(w, win)
         logits = torch.empty((1, 2, h, w), dtype=torch.float32, device=t1.device)
@@ -284,7 +317,7 @@ class ChangeFormerAdapter(BaseModelAdapter):
             orig_h, orig_w = orig_shape1
 
             with torch.no_grad():
-                logits = self._forward_logits(t1_tensor, t2_tensor)  # (1, 2, H, W)
+                logits, forward_info = self._forward_logits_resilient(t1_tensor, t2_tensor)  # (1, 2, H, W)
 
                 # Softmax across 2 classes (0: background / no change, 1: change)
                 probs = torch.softmax(logits, dim=1)  # (1, 2, orig_h, orig_w)
@@ -349,7 +382,12 @@ class ChangeFormerAdapter(BaseModelAdapter):
                 }],
                 metadata={
                     "threshold": thresh,
-                    "inference_mode": "native" if max(orig_h, orig_w) <= self.max_native_side else "windowed",
+                    "inference_mode": (
+                        (forward_info["oom_recovery"] or {}).get("resolved_by", "")
+                        if str((forward_info["oom_recovery"] or {}).get("resolved_by", "")).startswith("windowed")
+                        else ("native" if max(orig_h, orig_w) <= self.max_native_side else "windowed")
+                    ),
+                    "oom_recovery": forward_info["oom_recovery"],
                     "max_native_side": self.max_native_side,
                     "output_shape": [orig_h, orig_w],
                     "raw_change_pixel_count": raw_pixel_count,

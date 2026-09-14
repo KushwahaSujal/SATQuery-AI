@@ -35,6 +35,11 @@ def adapter() -> ChangeFormerAdapter:
     ad = ChangeFormerAdapter()
     if not ad._resolve_checkpoint_path().is_file():
         pytest.skip("ChangeFormer checkpoint not available")
+    # Earlier tests leave other models resident on the GPU. These tests measure accuracy at native
+    # resolution, so start from a clean GPU instead of depending on whatever ran before; the
+    # out-of-memory fallback path is tested separately in tests/unit/test_gpu_oom_recovery.py.
+    from backend.app.ml.registry import model_registry
+    model_registry.release_gpu_memory(exclude=("changeformer",))
     ad.load_model()
     return ad
 
