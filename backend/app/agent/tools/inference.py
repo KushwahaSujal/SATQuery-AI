@@ -171,6 +171,20 @@ def run_change_detection(state: AgentState) -> None:
     if conversion_note:
         state.warnings.append(conversion_note)
     res = adapter.predict({"arr1": rgb1, "arr2": rgb2})
+    # Inference mode changes the result materially (LEVIR scene 100: native 118,997 changed px, 512-px windows
+    # 114,001, 256-px windows 111,556), so it is reported, and an out-of-memory fallback is a warning (Q-014).
+    mode = res.metadata.get("inference_mode")
+    recovery = res.metadata.get("oom_recovery")
+    state.evidence.metadata["change_inference"] = {"inference_mode": mode, "oom_recovery": recovery,
+                                                   "max_native_side": res.metadata.get("max_native_side")}
+    if recovery and str(recovery.get("resolved_by", "")).startswith("windowed"):
+        state.warnings.append(
+            f"GPU memory was insufficient for full-resolution change detection even after releasing other models; "
+            f"ran in {recovery['resolved_by'].split('_')[1]}-pixel windows, which lowers accuracy (IoU 0.8086 native vs "
+            f"0.7997 at 512 px and 0.7872 at 256 px on a LEVIR-CD 1024 scene)."
+        )
+    elif recovery:
+        state.warnings.append(f"Released GPU memory held by {recovery.get('released_models')} to run change detection at full resolution.")
     if state.aoi is not None and res.masks:
         # Restrict the change result to the requested area of interest. Full-scene masks are kept
         # alongside so nothing computed is discarded; counts, GeoJSON and statistics use the clipped ones.

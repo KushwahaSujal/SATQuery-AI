@@ -19,12 +19,14 @@ Measured tonight; sections below keep their original 2026-09-07 text. Details an
 | Absent objects "found" in video | `[x]` | "find the airplane" on road footage: 3 events → 0; one real car event lost — Q-008 |
 | GeoTIFF georeferencing | `[x]` | UTM GeoTIFF reads EPSG:32614 + transform; masks and GeoJSON georeferenced — `5d40ffe`, Q-011 |
 | GeoJSON area-of-interest input | `[x]` | HTTP: in-AOI change 14,101 px = independent count, 3,525.25 m² exact — `5d40ffe`, Q-011 |
-| ChangeFormer ⇄ CDVQA adjudication | `[ ]` | adjudicator still unwired; Ushnik |
+| ChangeFormer ⇄ CDVQA adjudication | `[x]` | CDVQA answers "yes, changes" for 53.9% of identical LEVIR pairs; identity probe sets uninformative answers aside — `23d105d`, Q-012 |
 | §1.1 Optical–SAR untrained head | `[ ]` | still emits "Permanently irrigated land (52.5%)" — do not demo; Ayushman |
-| Routing: caption / NDVI | `[ ]` | "describe this image" → VQA; "compute NDVI" → "No."; Ushnik |
+| Routing: caption / NDVI | `[x]` | caption routed; NDVI/SAR → explicit refusal naming missing bands — `ca6f893`, Q-013 |
 | §1.2 RS adaptation evidence | `[ ]` | Ayushman (adapter + score), Ushnik (wiring) |
+| Demo rehearsal over HTTP | `[x]` | 10/10 COMPLETED on a live server; found silent 512-px window fallback (AOI 14,101 → native 13,902), now reported — Q-014 |
+| Demo image choice | `[!]` | do **not** use VRSBench 05865 "find the vehicle" (wrong box, verified) — Q-014 §3 |
 
-Test suite: **180 passed, 0 failed** (was 132 at the 2026-09-07 baseline).
+Test suite: **215 passed, 0 failed** (was 132 at the 2026-09-07 baseline).
 
 ---
 

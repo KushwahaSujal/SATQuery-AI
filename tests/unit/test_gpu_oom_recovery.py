@@ -83,3 +83,19 @@ def test_executor_does_not_retry_non_oom_errors(monkeypatch):
     with pytest.raises(ValueError):
         asyncio.run(SafeToolExecutor.execute_tool("run_change_detection", state))
     assert calls["n"] == 1
+
+
+def test_change_tool_reports_inference_mode_and_warns_on_windowed_fallback(monkeypatch, tmp_path):
+    from PIL import Image
+    from backend.app.agent.tools.inference import run_change_detection
+
+    for name in ("a.png", "b.png"):
+        Image.fromarray(np.zeros((1024, 1024, 3), np.uint8)).save(tmp_path / name)
+    ad = _adapter(FlakyNet(fail_n=0, fail_at_or_above=600), monkeypatch)
+    monkeypatch.setattr(model_registry, "get_adapter", lambda key: ad)
+    state = AgentState(request_id="oom-mode", query="detect changes", image_paths=[str(tmp_path / "a.png"), str(tmp_path / "b.png")])
+    run_change_detection(state)
+    info = state.evidence.metadata["change_inference"]
+    assert info["inference_mode"] == "windowed_512"
+    assert info["oom_recovery"]["resolved_by"] == "windowed_512"
+    assert any("512-pixel windows" in w for w in state.warnings)

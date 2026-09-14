@@ -60,7 +60,7 @@ a second deep-learning framework. Anything with a non-permissive licence (this g
 - **Capabilities:** adding one means touching five files —
   `capability_registry.py` (definition) → `matcher.py` (routing rule) →
   `dependency_graph.py` (DAG branch + `KNOWN_CAPABILITIES`) → `planner.py::to_legacy_workflow_plan`
-  (TaskType mapping) → `agent/validator.py::PermittedTools` (security whitelist, for any new tool).
+  (TaskType mapping) → `agent/validator.py::PlanValidator.PERMITTED_TOOLS` (security whitelist, for any new tool).
   Skipping any of the first four produces the silent-fallback bug in `decisions.md` D-104; missing the
   whitelist fails at run time with "Security violation" (found in `qna.md` Q-013).
   `tests/unit/test_routing_unsupported.py` asserts every DAG tool is registered and whitelisted.

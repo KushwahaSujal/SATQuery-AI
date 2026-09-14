@@ -49,9 +49,10 @@ and the commit it describes. Extracted, never re-litigated; anything missing is 
 | [Q-006](#q-006--retiring-the-approval-gate-qnamd-becomes-a-transcript) | Retiring the approval gate; `qna.md` becomes a transcript | 2026-09-11 | Recorded |
 | [Q-007](#q-007--changeformer-ayushmans-epoch-20-checkpoint-on-vendored-upstream-architecture) | ChangeFormer — Ayushman's epoch-20 checkpoint on vendored upstream architecture | 2026-09-14 | Recorded |
 | [Q-010](#q-010--gpu-out-of-memory-recovery-for-resident-models) | GPU out-of-memory recovery for resident models | 2026-09-14 | Recorded |
-| [Q-011](#q-011--geotiff-georeferencing-without-rasterio-and-geojson-area-of-interest-input) | GeoTIFF georeferencing without rasterio; GeoJSON area-of-interest input | 2026-09-14 | Recorded |
+| [Q-011](#q-011--geotiff-georeferencing-without-rasterio-and-geojson-area-of-interest-input) | GeoTIFF georeferencing without rasterio; GeoJSON area-of-interest input | 2026-09-14 | Recorded · numbers corrected by Q-014 |
 | [Q-012](#q-012--change-detection-two-agents-changeformer-vs-cdvqa-adjudication) | Change detection two agents: ChangeFormer vs CDVQA adjudication | 2026-09-14 | Recorded |
 | [Q-013](#q-013--routing-scene-description-and-honest-refusal-for-unsupported-analyses) | Routing: scene description, and honest refusal for unsupported analyses | 2026-09-14 | Recorded |
+| [Q-014](#q-014--demo-rehearsal-over-http-and-a-correction-to-q-011s-numbers) | Demo rehearsal over HTTP, and a correction to Q-011's numbers | 2026-09-15 | Recorded |
 | [Q-008](#q-008--two-agent-detection-verification-backtracking-and-re-evaluation) | Two-agent detection: verification, backtracking and re-evaluation (stills + video) | 2026-09-14 | Recorded · superseded in part by Q-009 |
 | [Q-009](#q-009--two-agent-detection-attribute-queries-are-labelled-not-backtracked) | Two-agent detection: attribute queries are labelled, not backtracked (supersedes Q-008 rule) | 2026-09-14 | Recorded |
 
@@ -935,6 +936,12 @@ step. Isolated suite at the two-agent commit afterwards: 157 passed, 0 failed.
 
 ## Q-011 · GeoTIFF georeferencing without rasterio, and GeoJSON area-of-interest input
 
+> **Corrected by [Q-014](#q-014--demo-rehearsal-over-http-and-a-correction-to-q-011s-numbers).** The live
+> AOI figures below (14,101 changed px, 3,525.25 m², 114,001 full scene) came from a run that silently
+> fell back to 512-px windows after GPU out-of-memory. At native resolution the same AOI has **13,902 px /
+> 3,475.5 m²** (full scene 118,997). The equality checks — pipeline count = independent count, area =
+> pixels × 0.25 — held in both runs and still stand.
+
 **Recorded** 2026-09-14, atop `9c7caf6`. Plan phases 4–5.
 
 **Result:** a real UTM GeoTIFF now reads as `EPSG:32614` with its transform (before: `crs=None`,
@@ -1241,3 +1248,81 @@ yet". "describe this image" also routed to VQA, not captioning.
 RGB photo doesn't have one. Before this change the same question got 'No.' from a generic VQA model with
 59.6% confidence. That's the real failure, because it looks like an analysis result. We'd rather show
 what we can't do than dress up an unrelated model's output as a spectral index."
+
+---
+
+## Q-014 · Demo rehearsal over HTTP, and a correction to Q-011's numbers
+
+**Recorded** 2026-09-15, atop `ca6f893`. Ushnik's item 3 in `split-ushnik-ayushman.md`. **Corrects the
+live AOI figures in [Q-011](#q-011--geotiff-georeferencing-without-rasterio-and-geojson-area-of-interest-input).**
+
+### 1. Mechanism — what was run, and what changed
+
+**Rehearsal.** A real uvicorn server on port 8010 (`backend.app.main:app`, PostgreSQL connected, CUDA)
+and an `httpx` client (`scratchpad/rehearsal.py`), in demo order, in one server process so models
+accumulate as they will on stage. Responses are saved in `results/evaluations/demo_rehearsal_20260915/`.
+
+| # | request | HTTP | result | s |
+|---|---|---|---|---|
+| 01 | VQA "how many buildings" (05945) | 200/200 | "3.", conf 0.3668 | 7.9 |
+| 02 | "describe this image" | 200/200 | caption "Football field." | 7.4 |
+| 03 | "find the vehicle" (VRSBench 05865) | 200/200 | accepted_verified — **wrong box** (see §3) | 15.5 |
+| 04 | "find the airplane" (05865) | 200/200 | not_found, 2 contradicted | 7.4 |
+| 05 | "segment the largest building" (05945) | 200/200 | DISPUTED (ground track field) | 7.8 |
+| 06 | "compute NDVI" (RGB) | 200/200 | refusal naming missing NIR band | 6.9 |
+| 07 | change + AOI upload (UTM GeoTIFF pair) | 200/200 | 13,902 px, 3,475.5 m², AOI applied | 10.0 |
+| 08 | "has any new building been constructed?" | 200/200 | CDVQA_UNINFORMATIVE → "Yes — building change … 11.35%" | 9.2 |
+| 09 | video "find all vehicles" | 200/200 | events 14.88–18.72s (2/3 verified), 25.44–27.36s (1/3) | 33.4 |
+| 10 | video "find the airplane" | 200/200 | 0 events, 3 dropped with warnings | 25.7 |
+
+Every overlay and PDF report URL returned 200. The server log shows one out-of-memory recovery
+(`Released GPU memory held by: ['general_rs_vlm', 'grounding_dino', 'sam2', 'remoteclip']`).
+
+**Code change.** `run_change_detection` now puts `inference_mode`, `oom_recovery` and `max_native_side` in
+`evidence.metadata.change_inference`. It warns when an out-of-memory fallback ran in windows (accuracy
+traded), and notes when other models were released (no accuracy cost). Before, the mode was only in
+the ChangeFormer `ModelResult` metadata, which the API response does not include.
+
+### 2. Rationale — the discrepancy that led here
+
+Item 07 reported 13,902 changed px in the AOI; Q-011 recorded 14,101 for the same pair and AOI. Reproduced
+on a clean GPU after stopping the server (`nvidia-smi` 1,346 MiB used):
+
+| max_native_side | mode | full scene px | AOI (west half) px | IoU vs ground truth |
+|---|---|---|---|---|
+| 1024 | native | **118,997** | **13,902** | **0.8086** |
+| 512 | windowed | 114,001 | 14,101 | 0.7997 |
+| 256 | windowed | 111,556 | 13,014 | 0.7872 |
+
+Q-011's figures match the 512-window row exactly. That run happened in a process with other models
+resident, so ChangeFormer ran out of memory, released models, still could not fit, and fell back to 512 px —
+**with nothing in the response to say so**. A first attempt to reproduce ran while the rehearsal server
+still held GPU memory, and it too fell back to 512 px; that is how the mechanism was confirmed. The
+rehearsal's 13,902 is the native result.
+
+### 3. Blast radius
+
+- **Q-011's absolute live numbers are wrong for native inference; its checks are not.** "Pipeline count
+  equals independent count" and "area = pixels × 0.25" were computed on the same mask in both runs. The
+  HTTP test (`test_aoi_http.py`) asserts only those relations, so it passes in either mode.
+- **Window fallback moves results by ~4% of changed pixels on this scene** and costs 0.009 (512) / 0.021
+  (256) IoU. It stays available as a last resort, now visible.
+- **Do not demo** `VRSBench 05865 "find the vehicle"`: the plain-category rule backtracks from the true red
+  vehicle (IoU 0.704) to a box with IoU 0.0 and calls it verified (Q-008 §3). Use a verified-correct image.
+- Captions remain one or two words (Q-013).
+- Ayushman's real GeoTIFF inputs were not ready; this rehearsal used LEVIR scene 100 georeferenced by us.
+
+### 4. Verification
+
+- `tests/unit/test_gpu_oom_recovery.py::test_change_tool_reports_inference_mode_and_warns_on_windowed_fallback`:
+  a simulated OOM at 1024 px resolves at 512 windows, and `change_inference` plus the warning appear on the state.
+- The rehearsal table above: 10/10 requests COMPLETED over HTTP.
+- `pytest -q` → **215 passed, 0 failed**.
+
+### 5. Defence — "Your own record had the wrong number. Why trust the rest?"
+
+"Because the record caught it. The rehearsal produced a different count from the one we'd written down, so
+we reproduced both on a clean GPU and found the earlier run had silently fallen back to smaller windows
+after running out of memory. That's also a real bug: the API didn't say which mode ran. It does now, and
+the old entry carries a correction pointing here, rather than being quietly edited. The consistency checks
+in that entry held in both modes; only the headline figure depended on a hidden condition."
