@@ -124,7 +124,7 @@ export default function TerminalConsole({
         } else {
           newLogs.push({ id: crypto.randomUUID(), type: "info", text: `[JOB QUEUE STATUS - ${combined.length} RECORDS]` });
           combined.slice(0, 5).forEach((j) => {
-            const id = j.job_id || j.id || "job";
+            const id = ((j as Record<string, unknown>).job_id || (j as Record<string, unknown>).id || "job") as string;
             newLogs.push({
               id: crypto.randomUUID(),
               type: j.status === "COMPLETED" ? "success" : j.status === "FAILED" ? "error" : "info",

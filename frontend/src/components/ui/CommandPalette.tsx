@@ -114,13 +114,13 @@ export default function CommandPalette() {
 
       {/* Panel */}
       <div
-        className="relative w-full max-w-120 rounded-xl border border-[#222] bg-[#0f0f0f] shadow-2xl animate-slide-down overflow-hidden"
+        className="relative w-full max-w-120 rounded-xl border border-[var(--b2)] bg-[var(--s3)] shadow-2xl animate-slide-down overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Search input */}
-        <div className="flex items-center gap-2.5 px-4 border-b border-[#1a1a1a]">
+        <div className="flex items-center gap-2.5 px-4 border-b border-[var(--b1)]">
           <svg
-            className="w-3.5 h-3.5 text-[#404040] shrink-0"
+            className="w-3.5 h-3.5 text-[var(--t4)] shrink-0"
             fill="none"
             viewBox="0 0 24 24"
             strokeWidth={2}
@@ -140,9 +140,9 @@ export default function CommandPalette() {
               setActiveIdx(0);
             }}
             placeholder="Search workspace..."
-            className="w-full bg-transparent py-3 font-mono-data text-[13px] text-[#fafafa] placeholder:text-[#333] outline-none"
+            className="w-full bg-transparent py-3 font-mono-data text-[13px] text-[var(--t0)] placeholder:text-[var(--t3)] outline-none"
           />
-          <kbd className="shrink-0 bg-[#161616] border border-[#222] rounded px-1.5 py-0.5 font-mono-data text-[10px] text-[#404040]">
+          <kbd className="shrink-0 bg-[var(--s2)] border border-[var(--b2)] rounded px-1.5 py-0.5 font-mono-data text-[10px] text-[var(--t4)]">
             ESC
           </kbd>
         </div>
@@ -150,13 +150,13 @@ export default function CommandPalette() {
         {/* Results */}
         <div className="py-1.5 max-h-72 overflow-y-auto">
           {filtered.length === 0 ? (
-            <p className="px-4 py-6 text-center font-mono-data text-[12px] text-[#333]">
-              No results for "{query}"
+            <p className="px-4 py-6 text-center font-mono-data text-[12px] text-[var(--t3)]">
+              No results for &ldquo;{query}&rdquo;
             </p>
           ) : (
             Object.entries(groups).map(([group, items]) => (
               <div key={group}>
-                <div className="px-4 pt-2.5 pb-1 font-mono-data text-[10px] font-medium tracking-[0.08em] uppercase text-[#333]">
+                <div className="px-4 pt-2.5 pb-1 font-mono-data text-[10px] font-medium tracking-[0.08em] uppercase text-[var(--t3)]">
                   {group}
                 </div>
                 {items.map((item) => {
@@ -168,21 +168,21 @@ export default function CommandPalette() {
                       onClick={item.action}
                       className={cn(
                         "w-full flex items-center justify-between gap-3 px-4 py-2 text-left transition-none",
-                        activeIdx === globalIdx ? "bg-[#161616]" : "",
+                        activeIdx === globalIdx ? "bg-[var(--s2)]" : "",
                       )}
                     >
                       <div>
-                        <div className="text-[13px] text-[#e5e5e5]">
+                        <div className="text-[13px] text-[var(--t1)]">
                           {item.label}
                         </div>
                         {item.description && (
-                          <div className="font-mono-data text-[11px] text-[#404040] mt-0.5">
+                          <div className="font-mono-data text-[11px] text-[var(--t4)] mt-0.5">
                             {item.description}
                           </div>
                         )}
                       </div>
                       {item.shortcut && (
-                        <kbd className="shrink-0 bg-[#111] border border-[#1e1e1e] rounded px-1.5 py-0.5 font-mono-data text-[10px] text-[#404040]">
+                        <kbd className="shrink-0 bg-[var(--s2)] border border-[var(--b1)] rounded px-1.5 py-0.5 font-mono-data text-[10px] text-[var(--t4)]">
                           {item.shortcut}
                         </kbd>
                       )}
@@ -195,15 +195,15 @@ export default function CommandPalette() {
         </div>
 
         {/* Footer */}
-        <div className="flex items-center gap-4 px-4 py-2 border-t border-[#1a1a1a] font-mono-data text-[10px] text-[#2a2a2a]">
+        <div className="flex items-center gap-4 px-4 py-2 border-t border-[var(--b1)] font-mono-data text-[10px] text-[var(--t4)]">
           <span>
-            <kbd className="text-[#333]">↑↓</kbd> navigate
+            <kbd className="text-[var(--t3)]">↑↓</kbd> navigate
           </span>
           <span>
-            <kbd className="text-[#333]">↵</kbd> open
+            <kbd className="text-[var(--t3)]">↵</kbd> open
           </span>
           <span>
-            <kbd className="text-[#333]">ESC</kbd> close
+            <kbd className="text-[var(--t3)]">ESC</kbd> close
           </span>
         </div>
       </div>

@@ -1,92 +1,113 @@
 "use client";
 
+import { useRef, useEffect } from "react";
 import type { TraceStep } from "@/lib/types";
 
 export default function ExecutionTrace({ steps }: { steps: TraceStep[] }) {
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  // Auto-scroll to the latest step
+  useEffect(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollLeft = scrollRef.current.scrollWidth;
+    }
+  }, [steps]);
+
   if (!steps.length) return null;
 
   const totalMs = steps.reduce((acc, s) => acc + (s.duration_ms ?? 0), 0);
 
+  // Normalize status to handle backend variations
+  const normalizeStatus = (status: string): "success" | "running" | "failed" | "skipped" => {
+    const s = status.toLowerCase();
+    if (s === "success" || s === "ok") return "success";
+    if (s === "running" || s === "started") return "running";
+    if (s === "error" || s === "failed" || s === "failure") return "failed";
+    if (s === "warning" || s === "skipped" || s === "pending") return "skipped";
+    return "success"; // default to success for unknown statuses
+  };
+
   return (
-    <div style={{
-      display: "flex", alignItems: "center",
-      padding: "0 14px",
-      height: 36,
-      borderTop: "1px solid var(--b0)",
-      gap: 6,
-      overflowX: "auto",
-      flexShrink: 0,
-      background: "var(--s0)",
-    }}>
-      <span className="panel-label" style={{ flexShrink: 0 }}>Trace</span>
+    <div className="flex items-center h-9 px-3 border-t border-[var(--b0)] gap-2 flex-shrink-0 bg-[var(--s0)]">
+      {/* Label */}
+      <span className="panel-label flex-shrink-0 text-[9px]">Trace</span>
 
-      <div style={{ width: 1, height: 12, background: "var(--b1)", flexShrink: 0, margin: "0 2px" }} />
+      <div className="w-px h-3 bg-[var(--b1)] flex-shrink-0 mx-0.5" />
 
-      <div style={{ display: "flex", alignItems: "center", gap: 0 }}>
+      {/* Scrollable steps container */}
+      <div
+        ref={scrollRef}
+        className="flex items-center gap-0 overflow-x-auto flex-1 min-w-0 scrollbar-thin"
+        style={{ scrollbarWidth: "thin", scrollbarColor: "var(--b2) transparent" }}
+      >
         {steps.map((step, i) => {
-          const isSuccess = step.status === "success";
-          const isFailed  = step.status === "failed";
-          const isRunning = step.status === "running";
-          const isPending = step.status === "pending" || step.status === "skipped";
+          const status = normalizeStatus(step.status);
+          const isSuccess = status === "success";
+          const isFailed = status === "failed";
+          const isRunning = status === "running";
+          const isSkipped = status === "skipped";
 
-          const dotColor = isSuccess ? "var(--green)" : isFailed ? "var(--red)" : isRunning ? "var(--accent)" : "var(--t4)";
+          // Use step.step field (backend uses "step" field)
+          const stepName = step.step || "unknown";
+          // Round duration to avoid showing floats like 123.456789ms
+          const duration = step.duration_ms != null ? Math.round(step.duration_ms) : undefined;
 
           return (
-            <div key={`${step.name}-${i}`} style={{ display: "flex", alignItems: "center", gap: 0 }}>
-              {/* Node */}
-              <div style={{
-                display: "flex", alignItems: "center", gap: 5,
-                padding: "2px 8px",
-                borderRadius: 12,
-                background: isRunning ? "var(--accent-dim)" : "transparent",
-                border: isRunning ? "1px solid hsla(222,88%,62%,0.2)" : "1px solid transparent",
-              }}>
-                {/* Status indicator */}
+            <div key={`${stepName}-${i}`} className="flex items-center gap-0 flex-shrink-0">
+              {/* Step node */}
+              <div
+                className={`flex items-center gap-1.5 px-2 py-0.5 rounded-full transition-all ${
+                  isRunning
+                    ? "bg-[var(--accent-dim)] border border-[hsla(222,88%,62%,0.2)]"
+                    : "bg-transparent border border-transparent"
+                }`}
+              >
+                {/* Status icon */}
                 {isSuccess && (
-                  <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="var(--green)" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                  <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="var(--green)" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="flex-shrink-0">
                     <polyline points="20 6 9 17 4 12"/>
                   </svg>
                 )}
                 {isFailed && (
-                  <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="var(--red)" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                  <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="var(--red)" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="flex-shrink-0">
                     <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
                   </svg>
                 )}
                 {isRunning && (
-                  <span className="animate-spin-smooth" style={{
-                    width: 7, height: 7,
-                    border: "1.5px solid transparent",
-                    borderTopColor: "var(--accent)",
-                    borderRadius: "50%",
-                    display: "inline-block",
-                    flexShrink: 0,
-                  }} />
+                  <span className="animate-spin-smooth w-2 h-2 border-[1.5px] border-transparent border-t-[var(--accent)] rounded-full flex-shrink-0" />
                 )}
-                {isPending && (
-                  <span style={{ width: 5, height: 5, borderRadius: "50%", background: "var(--t4)", display: "inline-block", flexShrink: 0 }} />
+                {isSkipped && (
+                  <span className="w-1 h-1 rounded-full bg-[var(--t4)] flex-shrink-0" />
                 )}
 
                 {/* Step name */}
-                <span className="font-mono-data" style={{
-                  fontSize: 9, color: isRunning ? "var(--accent-text)" : isSuccess ? "var(--t2)" : "var(--t4)",
-                  letterSpacing: "0.02em",
-                }}>
-                  {step.name.replace(/_/g, "_")}
+                <span
+                  className={`font-mono-data text-[9px] tracking-wide whitespace-nowrap ${
+                    isRunning
+                      ? "text-[var(--accent-text)]"
+                      : isSuccess
+                      ? "text-[var(--t2)]"
+                      : isFailed
+                      ? "text-[var(--red)]"
+                      : "text-[var(--t4)]"
+                  }`}
+                >
+                  {stepName.replace(/_/g, " ")}
                 </span>
 
-                {/* Duration */}
-                {step.duration_ms != null && (
-                  <span className="font-mono-data" style={{ fontSize: 8, color: "var(--t4)" }}>
-                    {step.duration_ms}ms
+                {/* Duration badge */}
+                {duration != null && duration > 0 && (
+                  <span className="font-mono-data text-[8px] text-[var(--t4)] bg-[var(--s2)] px-1 rounded flex-shrink-0">
+                    {duration}ms
                   </span>
                 )}
               </div>
 
               {/* Connector arrow */}
               {i < steps.length - 1 && (
-                <svg width="16" height="10" viewBox="0 0 16 10" style={{ flexShrink: 0 }}>
-                  <line x1="0" y1="5" x2="12" y2="5" stroke="var(--b2)" strokeWidth="1" />
-                  <polyline points="8,2 12,5 8,8" fill="none" stroke="var(--b2)" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round"/>
+                <svg width="12" height="8" viewBox="0 0 12 8" className="flex-shrink-0 mx-0.5">
+                  <line x1="0" y1="4" x2="8" y2="4" stroke="var(--b2)" strokeWidth="1" />
+                  <polyline points="6,1 8,4 6,7" fill="none" stroke="var(--b2)" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round"/>
                 </svg>
               )}
             </div>
@@ -96,12 +117,9 @@ export default function ExecutionTrace({ steps }: { steps: TraceStep[] }) {
 
       {/* Total elapsed */}
       {totalMs > 0 && (
-        <>
-          <div style={{ flex: 1 }} />
-          <span className="font-mono-data" style={{ fontSize: 9, color: "var(--t4)", flexShrink: 0 }}>
-            {totalMs}ms total
-          </span>
-        </>
+        <span className="font-mono-data text-[9px] text-[var(--t4)] flex-shrink-0 ml-2">
+          {Math.round(totalMs)}ms
+        </span>
       )}
     </div>
   );

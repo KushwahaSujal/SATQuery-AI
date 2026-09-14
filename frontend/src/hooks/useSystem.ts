@@ -43,6 +43,15 @@ export function useAnalysisResult(jobId?: string, enabled?: boolean) {
     queryFn: () => api.result(jobId!),
     enabled: Boolean(jobId) && Boolean(enabled),
     staleTime: 30_000,
+    retry: 3,
+    retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 10000),
+    refetchInterval: (query) => {
+      // Keep polling if we don't have data yet and haven't hit max retries
+      if (!query.state.data && query.state.fetchFailureCount < 5) {
+        return 2000;
+      }
+      return false;
+    },
   });
 }
 

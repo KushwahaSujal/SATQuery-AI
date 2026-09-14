@@ -38,6 +38,14 @@ class UploadResponse(BaseModel):
         return self
 
 
+class SpatialMetricsResponse(BaseModel):
+    changed_pixels: Optional[int] = None
+    change_ratio: Optional[float] = None
+    regions: Optional[int] = None
+    area_m2: Optional[float] = None
+    area_km2: Optional[float] = None
+
+
 class AnalyzeResponse(BaseModel):
     request_id: str
     job_id: Optional[str] = None
@@ -46,11 +54,13 @@ class AnalyzeResponse(BaseModel):
     workflow_id: str
     workflow: Optional[str] = None
     workflow_reason: str
+    query: Optional[str] = None
     answer: Optional[str] = None
     confidence: Optional[float] = None  # None if model did not produce genuine score
     models_used: List[str] = Field(default_factory=list)
     parameters: Dict[str, Any] = Field(default_factory=dict)
     evidence: EvidencePackage = Field(default_factory=EvidencePackage)
+    metrics: Optional[SpatialMetricsResponse] = None
     execution_trace: List[ExecutionStep] = Field(default_factory=list)
     trace: List[ExecutionStep] = Field(default_factory=list)
     warnings: List[str] = Field(default_factory=list)
@@ -69,6 +79,16 @@ class AnalyzeResponse(BaseModel):
             self.trace = self.execution_trace
         elif not self.execution_trace and self.trace:
             self.execution_trace = self.trace
+        # Auto-populate metrics from evidence.spatial.statistics if not set
+        if self.metrics is None and self.evidence and self.evidence.spatial and self.evidence.spatial.statistics:
+            stats = self.evidence.spatial.statistics
+            self.metrics = SpatialMetricsResponse(
+                changed_pixels=stats.changed_pixels,
+                change_ratio=stats.change_ratio,
+                regions=stats.region_count,
+                area_m2=stats.estimated_area_sq_m,
+                area_km2=stats.estimated_area_sq_km,
+            )
         return self
 
 

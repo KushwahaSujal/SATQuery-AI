@@ -4,13 +4,13 @@ import { useRef, useState, useEffect } from "react";
 import type { TaskType } from "@/lib/types";
 
 const TASK_OPTIONS: { value: TaskType; label: string; desc: string; color: string }[] = [
-  { value: "AUTO",             label: "AUTO",           desc: "Auto-detect task from query",         color: "var(--accent-text)" },
-  { value: "VQA",              label: "VQA",            desc: "Visual question answering",            color: "var(--cyan)" },
-  { value: "GROUNDING",        label: "GROUNDING",      desc: "Ground language to image regions",     color: "var(--purple)" },
-  { value: "CHANGE",           label: "CHANGE",         desc: "Detect change between two images",     color: "var(--accent-text)" },
-  { value: "TEMPORAL_VQA",     label: "TEMPORAL VQA",   desc: "VQA across temporal image pairs",      color: "var(--cyan)" },
-  { value: "VISUAL_ANALYTICS", label: "VIS. ANALYTICS", desc: "Generate charts and analytics",        color: "var(--amber)" },
-  { value: "VIDEO",            label: "VIDEO",          desc: "Video stream analysis & tracking",     color: "var(--red)" },
+  { value: "unsupported", label: "AUTO", desc: "Auto-detect task from query", color: "var(--accent-text)" },
+  { value: "single_image_vqa", label: "VQA", desc: "Visual question answering", color: "var(--cyan)" },
+  { value: "single_image_grounding", label: "GROUNDING", desc: "Ground language to image regions", color: "var(--purple)" },
+  { value: "bi_temporal_change", label: "CHANGE", desc: "Detect change between two images", color: "var(--accent-text)" },
+  { value: "bi_temporal_change_vqa", label: "TEMPORAL VQA", desc: "VQA across temporal image pairs", color: "var(--cyan)" },
+  { value: "single_image_caption", label: "CAPTION", desc: "Generate scene description", color: "var(--amber)" },
+  { value: "video_grounding_tracking", label: "VIDEO", desc: "Video stream analysis & tracking", color: "var(--red)" },
 ];
 
 const EXAMPLE_CHIPS = [
@@ -59,45 +59,21 @@ export default function QueryBar({
   }
 
   return (
-    <div>
-      {/* ── Suggestion chips (only when no query typed) ── */}
+    <div className="border-t border-[var(--b0)] bg-[var(--s1)]">
+      {/* Suggestion chips (only when no query typed) */}
       {!query && !loading && (
-        <div style={{
-          display: "flex", alignItems: "center", gap: 6,
-          padding: "7px 14px 0",
-          flexWrap: "wrap",
-        }}>
-          <span style={{
-            fontFamily: "var(--font-geist-mono), monospace",
-            fontSize: 9, color: "var(--t4)", letterSpacing: "0.06em",
-            flexShrink: 0, textTransform: "uppercase",
-          }}>
+        <div className="flex items-center gap-1.5 px-4 pt-2.5 pb-1 flex-wrap">
+          <span className="font-mono-data text-[9px] text-[var(--t4)] tracking-widest flex-shrink-0 uppercase">
             Try:
           </span>
           {EXAMPLE_CHIPS.map(chip => (
             <button
               key={chip.label}
               onClick={() => { setQuery(chip.query); inputRef.current?.focus(); }}
-              style={{
-                display: "flex", alignItems: "center", gap: 5,
-                padding: "2px 8px", borderRadius: 10,
-                background: "var(--s2)", border: "1px solid var(--b1)",
-                cursor: "pointer", transition: "all 0.12s",
-              }}
-              onMouseEnter={e => {
-                (e.currentTarget as HTMLElement).style.background = "var(--s3)";
-                (e.currentTarget as HTMLElement).style.borderColor = "var(--b3)";
-              }}
-              onMouseLeave={e => {
-                (e.currentTarget as HTMLElement).style.background = "var(--s2)";
-                (e.currentTarget as HTMLElement).style.borderColor = "var(--b1)";
-              }}
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[var(--s2)] border border-[var(--b1)] cursor-pointer transition-all hover:bg-[var(--s3)] hover:border-[var(--b3)] active:scale-95"
             >
-              <span style={{ fontSize: 10 }}>{chip.icon}</span>
-              <span style={{
-                fontFamily: "var(--font-geist-mono), monospace",
-                fontSize: 10, color: "var(--t2)",
-              }}>
+              <span className="text-[11px]">{chip.icon}</span>
+              <span className="font-mono-data text-[10px] text-[var(--t2)]">
                 {chip.label}
               </span>
             </button>
@@ -105,36 +81,24 @@ export default function QueryBar({
         </div>
       )}
 
-      {/* ── Main bar ── */}
-      <div style={{
-        display: "flex", alignItems: "stretch",
-        height: 50,
-        margin: "6px 0 0",
-        background: focused ? "var(--s2)" : "var(--s1)",
-        borderTop: `1px solid ${focused ? "var(--b2)" : "var(--b0)"}`,
-        boxShadow: focused ? "0 -2px 12px rgba(0,0,0,0.3), inset 0 1px 0 var(--accent-dim)" : "none",
-        transition: "all 0.18s",
-      }}>
-
-        {/* >_ glyph */}
-        <div style={{
-          display: "flex", alignItems: "center",
-          padding: "0 12px 0 16px", flexShrink: 0,
-          borderRight: "1px solid var(--b0)",
-        }}>
-          <span style={{
-            fontFamily: "var(--font-geist-mono), monospace",
-            fontSize: 14, fontWeight: 700, lineHeight: 1,
-            color: focused ? "var(--accent)" : "var(--t3)",
-            textShadow: focused ? "0 0 10px var(--accent-glow)" : "none",
-            transition: "color 0.18s, text-shadow 0.18s",
-            userSelect: "none",
-          }}>
+      {/* Main input bar */}
+      <div className="flex items-stretch h-11 mx-3 mb-2.5 rounded-lg bg-[var(--s2)] border border-[var(--b2)] transition-all duration-200"
+        style={{
+          boxShadow: focused ? "0 0 0 1px var(--accent), 0 0 12px var(--accent-dim)" : "none",
+        }}
+      >
+        {/* >_ prompt glyph */}
+        <div className="flex items-center pl-3 pr-2 flex-shrink-0">
+          <span
+            className={`font-mono-data text-sm font-bold leading-none transition-colors duration-200 select-none ${
+              focused ? "text-[var(--accent)]" : "text-[var(--t3)]"
+            }`}
+          >
             &gt;_
           </span>
         </div>
 
-        {/* Input */}
+        {/* Input field */}
         <input
           ref={inputRef}
           value={query}
@@ -142,268 +106,127 @@ export default function QueryBar({
           onKeyDown={handleKeyDown}
           onFocus={() => setFocused(true)}
           onBlur={() => setFocused(false)}
-          placeholder="Ask a question about the uploaded imagery…"
-          style={{
-            flex: 1,
-            background: "transparent",
-            border: "none",
-            outline: "none",
-            fontFamily: "var(--font-geist-mono), monospace",
-            fontSize: 13,
-            color: "var(--t0)",
-            padding: "0 16px",
-            caretColor: "var(--accent)",
-            /* placeholder color handled via CSS class below */
-          }}
-          className="query-input"
+          placeholder="Ask a question about the uploaded imagery..."
+          className="flex-1 bg-transparent border-none outline-none font-mono-data text-[13px] text-[var(--t0)] py-2.5 caret-[var(--accent)] query-input min-w-0"
         />
 
-        {/* Hint text when focused + has query */}
+        {/* Enter hint */}
         {focused && query && (
-          <div style={{
-            display: "flex", alignItems: "center",
-            paddingRight: 10, flexShrink: 0,
-          }}>
-            <span style={{
-              fontFamily: "var(--font-geist-mono), monospace",
-              fontSize: 9, color: "var(--t4)", letterSpacing: "0.04em",
-            }}>
-              ↵ to run
+          <div className="flex items-center pr-3 flex-shrink-0">
+            <span className="font-mono-data text-[9px] text-[var(--t4)] bg-[var(--s3)] px-1.5 py-0.5 rounded border border-[var(--b2)]">
+              ↵
             </span>
           </div>
         )}
 
         {/* Task selector */}
-        <div
-          ref={dropdownRef}
-          style={{ position: "relative", flexShrink: 0, display: "flex", alignItems: "center", padding: "0 6px" }}
-        >
+        <div ref={dropdownRef} className="relative flex items-center pr-1 flex-shrink-0">
           <button
             onClick={() => setTaskOpen(o => !o)}
-            style={{
-              display: "flex", alignItems: "center", gap: 6,
-              padding: "5px 10px",
-              background: taskOpen ? "var(--s4)" : "var(--s2)",
-              border: `1px solid ${taskOpen ? "var(--accent)" : "var(--b2)"}`,
-              borderRadius: 5,
-              cursor: "pointer",
-              transition: "all 0.12s",
-              height: 32,
-            }}
-            onMouseEnter={e => {
-              if (!taskOpen) {
-                (e.currentTarget as HTMLElement).style.background = "var(--s3)";
-                (e.currentTarget as HTMLElement).style.borderColor = "var(--b3)";
-              }
-            }}
-            onMouseLeave={e => {
-              if (!taskOpen) {
-                (e.currentTarget as HTMLElement).style.background = "var(--s2)";
-                (e.currentTarget as HTMLElement).style.borderColor = "var(--b2)";
-              }
-            }}
+            className={`flex items-center gap-1 px-2.5 h-7 my-auto rounded text-[10px] font-bold tracking-wider font-mono-data transition-all cursor-pointer border ${
+              taskOpen
+                ? "bg-[var(--accent-dim)] text-[var(--accent-text)] border-[var(--accent)]"
+                : "bg-[var(--s3)] text-[var(--t2)] border-[var(--b2)] hover:border-[var(--b3)] hover:text-[var(--t1)]"
+            }`}
+            style={!taskOpen ? { color: selectedTask.color } : undefined}
           >
-            <span style={{
-              fontFamily: "var(--font-geist-mono), monospace",
-              fontSize: 10, fontWeight: 700,
-              color: selectedTask.color,
-              letterSpacing: "0.07em",
-            }}>
-              {selectedTask.label}
-            </span>
+            {selectedTask.label}
             <svg
               width="8" height="8" viewBox="0 0 24 24"
-              fill="none" stroke="var(--t3)" strokeWidth="2.5"
+              fill="none" stroke="currentColor" strokeWidth="2.5"
               strokeLinecap="round" strokeLinejoin="round"
-              style={{ transform: taskOpen ? "rotate(180deg)" : "none", transition: "transform 0.15s", flexShrink: 0 }}
+              className={`transition-transform duration-150 ${taskOpen ? "rotate-180" : ""}`}
             >
               <polyline points="6 9 12 15 18 9"/>
             </svg>
           </button>
 
-          {/* Dropdown popover */}
+          {/* Dropdown */}
           {taskOpen && (
-            <div
-              className="animate-slide-down"
-              style={{
-                position: "absolute", bottom: "calc(100% + 8px)", right: 0,
-                width: 240,
-                background: "var(--s3)",
-                border: "1px solid var(--b2)",
-                borderRadius: 7,
-                overflow: "hidden",
-                zIndex: 60,
-                boxShadow: "0 -4px 32px rgba(0,0,0,0.5), 0 0 0 1px var(--b1)",
-              }}
-            >
-              {/* Dropdown header */}
-              <div style={{
-                padding: "8px 12px 6px",
-                borderBottom: "1px solid var(--b1)",
-              }}>
-                <span style={{
-                  fontFamily: "var(--font-geist-mono), monospace",
-                  fontSize: 9, color: "var(--t4)", letterSpacing: "0.08em", textTransform: "uppercase",
-                }}>
-                  Select Task Type
+            <div className="absolute bottom-full mb-2 right-0 w-56 bg-[var(--s3)] border border-[var(--b2)] rounded-lg overflow-hidden z-60 shadow-[0_-4px_24px_rgba(0,0,0,0.4)] animate-slide-down">
+              <div className="px-3 py-1.5 border-b border-[var(--b1)]">
+                <span className="font-mono-data text-[8px] text-[var(--t4)] tracking-[0.1em] uppercase">
+                  Task Type
                 </span>
               </div>
-              <div style={{ padding: "4px 0" }}>
-                {TASK_OPTIONS.map(opt => (
-                  <button
-                    key={opt.value}
-                    onClick={() => { setTaskOverride(opt.value); setTaskOpen(false); }}
-                    style={{
-                      display: "flex", alignItems: "center", gap: 10,
-                      width: "100%", textAlign: "left",
-                      padding: "8px 12px",
-                      background: opt.value === taskOverride ? "var(--accent-dim)" : "transparent",
-                      border: "none", cursor: "pointer",
-                      transition: "background 0.1s",
-                      borderLeft: `2px solid ${opt.value === taskOverride ? "var(--accent)" : "transparent"}`,
-                    }}
-                    onMouseEnter={e => {
-                      if (opt.value !== taskOverride)
-                        (e.currentTarget as HTMLElement).style.background = "var(--s4)";
-                    }}
-                    onMouseLeave={e => {
-                      if (opt.value !== taskOverride)
-                        (e.currentTarget as HTMLElement).style.background = "transparent";
-                    }}
-                  >
-                    {/* Active indicator dot */}
-                    <span style={{
-                      width: 6, height: 6, borderRadius: "50%", flexShrink: 0,
-                      background: opt.value === taskOverride ? "var(--accent)" : "var(--b3)",
-                      boxShadow: opt.value === taskOverride ? "0 0 6px var(--accent-glow)" : "none",
-                    }} />
-                    <div>
-                      <span style={{
-                        fontFamily: "var(--font-geist-mono), monospace",
-                        fontSize: 10, fontWeight: 700,
-                        color: opt.value === taskOverride ? "var(--accent-text)" : opt.color,
-                        letterSpacing: "0.06em", display: "block",
-                      }}>
-                        {opt.label}
-                      </span>
-                      <span style={{ fontSize: 10, color: "var(--t3)", marginTop: 1, display: "block" }}>
-                        {opt.desc}
-                      </span>
-                    </div>
-                  </button>
-                ))}
+              <div className="py-0.5">
+                {TASK_OPTIONS.map(opt => {
+                  const isActive = opt.value === taskOverride;
+                  return (
+                    <button
+                      key={opt.value}
+                      onClick={() => { setTaskOverride(opt.value); setTaskOpen(false); }}
+                      className={`flex items-center gap-2 w-full text-left px-3 py-1.5 border-none cursor-pointer transition-colors ${
+                        isActive
+                          ? "bg-[var(--accent-dim)]"
+                          : "bg-transparent hover:bg-[var(--s4)]"
+                      }`}
+                    >
+                      <span
+                        className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${
+                          isActive ? "bg-[var(--accent)]" : "bg-[var(--b3)]"
+                        }`}
+                      />
+                      <div className="min-w-0">
+                        <span
+                          className="font-mono-data text-[10px] font-bold tracking-wider block leading-tight"
+                          style={{ color: isActive ? "var(--accent-text)" : opt.color }}
+                        >
+                          {opt.label}
+                        </span>
+                        <span className="text-[9px] text-[var(--t4)] block leading-tight truncate">
+                          {opt.desc}
+                        </span>
+                      </div>
+                    </button>
+                  );
+                })}
               </div>
             </div>
           )}
         </div>
 
         {/* Divider */}
-        <div style={{ width: 1, background: "var(--b0)", flexShrink: 0, alignSelf: "stretch" }} />
+        <div className="w-px bg-[var(--b2)] flex-shrink-0 self-stretch my-1.5" />
 
         {/* Run button */}
         <button
           onClick={onAnalyze}
           disabled={!canRun}
           title={canRun ? "Run analysis (Enter)" : "Upload data and enter a query first"}
-          style={{
-            height: "100%",
-            padding: "0 22px",
-            background: canRun ? "var(--accent)" : "var(--s2)",
-            border: "none",
-            cursor: canRun ? "pointer" : "not-allowed",
-            display: "flex", alignItems: "center", gap: 8,
-            transition: "all 0.15s",
-            flexShrink: 0,
-            opacity: disabled ? 0.4 : 1,
-            position: "relative",
-            overflow: "hidden",
-          }}
-          onMouseEnter={e => {
-            if (canRun) {
-              (e.currentTarget as HTMLElement).style.background = "hsl(222, 88%, 68%)";
-            }
-          }}
-          onMouseLeave={e => {
-            if (canRun) {
-              (e.currentTarget as HTMLElement).style.background = "var(--accent)";
-            }
-          }}
+          className={`flex items-center gap-1.5 px-4 my-1 mr-1 rounded transition-all flex-shrink-0 font-mono-data text-[11px] font-bold tracking-wider ${
+            canRun
+              ? "bg-[var(--accent)] text-white cursor-pointer hover:brightness-110"
+              : "bg-[var(--s3)] text-[var(--t4)] cursor-not-allowed"
+          }`}
         >
-          {/* Shimmer on hover when ready */}
-          {canRun && (
-            <div style={{
-              position: "absolute", inset: 0,
-              background: "linear-gradient(105deg, transparent 40%, rgba(255,255,255,0.08) 50%, transparent 60%)",
-              backgroundSize: "200% 100%",
-            }} />
-          )}
-
           {loading ? (
             <>
-              <span className="animate-spin-smooth" style={{
-                width: 12, height: 12,
-                border: "2px solid rgba(255,255,255,0.3)",
-                borderTopColor: "#fff",
-                borderRadius: "50%",
-                display: "block", flexShrink: 0,
-              }} />
-              <span style={{
-                fontFamily: "var(--font-geist-mono), monospace",
-                fontSize: 11, fontWeight: 700, color: "#fff", letterSpacing: "0.06em",
-              }}>
-                Running…
-              </span>
+              <span className="animate-spin-smooth w-3 h-3 border-2 border-white/30 border-t-white rounded-full" />
+              <span>Running</span>
             </>
           ) : (
             <>
-              <svg width="11" height="11" viewBox="0 0 24 24"
-                fill={canRun ? "#fff" : "var(--t3)"} stroke="none"
-                style={{ flexShrink: 0 }}
-              >
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor">
                 <polygon points="5 3 19 12 5 21 5 3"/>
               </svg>
-              <span style={{
-                fontFamily: "var(--font-geist-mono), monospace",
-                fontSize: 12, fontWeight: 700,
-                color: canRun ? "#fff" : "var(--t3)",
-                letterSpacing: "0.05em",
-              }}>
-                Run
-              </span>
-              {canRun && (
-                <span style={{
-                  fontFamily: "var(--font-geist-mono), monospace",
-                  fontSize: 9, color: "rgba(255,255,255,0.5)",
-                  letterSpacing: "0.02em",
-                  marginLeft: 2,
-                }}>
-                  ↵
-                </span>
-              )}
+              <span>Run</span>
             </>
           )}
         </button>
       </div>
 
-      {/* ── Error banner ── */}
+      {/* Error banner */}
       {error && (
-        <div style={{
-          display: "flex", alignItems: "center", gap: 8,
-          padding: "7px 16px",
-          background: "var(--red-dim)",
-          borderTop: "1px solid hsla(0,80%,66%,0.15)",
-        }}>
+        <div className="flex items-center gap-2 mx-3 mb-2 px-3 py-2 rounded-lg bg-[var(--red-dim)] border border-[hsla(0,80%,66%,0.2)]">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none"
             stroke="var(--red)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
           >
-            <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
-            <line x1="12" y1="9" x2="12" y2="13"/>
-            <line x1="12" y1="17" x2="12.01" y2="17"/>
+            <circle cx="12" cy="12" r="10"/>
+            <line x1="12" y1="8" x2="12" y2="12"/>
+            <line x1="12" y1="16" x2="12.01" y2="16"/>
           </svg>
-          <p style={{
-            fontFamily: "var(--font-geist-mono), monospace",
-            fontSize: 11, color: "var(--red)", margin: 0,
-          }}>
+          <p className="font-mono-data text-[11px] text-[var(--red)] m-0">
             {error}
           </p>
         </div>

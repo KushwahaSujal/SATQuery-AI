@@ -9,14 +9,14 @@ import ResultsPanel from "@/components/results/ResultsPanel";
 import ExecutionTrace from "@/components/trace/ExecutionTrace";
 import { api } from "@/lib/api";
 import { addLocalJob } from "@/lib/localJobs";
-import type { TaskType, UploadedRaster, UploadedVideo, TraceStep } from "@/lib/types";
+import type { UploadedRaster, UploadedVideo, TraceStep, TaskType } from "@/lib/types";
 
 export default function CommandCenterPage() {
   const router = useRouter();
   const [rasters, setRasters] = useState<UploadedRaster[]>([]);
   const [video, setVideo] = useState<UploadedVideo | null>(null);
   const [query, setQuery] = useState("");
-  const [task, setTask] = useState<TaskType>("AUTO");
+  const [task, setTask] = useState<TaskType>("unsupported");
   const [analyzing, setAnalyzing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [jobId, setJobId] = useState<string | null>(null);
@@ -29,9 +29,9 @@ export default function CommandCenterPage() {
     setAnalyzing(true);
     setError(null);
     setTrace([
-      { name: "upload_validation", status: "success", duration_ms: 38 },
-      { name: "raster_registration", status: "success", duration_ms: 112 },
-      { name: "task_routing", status: "running" },
+      { step: "upload_validation", status: "success", duration_ms: 38 },
+      { step: "raster_registration", status: "success", duration_ms: 112 },
+      { step: "task_routing", status: "running" },
     ]);
 
     try {
@@ -54,10 +54,13 @@ export default function CommandCenterPage() {
         setJobId(finalId);
         setTrace((prev) => [
           ...prev.slice(0, 2),
-          { name: "task_routing", status: "success", duration_ms: 85 },
-          { name: "sam2_grounding", status: "running" },
+          { step: "task_routing", status: "success", duration_ms: 85 },
+          { step: "sam2_grounding", status: "running" },
         ]);
-        setTimeout(() => router.push(`/video/${finalId}`), 700);
+
+        // Poll for backend trace steps
+        pollBackendTrace(finalId);
+        setTimeout(() => router.push(`/video/${finalId}`), 1200);
       } else {
         const filenames = rasters.map((r) => r.filename);
         const reqId = rasters[0]?.request_id || rasters[0]?.id;
@@ -74,13 +77,13 @@ export default function CommandCenterPage() {
           query,
           image_filenames: filenames,
           request_id: reqId,
-          task,
+          task: task !== "unsupported" ? task : undefined,
         });
         finalId = res.job_id;
 
         addLocalJob({
           job_id: finalId,
-          task: task === "AUTO" ? "CHANGE" : task,
+          task: "bi_temporal_change",
           query,
           status: "COMPLETED",
           created_at: new Date().toISOString(),
@@ -88,10 +91,13 @@ export default function CommandCenterPage() {
         setJobId(finalId);
         setTrace((prev) => [
           ...prev.slice(0, 2),
-          { name: "task_routing", status: "success", duration_ms: 94 },
-          { name: "model_execution", status: "success", duration_ms: 650 },
+          { step: "task_routing", status: "success", duration_ms: 94 },
+          { step: "model_execution", status: "success", duration_ms: 650 },
         ]);
-        setTimeout(() => router.push(`/analysis/${finalId}`), 700);
+
+        // Poll for backend trace steps
+        pollBackendTrace(finalId);
+        setTimeout(() => router.push(`/analysis/${finalId}`), 1200);
       }
     } catch (e) {
       const errMsg = e instanceof Error ? e.message : "Analysis request failed";
@@ -99,8 +105,31 @@ export default function CommandCenterPage() {
       setAnalyzing(false);
       setTrace((prev) => [
         ...prev.filter((t) => t.status !== "running"),
-        { name: "pipeline_error", status: "failed", message: errMsg },
+        { step: "pipeline_error", status: "error", details: errMsg },
       ]);
+    }
+  }
+
+  // Poll backend for real execution trace steps
+  async function pollBackendTrace(jobId: string) {
+    const maxAttempts = 10;
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      await new Promise(resolve => setTimeout(resolve, 500));
+      try {
+        const result = await api.result(jobId);
+        const backendTrace = result.execution_trace || result.trace || [];
+        if (backendTrace.length > 0) {
+          setTrace(backendTrace.map((s) => ({
+            step: s.step || "unknown",
+            status: s.status || "success",
+            duration_ms: typeof s.duration_ms === "number" ? s.duration_ms : undefined,
+            details: s.details,
+          })));
+          break;
+        }
+      } catch {
+        // Job might still be processing
+      }
     }
   }
 
@@ -121,7 +150,7 @@ export default function CommandCenterPage() {
 
         {/* Center — map */}
         <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0, background: "var(--s1)" }}>
-          <MapViewer rasters={rasters} video={video} />
+          <MapViewer rasters={rasters} video={video} jobId={jobId} />
         </div>
 
         {/* Right — results */}

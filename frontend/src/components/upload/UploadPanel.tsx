@@ -4,6 +4,8 @@ import { useRef, useState } from "react";
 import { api } from "@/lib/api";
 import type { UploadedRaster, UploadedVideo } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { Badge } from "@/components/ui/badge";
+import { Card } from "@/components/ui/card";
 
 interface UploadPanelProps {
   rasters: UploadedRaster[];
@@ -63,10 +65,10 @@ export default function UploadPanel({ rasters, video, onRasterUploaded, onVideoU
   const assetCount = rasters.length + (video ? 1 : 0);
 
   return (
-    <section style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" }}>
+    <section className="flex flex-col h-full overflow-hidden">
       {/* Header */}
       <div className="panel-header">
-        <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+        <div className="flex items-center gap-2">
           <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="var(--t3)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
             <polyline points="17 8 12 3 7 8"/>
@@ -74,28 +76,16 @@ export default function UploadPanel({ rasters, video, onRasterUploaded, onVideoU
           </svg>
           <span className="panel-label">Data Input</span>
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <div className="flex items-center gap-2">
           {assetCount > 0 && (
-            <span style={{
-              fontFamily: "var(--font-geist-mono), monospace",
-              fontSize: 10, color: "var(--accent-text)",
-              background: "var(--accent-dim)",
-              border: "1px solid hsla(222,88%,62%,0.2)",
-              borderRadius: 3, padding: "1px 6px",
-            }}>
+            <Badge variant="accent">
               {assetCount} {assetCount === 1 ? "asset" : "assets"}
-            </span>
+            </Badge>
           )}
           {uploading && (
-            <span style={{ display: "flex", alignItems: "center", gap: 5 }}>
-              <span className="animate-spin-smooth" style={{
-                width: 8, height: 8,
-                border: "1.5px solid var(--accent-dim)",
-                borderTopColor: "var(--accent)",
-                borderRadius: "50%",
-                display: "inline-block",
-              }} />
-              <span className="font-mono-data" style={{ fontSize: 10, color: "var(--accent-text)" }}>Uploading</span>
+            <span className="flex items-center gap-1.5">
+              <span className="animate-spin-smooth w-2 h-2 border border-[var(--accent-dim)] border-t-[var(--accent)] rounded-full inline-block" />
+              <span className="font-mono-data text-[10px] text-[var(--accent-text)]">Uploading</span>
             </span>
           )}
         </div>
@@ -103,24 +93,12 @@ export default function UploadPanel({ rasters, video, onRasterUploaded, onVideoU
 
       {/* Drop zone */}
       <div
-        className={cn(dragging ? "animate-drag-glow" : "")}
-        style={{
-          margin: "10px 10px 8px",
-          borderRadius: 5,
-          border: `1.5px dashed ${dragging ? "var(--accent)" : "var(--b2)"}`,
-          cursor: "pointer",
-          display: "flex",
-          flexDirection: "column",
-          alignItems: "center",
-          justifyContent: "center",
-          gap: 10,
-          padding: "24px 12px",
-          textAlign: "center",
-          background: dragging ? "var(--accent-dim)" : "var(--s0)",
-          transition: "border-color 0.15s, background 0.15s",
-          position: "relative",
-          overflow: "hidden",
-        }}
+        className={cn(
+          "m-2.5 mb-2 rounded-md border-[1.5px] border-dashed cursor-pointer flex flex-col items-center justify-center gap-2.5 py-6 px-3 text-center relative overflow-hidden transition-all duration-200",
+          dragging
+            ? "border-[var(--accent)] bg-[var(--accent-dim)] animate-drag-glow"
+            : "border-[var(--b2)] bg-[var(--s0)] hover:border-[var(--b3)] hover:bg-[var(--s1)]"
+        )}
         onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
         onDragLeave={() => setDragging(false)}
         onDrop={(e) => { e.preventDefault(); setDragging(false); handleFiles(e.dataTransfer.files); }}
@@ -128,7 +106,8 @@ export default function UploadPanel({ rasters, video, onRasterUploaded, onVideoU
       >
         {/* Grid pattern background */}
         <svg
-          style={{ position: "absolute", inset: 0, width: "100%", height: "100%", opacity: dragging ? 0.25 : 0.07 }}
+          className="absolute inset-0 w-full h-full pointer-events-none transition-opacity duration-200"
+          style={{ opacity: dragging ? 0.25 : 0.07 }}
           viewBox="0 0 100 100" preserveAspectRatio="none"
         >
           <defs>
@@ -144,24 +123,19 @@ export default function UploadPanel({ rasters, video, onRasterUploaded, onVideoU
         </svg>
 
         {/* Upload icon */}
-        <div style={{
-          width: 32, height: 32, borderRadius: 6,
-          background: "var(--s2)", border: "1px solid var(--b2)",
-          display: "flex", alignItems: "center", justifyContent: "center",
-          position: "relative", zIndex: 1,
-        }}>
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke={dragging ? "var(--accent-text)" : "var(--t3)"} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ transition: "stroke 0.15s" }}>
+        <div className="w-8 h-8 rounded-md bg-[var(--s2)] border border-[var(--b2)] flex items-center justify-center relative z-10 transition-all duration-200 group-hover:scale-110">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke={dragging ? "var(--accent-text)" : "var(--t3)"} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="transition-colors duration-200">
             <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
             <polyline points="17 8 12 3 7 8"/>
             <line x1="12" y1="3" x2="12" y2="15"/>
           </svg>
         </div>
 
-        <div style={{ position: "relative", zIndex: 1 }}>
-          <p style={{ fontSize: 12, color: "var(--t2)", margin: 0 }}>
-            Drop files here or <span style={{ color: "var(--t1)" }}>browse</span>
+        <div className="relative z-10">
+          <p className="text-xs text-[var(--t2)] m-0">
+            Drop files here or <span className="text-[var(--t1)]">browse</span>
           </p>
-          <p className="font-mono-data" style={{ fontSize: 9, color: "var(--t4)", marginTop: 4 }}>
+          <p className="font-mono-data text-[9px] text-[var(--t4)] mt-1">
             GeoTIFF · PNG · JPEG · MP4 · MOV
           </p>
         </div>
@@ -171,33 +145,26 @@ export default function UploadPanel({ rasters, video, onRasterUploaded, onVideoU
           type="file"
           multiple
           accept=".tif,.tiff,.png,.jpg,.jpeg,.mp4,.mov"
-          style={{ display: "none" }}
+          className="hidden"
           onChange={(e) => handleFiles(e.target.files)}
         />
       </div>
 
       {/* Error */}
       {error && (
-        <div style={{
-          margin: "0 10px 8px",
-          padding: "7px 10px",
-          borderRadius: 4,
-          border: "1px solid hsla(0,80%,66%,0.2)",
-          background: "var(--red-dim)",
-          display: "flex", alignItems: "flex-start", gap: 7,
-        }}>
-          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="var(--red)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, marginTop: 1 }}>
+        <div className="mx-2.5 mb-2 px-2.5 py-2 rounded border border-[hsla(0,80%,66%,0.2)] bg-[var(--red-dim)] flex items-start gap-2">
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="var(--red)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="flex-shrink-0 mt-0.5">
             <circle cx="12" cy="12" r="10"/>
             <line x1="12" y1="8" x2="12" y2="12"/>
             <line x1="12" y1="16" x2="12.01" y2="16"/>
           </svg>
-          <p className="font-mono-data" style={{ fontSize: 11, color: "var(--red)", margin: 0 }}>{error}</p>
+          <p className="font-mono-data text-[11px] text-[var(--red)] m-0">{error}</p>
         </div>
       )}
 
       {/* File list */}
       {hasData ? (
-        <div style={{ flex: 1, overflowY: "auto", padding: "0 6px 8px" }}>
+        <div className="flex-1 overflow-y-auto px-1.5 pb-2">
           {rasters.map((r, i) => (
             <FileRow
               key={r.id}
@@ -222,8 +189,8 @@ export default function UploadPanel({ rasters, video, onRasterUploaded, onVideoU
           )}
         </div>
       ) : (
-        <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
-          <p className="font-mono-data" style={{ fontSize: 10, color: "var(--t4)", textAlign: "center", lineHeight: 1.7, padding: "0 20px" }}>
+        <div className="flex-1 flex items-center justify-center">
+          <p className="font-mono-data text-[10px] text-[var(--t4)] text-center leading-relaxed px-5">
             No data registered.<br />Upload imagery or video to begin.
           </p>
         </div>
@@ -231,30 +198,20 @@ export default function UploadPanel({ rasters, video, onRasterUploaded, onVideoU
 
       {/* Footer strip */}
       {hasData && (
-        <div style={{
-          borderTop: "1px solid var(--b0)", padding: "6px 12px",
-          display: "flex", alignItems: "center", justifyContent: "space-between",
-          flexShrink: 0,
-        }}>
-          <span className="font-mono-data" style={{ fontSize: 9, color: "var(--t4)" }}>
+        <div className="border-t border-[var(--b0)] px-3 py-1.5 flex items-center justify-between flex-shrink-0">
+          <span className="font-mono-data text-[9px] text-[var(--t4)]">
             {assetCount} {assetCount === 1 ? "asset" : "assets"} registered
           </span>
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <div className="flex items-center gap-2">
             {onClearRasters && rasters.length > 0 && (
               <button
                 onClick={onClearRasters}
-                className="font-mono-data"
-                style={{
-                  fontSize: 9, color: "var(--t4)", cursor: "pointer",
-                  background: "none", border: "none", padding: 0,
-                }}
-                onMouseEnter={e => (e.currentTarget.style.color = "var(--t2)")}
-                onMouseLeave={e => (e.currentTarget.style.color = "var(--t4)")}
+                className="font-mono-data text-[9px] text-[var(--t4)] cursor-pointer bg-transparent border-none p-0 hover:text-[var(--t2)] transition-colors"
               >
                 clear
               </button>
             )}
-            <span className="font-mono-data" style={{ fontSize: 9, color: "var(--t4)" }}>
+            <span className="font-mono-data text-[9px] text-[var(--t4)]">
               {rasters.length > 0 ? rasters[0].modality ?? "Optical" : video ? "Video" : "—"}
             </span>
           </div>
@@ -275,24 +232,12 @@ function FileRow({ icon, badge, name, preview, meta, sub, status }: {
 }) {
   return (
     <div
-      className="animate-fade-in"
-      style={{
-        display: "flex", alignItems: "flex-start", gap: 8,
-        padding: "7px 6px", borderRadius: 4, cursor: "default",
-        transition: "background 0.1s",
-      }}
-      onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = "var(--s2)"}
-      onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = "transparent"}
+      className="animate-fade-in flex items-start gap-2 px-1.5 py-1.5 rounded cursor-default transition-all duration-150 hover:bg-[var(--s2)] group"
     >
       {/* Thumbnail or icon */}
-      <div style={{
-        width: 32, height: 32, borderRadius: 4, flexShrink: 0,
-        background: "var(--s2)", border: "1px solid var(--b1)",
-        overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center",
-      }}>
+      <div className="w-8 h-8 rounded flex-shrink-0 bg-[var(--s2)] border border-[var(--b1)] overflow-hidden flex items-center justify-center">
         {preview ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={preview} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+          <img src={preview} alt="" className="w-full h-full object-cover" />
         ) : (
           icon === "raster" ? (
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--t3)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
@@ -307,30 +252,22 @@ function FileRow({ icon, badge, name, preview, meta, sub, status }: {
       </div>
 
       {/* Content */}
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 2 }}>
-          <span className="font-mono-data" style={{
-            fontSize: 9, fontWeight: 600, color: "var(--accent-text)",
-            background: "var(--accent-dim)", border: "1px solid hsla(222,88%,62%,0.2)",
-            borderRadius: 2, padding: "0 4px",
-          }}>
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-1.5 mb-0.5">
+          <span className="font-mono-data text-[9px] font-semibold text-[var(--accent-text)] bg-[var(--accent-dim)] border border-[hsla(222,88%,62%,0.2)] rounded-sm px-1">
             {badge}
           </span>
-          <span style={{ fontSize: 11, color: "var(--t1)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          <span className="text-[11px] text-[var(--t1)] overflow-hidden text-ellipsis whitespace-nowrap">
             {name}
           </span>
         </div>
-        <p className="font-mono-data" style={{ fontSize: 9, color: "var(--t3)", margin: 0 }}>{meta}</p>
-        {sub && <p className="font-mono-data" style={{ fontSize: 9, color: "var(--t4)", margin: "1px 0 0" }}>{sub}</p>}
+        <p className="font-mono-data text-[9px] text-[var(--t3)] m-0">{meta}</p>
+        {sub && <p className="font-mono-data text-[9px] text-[var(--t4)] m-0 mt-px">{sub}</p>}
       </div>
 
       {/* Status */}
-      <div style={{ flexShrink: 0, paddingTop: 1 }}>
-        <span style={{
-          fontFamily: "var(--font-geist-mono), monospace",
-          fontSize: 9, letterSpacing: "0.04em", textTransform: "uppercase",
-          color: status === "valid" ? "var(--green)" : "var(--accent-text)",
-        }}>
+      <div className="flex-shrink-0 pt-px">
+        <span className="font-mono-data text-[9px] tracking-wide uppercase" style={{ color: status === "valid" ? "var(--green)" : "var(--accent-text)" }}>
           {status === "valid" ? "✓" : "●"}
         </span>
       </div>

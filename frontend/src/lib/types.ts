@@ -1,18 +1,28 @@
+// Backend task enum (lowercase, matches backend/app/schemas/agent.py)
+export type TaskType =
+  | "single_image_vqa"
+  | "single_image_caption"
+  | "single_image_grounding"
+  | "bi_temporal_change"
+  | "bi_temporal_change_vqa"
+  | "optical_sar_analysis"
+  | "video_grounding"
+  | "video_grounding_tracking"
+  | "video_vqa"
+  | "video_change"
+  | "unsupported";
+
+// Backend job status enum (matches backend/app/schemas/agent.py)
 export type JobStatus =
-  | "PENDING"
+  | "QUEUED"
+  | "VALIDATING"
+  | "PLANNING"
   | "RUNNING"
+  | "GENERATING_EVIDENCE"
   | "COMPLETED"
   | "FAILED"
-  | "CANCELED";
-
-export type TaskType =
-  | "AUTO"
-  | "VQA"
-  | "GROUNDING"
-  | "CHANGE"
-  | "TEMPORAL_VQA"
-  | "VISUAL_ANALYTICS"
-  | "VIDEO";
+  | "CREATED"
+  | "UPLOADED";
 
 export type ModelLifecycle =
   | "NOT_CONFIGURED"
@@ -51,6 +61,9 @@ export interface ModelInfo {
   loaded?: boolean;
   description?: string;
   capabilities?: string[];
+  available?: boolean;
+  last_error?: string;
+  validation_status?: string;
 }
 
 export interface UploadedRaster {
@@ -96,11 +109,16 @@ export interface AnalyzeRequest {
   params?: Record<string, unknown>;
 }
 
+// Backend trace step (matches backend/app/schemas/agent.py ExecutionStep)
 export interface TraceStep {
-  name: string;
-  status: "success" | "running" | "failed" | "skipped";
+  step: string;
+  status: "success" | "warning" | "error" | "running" | "skipped";
+  model?: string;
+  tool?: string;
+  started_at?: string;
+  completed_at?: string;
   duration_ms?: number;
-  message?: string;
+  details?: string;
 }
 
 export interface EvidenceItem {
@@ -113,32 +131,100 @@ export interface EvidenceItem {
   description?: string;
 }
 
-export interface SpatialMetrics {
+// Backend AreaStatistics (matches backend/app/schemas/evidence.py)
+export interface AreaStatistics {
+  changed_pixels: number;
+  raw_changed_pixels?: number;
+  total_valid_pixels: number;
+  change_ratio: number;
+  threshold: number;
+  region_count: number;
+  quality_status: string;
+  quality_warning?: string;
+  diagnostic_flags: string[];
+  estimated_area_sq_m?: number;
+  estimated_area_sq_km?: number;
+  area_unit: string;
+  metric_crs?: string;
+}
+
+// Backend BoundingBoxEvidence (matches backend/app/schemas/evidence.py)
+export interface BoundingBoxEvidence {
+  label: string;
+  box_2d: number[];
+  score?: number;
+  geo_bounds?: number[];
+  source_crs?: string;
+  target_crs?: string;
+  coordinate_space: string;
+}
+
+// Backend SpatialEvidence (matches backend/app/schemas/evidence.py)
+export interface SpatialEvidence {
+  boxes: BoundingBoxEvidence[];
+  has_mask: boolean;
+  mask_path?: string;
+  geojson_path?: string;
+  overlay_path?: string;
+  statistics?: AreaStatistics;
+  geojson_data?: Record<string, unknown>;
+  candidate_boxes: number[][];
+  candidate_scores: number[];
+  selected_box?: number[];
+  reasoning_strategy?: string;
+  reasoning_score?: number;
+  sam2_artifact?: string;
+  sam2_score?: number;
+}
+
+// Backend ConsistencySignal (matches backend/app/schemas/evidence.py)
+export interface ConsistencySignal {
+  signal_type: string;
+  agreement: boolean;
+  description: string;
+  details: Record<string, unknown>;
+}
+
+// Backend EvidencePackage (matches backend/app/schemas/evidence.py)
+export interface EvidencePackage {
+  spatial: SpatialEvidence;
+  consistency: ConsistencySignal[];
+  summary?: string;
+  metadata: Record<string, unknown>;
+}
+
+// Backend SpatialMetricsResponse (from responses.py)
+export interface SpatialMetricsResponse {
   changed_pixels?: number;
   change_ratio?: number;
   regions?: number;
   area_m2?: number;
   area_km2?: number;
-  bbox?: [number, number, number, number];
-  centroid?: [number, number];
 }
 
+// Analysis result (matches backend/app/schemas/responses.py AnalyzeResponse)
 export interface AnalysisResult {
   job_id: string;
   request_id?: string;
+  status: JobStatus;
   task: TaskType;
-  query: string;
-  answer: string;
+  workflow_id: string;
+  workflow?: string;
+  workflow_reason: string;
+  query?: string;
+  answer?: string;
   confidence?: number;
-  metrics?: SpatialMetrics;
-  evidence?: EvidenceItem[];
-  models_used?: string[];
-  artifacts?: Record<string, string[]> | string[];
-  execution_trace?: TraceStep[];
-  trace?: TraceStep[];
-  visualizations?: Array<Record<string, unknown>>;
-  created_at?: string;
-  completed_at?: string;
+  models_used: string[];
+  parameters: Record<string, unknown>;
+  evidence: EvidencePackage;
+  metrics?: SpatialMetricsResponse;
+  execution_trace: TraceStep[];
+  trace: TraceStep[];
+  warnings: string[];
+  errors: string[];
+  artifacts: Record<string, string[]>;
+  visualizations: Record<string, unknown>[];
+  orchestration?: Record<string, unknown>;
 }
 
 export interface Layer {
@@ -168,34 +254,38 @@ export interface PixelInspectionRequest {
   row: number;
 }
 
+// Backend pixel inspection response (matches visualization/inspector.py)
 export interface PixelInspectionResponse {
   col: number;
   row: number;
   crs?: string;
-  coordinates?: [number, number];
-  bands?: Record<string, number>;
-  indices?: Record<string, number>;
-  model?: {
-    probability?: number;
-    prediction?: string;
+  band_values?: Record<string, number>;
+  geographic_coordinates?: {
+    x_coord?: number;
+    y_coord?: number;
+    crs?: string;
   };
+  probability?: number;
+  prediction?: number;
+  model_prediction?: {
+    status?: string;
+    probability?: number;
+  };
+  derived_indices?: Record<string, number>;
 }
 
+// Backend histogram response (matches visualization/inspector.py)
 export interface HistogramResponse {
   layer_id: string;
-  bins: number[];
+  counts: number[];
+  bins: Array<{ range_start: number; range_end: number; count: number }>;
   min: number;
   max: number;
   mean: number;
   median: number;
   std: number;
-  percentiles: {
-    p2?: number;
-    p25?: number;
-    p50?: number;
-    p75?: number;
-    p98?: number;
-  };
+  units: string;
+  total_pixels: number;
 }
 
 export interface VideoAnalyzeRequest {
@@ -240,9 +330,7 @@ export interface VideoJobResult {
   job_id: string;
   status: JobStatus;
   query: string;
-  /** The API returns `flags`; `events` was never emitted by the backend. */
   flags?: VideoFlag[];
-  /** Why the run produced what it did — carries NOT_APPLICABLE / DETECTION_FAILED. */
   workflow_reason?: string;
   video_metadata?: VideoMetadata;
   events?: VideoEvent[];

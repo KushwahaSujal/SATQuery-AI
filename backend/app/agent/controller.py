@@ -231,6 +231,7 @@ class AgentController:
             task=state.task or TaskType.UNSUPPORTED,
             workflow_id=state.workflow_id or "unknown",
             workflow_reason=state.reason or "No workflow determined.",
+            query=state.query,
             answer=state.answer,
             confidence=state.confidence,
             models_used=state.selected_models,

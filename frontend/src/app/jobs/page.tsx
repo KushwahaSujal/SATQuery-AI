@@ -36,15 +36,15 @@ export default function JobsPage() {
       // Merge unique by job_id
       const map = new Map<string, LocalJobRecord>();
       for (const item of [...live, ...local]) {
-        const id = item.job_id || item.id || "";
+        const id = (item as Record<string, unknown>).job_id || (item as Record<string, unknown>).id || "";
         if (item && id) {
-          if (!map.has(id)) {
-            map.set(id, {
-              job_id: id,
-              task: item.task || "ANALYSIS",
-              query: item.query || "Geospatial Execution Job",
-              status: item.status || "COMPLETED",
-              created_at: item.created_at || new Date().toISOString(),
+          if (!map.has(id as string)) {
+            map.set(id as string, {
+              job_id: id as string,
+              task: ((item as Record<string, unknown>).task as string) || "ANALYSIS",
+              query: ((item as Record<string, unknown>).query as string) || "Geospatial Execution Job",
+              status: ((item as Record<string, unknown>).status as string) || "COMPLETED",
+              created_at: ((item as Record<string, unknown>).created_at as string) || new Date().toISOString(),
             });
           }
         }

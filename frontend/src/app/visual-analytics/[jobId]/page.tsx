@@ -41,15 +41,7 @@ export default function VisualAnalyticsPage() {
     pixelInspector.mutate({ col, row });
   }
 
-  const pixel = pixelInspector.data ?? {
-    col: 412,
-    row: 650,
-    crs: "EPSG:4326",
-    coordinates: [35.52184, 33.90112] as [number, number],
-    bands: { R: 142, G: 118, B: 94 },
-    indices: { NDVI: 0.4125, NDWI: -0.1023 },
-    model: { probability: 0.8942, prediction: "Changed" },
-  };
+  const pixel = pixelInspector.data;
 
   const visualizationUrl = activeLayer?.artifact_url || api.visualizationUrl(jobId, activeId);
   
@@ -193,39 +185,41 @@ export default function VisualAnalyticsPage() {
           <span className="panel-label">Pixel Telemetry</span>
         </div>
         <div className="p-3 border-b border-[#1a1a1a] flex-shrink-0">
-          {pixel && (
+          {pixel ? (
             <div className="font-mono-data text-[10px] space-y-1.5">
-              <div className="flex justify-between text-[#333]">
+              <div className="flex justify-between text-[var(--t3)]">
                 <span>col/row</span>
-                <span className="text-[#404040]">{pixel.col}, {pixel.row}</span>
+                <span className="text-[var(--t4)]">{pixel.col}, {pixel.row}</span>
               </div>
-              {pixel.coordinates && (
-                <div className="flex justify-between text-[#333]">
-                  <span>lat/lng</span>
-                  <span className="text-[#404040]">
-                    {pixel.coordinates.map((c) => c.toFixed(5)).join(", ")}
+              {pixel.geographic_coordinates && (
+                <div className="flex justify-between text-[var(--t3)]">
+                  <span>x, y ({pixel.geographic_coordinates.crs || pixel.crs || ""})</span>
+                  <span className="text-[var(--t4)]">
+                    {pixel.geographic_coordinates.x_coord?.toFixed(5)}, {pixel.geographic_coordinates.y_coord?.toFixed(5)}
                   </span>
                 </div>
               )}
-              {pixel.indices?.NDVI != null && (
+              {pixel.derived_indices?.NDVI != null && (
                 <div className="flex justify-between">
-                  <span className="text-[#333]">NDVI</span>
-                  <span className="text-[#4ade80]">{(pixel.indices.NDVI as number).toFixed(4)}</span>
+                  <span className="text-[var(--t3)]">NDVI</span>
+                  <span className="text-[var(--green)]">{(pixel.derived_indices.NDVI as number).toFixed(4)}</span>
                 </div>
               )}
-              {pixel.model?.probability != null && (
+              {pixel.probability != null && (
                 <div className="flex justify-between">
-                  <span className="text-[#333]">probability</span>
-                  <span className="text-[#f472b6]">{(pixel.model.probability * 100).toFixed(2)}%</span>
+                  <span className="text-[var(--t3)]">probability</span>
+                  <span className="text-[var(--purple)]">{(pixel.probability * 100).toFixed(2)}%</span>
                 </div>
               )}
-              {pixel.model?.prediction && (
+              {pixel.model_prediction?.status && (
                 <div className="flex justify-between">
-                  <span className="text-[#333]">prediction</span>
-                  <span className="text-[#a3a3a3]">{pixel.model.prediction}</span>
+                  <span className="text-[var(--t3)]">prediction</span>
+                  <span className="text-[var(--t2)]">{pixel.model_prediction.status}</span>
                 </div>
               )}
             </div>
+          ) : (
+            <p className="font-mono-data text-[10px] text-[var(--t4)]">Click the image to inspect a pixel</p>
           )}
         </div>
 
