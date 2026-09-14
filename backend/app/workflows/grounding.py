@@ -77,7 +77,8 @@ def run_grounding_pipeline(
     iou_nms_threshold: float = 0.50,
     grounding_adapter: Optional[GroundingDINOAdapter] = None,
     sam2_adapter: Optional[SAM2Adapter] = None,
-    verifier: Optional[DetectionVerifier] = None
+    verifier: Optional[DetectionVerifier] = None,
+    aoi_mask: Optional[np.ndarray] = None
 ) -> Dict[str, Any]:
     """
     Production Grounding Pipeline connecting Grounding DINO, V4 Multi-Attribute
@@ -165,6 +166,7 @@ def run_grounding_pipeline(
         })
 
         found = []
+        outside_aoi: List[List[float]] = []
         for c in det_result.get("boxes", []):
             b = c.get("xyxy", [0, 0, 0, 0])
             coverage = (max(0.0, float(b[2] - b[0])) * max(0.0, float(b[3] - b[1]))) / float(w * h)
@@ -173,7 +175,17 @@ def run_grounding_pipeline(
             if coverage > 0.85 and target_category not in ("scene", "image", "area", "background", "entire"):
                 logger.info(f"Filtering out full-frame candidate box {b} (coverage: {coverage:.2%}) for discrete target '{target_category}'")
                 continue
+            if aoi_mask is not None and aoi_mask.shape == (h, w):
+                from backend.app.geo.aoi import aoi_bbox_ratio
+                centre_inside, _ = aoi_bbox_ratio(b, aoi_mask)
+                if not centre_inside:
+                    outside_aoi.append([round(float(v), 1) for v in b])
+                    continue
             found.append(c)
+        if outside_aoi:
+            record_step("filter_area_of_interest", "success", details={
+                "dropped_outside_aoi": len(outside_aoi), "attempt": attempt
+            })
         record_step("obtain_candidate_boxes", "success", details={
             "candidate_count": len(found),
             "scores": [round(c.get("score", 0.0), 4) for c in found],
@@ -387,6 +399,10 @@ def run_grounding_pipeline(
 
     # Step 9: Receive REAL segmentation mask
     segmentation_mask = sam2_res.get("mask") if isinstance(sam2_res, dict) else getattr(sam2_res, "mask")
+    if aoi_mask is not None and segmentation_mask is not None and np.squeeze(segmentation_mask).shape == aoi_mask.shape:
+        segmentation_mask = (np.squeeze(segmentation_mask) > 0).astype(np.uint8) & aoi_mask.astype(np.uint8)
+        sam2_res = {"mask": segmentation_mask, "score": s_score, "scores": s_scores,
+                    "pixel_count": int(segmentation_mask.sum())}
     sam2_score = float(s_score)
     mask_pixel_count = int(sam2_res.get("pixel_count") if isinstance(sam2_res, dict) else getattr(sam2_res, "pixel_count", np.sum(segmentation_mask > 0)))
     record_step("receive_segmentation_mask", "success", details={

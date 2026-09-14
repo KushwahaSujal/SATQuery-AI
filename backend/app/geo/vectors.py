@@ -80,96 +80,88 @@ def mask_to_geojson(
                     }
                 })
     else:
-        # Path B: Scipy/Pure Python connected component polygon fallback
-        from scipy import ndimage
-        labeled, num_features = ndimage.label(uint8_mask)
+        # Path B (no rasterio): real contour polygons with holes via OpenCV, mapped through the
+        # raster's affine transform and reprojected. Previously each component was reduced to its
+        # bounding rectangle, which misstated shape and area (project/qna.md Q-009).
+        import cv2
 
+        geo = bool(metadata and metadata.is_georeferenced and (metadata.transform or metadata.bounds))
         transformer = None
-        if pyproj is not None and metadata and metadata.is_georeferenced and metadata.crs and metadata.crs.upper() != target_crs:
+        if geo and pyproj is not None and metadata.crs and metadata.crs.upper() != target_crs:
             try:
-                src_p = pyproj.CRS.from_user_input(metadata.crs)
-                dst_p = pyproj.CRS.from_user_input(target_crs)
-                transformer = pyproj.Transformer.from_crs(src_p, dst_p, always_xy=True).transform
+                transformer = pyproj.Transformer.from_crs(
+                    pyproj.CRS.from_user_input(metadata.crs), pyproj.CRS.from_user_input(target_crs), always_xy=True
+                ).transform
             except Exception as e:
                 logger.warning(f"Could not initialize CRS transformer in Path B ({metadata.crs} -> {target_crs}): {e}")
 
-        for idx in range(1, num_features + 1):
-            comp_mask = (labeled == idx)
-            pix_count = np.sum(comp_mask)
+        if geo and metadata.transform:
+            a, b, c, d, e, f = metadata.transform[:6]
+        elif geo:
+            gb = metadata.bounds
+            a, b, c, d, e, f = (gb[2] - gb[0]) / w, 0.0, gb[0], 0.0, -(gb[3] - gb[1]) / h, gb[3]
+
+        def to_output(pts: np.ndarray) -> List[List[float]]:
+            # OpenCV contour vertices are pixel indices; +0.5 places them at pixel centres.
+            cols = pts[:, 0].astype(float) + 0.5
+            rows = pts[:, 1].astype(float) + 0.5
+            if not geo:
+                ring = np.stack([cols, rows], axis=1)
+            else:
+                xs = a * cols + b * rows + c
+                ys = d * cols + e * rows + f
+                if transformer is not None:
+                    xs, ys = transformer(xs, ys)
+                ring = np.stack([np.asarray(xs, float), np.asarray(ys, float)], axis=1)
+            ring = ring.tolist()
+            if ring and ring[0] != ring[-1]:
+                ring.append(ring[0])
+            return ring
+
+        contours, hierarchy = cv2.findContours(uint8_mask, cv2.RETR_CCOMP, cv2.CHAIN_APPROX_SIMPLE)
+        hierarchy = hierarchy[0] if hierarchy is not None else []
+        for i, cnt in enumerate(contours):
+            if hierarchy[i][3] != -1:
+                continue  # holes are attached to their parent below
+            holes = []
+            child = hierarchy[i][2]
+            while child != -1:
+                holes.append(contours[child])
+                child = hierarchy[child][0]
+
+            # Holes are already 0 in the mask, so filling the outer ring and intersecting counts exactly
+            # this component's pixels. Areas are reported from pixel counts (statistics.py), not from
+            # the polygon, whose vertices sit on pixel centres and so trace ~half a pixel inside.
+            fill = np.zeros_like(uint8_mask)
+            cv2.drawContours(fill, [cnt], -1, 1, thickness=cv2.FILLED)
+            pix_count = int(np.sum(fill & uint8_mask))
             if pix_count < min_area_pixels:
                 continue
 
-            ys, xs = np.where(comp_mask)
-            min_y, max_y = float(np.min(ys)), float(np.max(ys))
-            min_x, max_x = float(np.min(xs)), float(np.max(xs))
-
-            # If georeferenced metadata exists, map to geographic coords in EPSG:4326
-            if metadata and metadata.is_georeferenced and metadata.bounds:
-                gb = metadata.bounds  # [minx, miny, maxx, maxy] in source CRS
-                geo_minx = gb[0] + (min_x / w) * (gb[2] - gb[0])
-                geo_maxx = gb[0] + (max_x / w) * (gb[2] - gb[0])
-                geo_miny = gb[1] + (1.0 - max_y / h) * (gb[3] - gb[1])
-                geo_maxy = gb[1] + (1.0 - min_y / h) * (gb[3] - gb[1])
-
-                if transformer is not None:
-                    try:
-                        p1_x, p1_y = transformer(geo_minx, geo_miny)
-                        p2_x, p2_y = transformer(geo_maxx, geo_miny)
-                        p3_x, p3_y = transformer(geo_maxx, geo_maxy)
-                        p4_x, p4_y = transformer(geo_minx, geo_maxy)
-                        coords = [
-                            [
-                                [p1_x, p1_y],
-                                [p2_x, p2_y],
-                                [p3_x, p3_y],
-                                [p4_x, p4_y],
-                                [p1_x, p1_y]
-                            ]
-                        ]
-                    except Exception:
-                        coords = [
-                            [
-                                [geo_minx, geo_miny],
-                                [geo_maxx, geo_miny],
-                                [geo_maxx, geo_maxy],
-                                [geo_minx, geo_maxy],
-                                [geo_minx, geo_miny]
-                            ]
-                        ]
-                else:
-                    coords = [
-                        [
-                            [geo_minx, geo_miny],
-                            [geo_maxx, geo_miny],
-                            [geo_maxx, geo_maxy],
-                            [geo_minx, geo_maxy],
-                            [geo_minx, geo_miny]
-                        ]
-                    ]
-            else:
-                # Non-georeferenced benchmark PNG/JPEG: strictly keep in image coordinates
-                coords = [
-                    [
-                        [min_x, min_y],
-                        [max_x, min_y],
-                        [max_x, max_y],
-                        [min_x, max_y],
-                        [min_x, min_y]
-                    ]
-                ]
+            rings = []
+            for ring_pts in [cnt] + holes:
+                approx = cv2.approxPolyDP(ring_pts, simplify_tolerance, True) if simplify_tolerance > 0 else ring_pts
+                pts = approx.reshape(-1, 2)
+                if len(pts) < 3:
+                    pts = ring_pts.reshape(-1, 2)
+                if len(pts) >= 3:
+                    rings.append(to_output(pts))
+            if not rings:
+                continue
 
             features.append({
                 "type": "Feature",
                 "geometry": {
                     "type": "Polygon",
-                    "coordinates": coords
+                    "coordinates": rings
                 },
                 "properties": {
                     "class": "detected_object",
-                    "pixel_count": int(pix_count),
-                    "source_crs": metadata.crs if (metadata and metadata.is_georeferenced) else None,
-                    "target_crs": target_crs if (metadata and metadata.is_georeferenced) else "image_coordinates",
-                    "coordinate_space": "geographic" if (metadata and metadata.is_georeferenced) else "image_coordinates"
+                    "pixel_count": pix_count,
+                    "holes": len(rings) - 1,
+                    "source_crs": metadata.crs if geo else None,
+                    "target_crs": target_crs if geo else "image_coordinates",
+                    "coordinate_space": "geographic" if geo else "image_coordinates"
                 }
             })
 

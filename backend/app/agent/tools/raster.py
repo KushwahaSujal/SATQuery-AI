@@ -35,3 +35,34 @@ def inspect_raster(state: AgentState) -> None:
     for p in state.image_paths:
         meta = RasterInspector.inspect(p)
         state.metadata.append(meta)
+    resolve_state_aoi(state)
+
+
+def resolve_state_aoi(state: AgentState):
+    """
+    Rasterises the request's GeoJSON AOI (if any) against the first raster and stores it on the state.
+    Raises AOIError (HTTP 422) if the AOI is invalid, the raster is not georeferenced, or they don't overlap:
+    silently analysing the whole scene when the user asked about a specific area would be wrong.
+    """
+    from backend.app.geo.aoi import rasterize_aoi, resolve_request_aoi
+
+    if state.aoi is not None or not (state.parameters.get("aoi_geojson") or state.parameters.get("aoi_filename")):
+        return state.aoi
+    if not state.metadata:
+        for p in state.image_paths:
+            state.metadata.append(RasterInspector.inspect(p))
+    input_dir = artifact_manager.get_job_dir(state.request_id) / "input"
+    aoi = resolve_request_aoi(state.parameters, input_dir)
+    state.aoi = rasterize_aoi(aoi, state.metadata[0] if state.metadata else None)
+    summary = state.aoi.summary()
+    summary.update({"aoi_crs": aoi.crs, "feature_count": aoi.feature_count})
+    state.evidence.metadata["aoi"] = summary
+    state.add_trace("Area of interest applied", status="success",
+                    details=f"{summary['aoi_pixel_count']:,} px, {summary['aoi_area_sq_km']} km², "
+                            f"{summary['aoi_coverage_within_raster']:.1%} of the AOI inside the raster")
+    if summary["aoi_coverage_within_raster"] < 0.999:
+        state.warnings.append(
+            f"Only {summary['aoi_coverage_within_raster']:.1%} of the area of interest lies inside the raster; "
+            "results cover that part only."
+        )
+    return state.aoi

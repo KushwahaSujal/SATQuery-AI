@@ -49,6 +49,7 @@ and the commit it describes. Extracted, never re-litigated; anything missing is 
 | [Q-006](#q-006--retiring-the-approval-gate-qnamd-becomes-a-transcript) | Retiring the approval gate; `qna.md` becomes a transcript | 2026-09-11 | Recorded |
 | [Q-007](#q-007--changeformer-ayushmans-epoch-20-checkpoint-on-vendored-upstream-architecture) | ChangeFormer — Ayushman's epoch-20 checkpoint on vendored upstream architecture | 2026-09-14 | Recorded |
 | [Q-010](#q-010--gpu-out-of-memory-recovery-for-resident-models) | GPU out-of-memory recovery for resident models | 2026-09-14 | Recorded |
+| [Q-011](#q-011--geotiff-georeferencing-without-rasterio-and-geojson-area-of-interest-input) | GeoTIFF georeferencing without rasterio; GeoJSON area-of-interest input | 2026-09-14 | Recorded |
 | [Q-008](#q-008--two-agent-detection-verification-backtracking-and-re-evaluation) | Two-agent detection: verification, backtracking and re-evaluation (stills + video) | 2026-09-14 | Recorded · superseded in part by Q-009 |
 | [Q-009](#q-009--two-agent-detection-attribute-queries-are-labelled-not-backtracked) | Two-agent detection: attribute queries are labelled, not backtracked (supersedes Q-008 rule) | 2026-09-14 | Recorded |
 
@@ -927,3 +928,122 @@ frame ("Tried to allocate 328.00 MiB … 157.00 MiB free") after the ChangeForme
 logged as a frame error, and 2–4 video tests failed. `workflows/video_analysis.py` now retries a frame
 once after releasing every model except `grounding_dino`, `sam2` and `remoteclip`, with a warning trace
 step. Isolated suite at the two-agent commit afterwards: 157 passed, 0 failed.
+
+---
+
+## Q-011 · GeoTIFF georeferencing without rasterio, and GeoJSON area-of-interest input
+
+**Recorded** 2026-09-14, atop `9c7caf6`. Plan phases 4–5.
+
+**Result:** a real UTM GeoTIFF now reads as `EPSG:32614` with its transform (before: `crs=None`,
+`is_georeferenced=False`). Through HTTP, change detection with a WGS84 AOI over the western half of
+LEVIR scene 100 reports **14,101 changed px = the independently counted 14,101**, **3,525.25 m² exact**,
+change ratio relative to the AOI, and GeoJSON in lon/lat.
+
+### 1. Mechanism
+
+**GeoTIFF read** (`geo/raster.py::_georeference_from_tifffile`), because `rasterio` is not installed and
+rules.md §2 keeps GDAL optional:
+- CRS from `ProjectedCSTypeGeoKey` (3072), else `GeographicTypeGeoKey` (2048), as `EPSG:n`.
+  User-defined (32767) → not georeferenced, rather than guessed.
+- Transform from `ModelTransformation` (34264), else `ModelPixelScale` (33550) + `ModelTiepoint`
+  (33922), in rasterio Affine order `[a, b, c, d, e, f]` so metadata is identical whichever reader
+  ran. `RasterPixelIsPoint` is shifted half a pixel, as GDAL does.
+- Bounds, resolution, nodata (`GDAL_NODATA` 42113).
+
+**GeoTIFF write** (`evidence/masks.py::_geotiff_tags`): change and segmentation masks carry the source
+CRS and transform; `run_change_detection` now passes `meta1`. Before, they were saved without it.
+
+**GeoJSON output** (`geo/vectors.py` path B, the no-rasterio path): real contour polygons with holes
+(`cv2.findContours` RETR_CCOMP → affine → pyproj). Before, every component became its **bounding
+rectangle**.
+
+**Non-8-bit pairs** (`geo/optical_preprocessing.py::joint_rgb8_pair`): uint16/float/multi-band input
+is reduced to the first three bands and stretched with one set of 2–98% percentiles computed across
+**both dates**, with a warning. Before, arrays went straight to ChangeFormer's `/255` scaling.
+
+**AOI input** (`geo/aoi.py`):
+- `load_aoi` accepts Polygon / MultiPolygon / Feature / FeatureCollection, as a dict, JSON string or
+  file. CRS is RFC 7946 WGS84 unless a legacy `crs` member names another. Errors are structured
+  `AOIError` (422): `AOI_INVALID`, `AOI_REQUIRES_GEOREFERENCED_RASTER`, `AOI_OUTSIDE_RASTER`.
+- `rasterize_aoi` reprojects to the raster CRS, maps world→pixel through the inverse affine, and fills
+  with an exact even-odd scanline at pixel centres (`_scanline_fill`). It reports AOI area, the area
+  inside the raster, and coverage.
+- Inputs: `AnalyzeRequest.aoi_geojson` (inline) or `aoi_filename` from the new `POST /api/upload/aoi`,
+  which validates on upload.
+- Applied in `inspect_raster` → `AgentState.aoi`, `evidence.metadata.aoi`, a trace step, and a warning
+  if coverage < 100%.
+  - **Change detection:** masks clipped to the AOI (full-scene masks kept as `*_full_scene`), answer
+    and counts are AOI-relative, AOI outline drawn on the overlay.
+  - **Statistics:** pixels outside the AOI are excluded from the valid area.
+  - **Grounding:** candidates whose centre is outside the AOI are dropped (trace step
+    `filter_area_of_interest`), and the SAM 2 mask is clipped.
+
+### 2. Rationale — why these choices?
+
+- **tifffile over adding rasterio:** a system GDAL binary is an "ask first" dependency, and the project
+  deliberately installs on a fresh Windows laptop. The GeoKeys needed are four tags.
+- **Joint stretch, not per-date:** per-date percentile stretching changes each date's radiometry
+  independently. That difference is exactly what a change detector reports as change.
+  `test_joint_stretch_does_not_invent_change_in_uint16` asserts unchanged pixels stay byte-identical
+  across dates.
+- **Scanline, not `cv2.fillPoly`:** fillPoly was implemented first and **the new tests caught it**. It
+  fills every pixel an edge touches, so a 200×200-pixel AOI rasterised to 201×201 (40,401 px, +1.0%),
+  and hole boundaries were removed too (30,200 instead of 30,000). The scanline is exact by
+  construction. Speed: a 10,980×10,980 (Sentinel-2 tile) raster with a 5,001-vertex AOI rasterises in
+  **0.25 s**, area error **−0.00004%**.
+- **Fail, don't fall back, when an AOI can't be applied:** analysing the whole scene when the user
+  asked about one area would return plausible, wrong numbers.
+
+### 3. Blast radius — limits and what isn't covered
+
+- **Only EPSG CRSs are read and written.** A WKT-defined or user-defined CRS (32767) is treated as not
+  georeferenced, so AOI requests on such files fail with `AOI_REQUIRES_GEOREFERENCED_RASTER`.
+- **Band selection is "first three bands".** Sentinel-2 stacks are usually B2,B3,B4… (blue first), so
+  RGB order may be wrong for them. The stretch warns but does not reorder. ChangeFormer is also only
+  measured on LEVIR-CD 8-bit RGB (Q-007); multispectral accuracy is **NOT MEASURED**.
+- **GeoJSON polygons trace pixel centres**, ~half a pixel inside the true boundary (−0.8% polygon area
+  on the 77,500 px test shape). Reported areas come from pixel counts, which are exact.
+- **Grounding uses the box centre** for AOI membership; a box straddling the edge is kept or dropped
+  whole. Its mask is clipped.
+- AOI applies to the first raster's grid. Pairs are required to share dimensions (Q-007), and CRS
+  equality between the two dates is not re-checked here.
+- Found on the way and fixed: `artifact_manager.save_result_json` / `save_trace_json` did not create the
+  job directory, so a pipeline that failed before any tool ran (e.g. an AOI error when the controller is
+  called directly) raised a misleading `FileNotFoundError` instead of returning FAILED. The HTTP path
+  was unaffected because upload creates the workspace.
+- The upload endpoint's first version stringified the structured error inside a generic `HTTP_ERROR`;
+  it now re-raises the `AOIError`, and the app's handler returns `{"error": {"code": "AOI_INVALID"}}`.
+
+### 4. Verification
+
+- `tests/unit/test_geotiff_georeferencing.py` (13): UTM scale+tiepoint; WGS84; ModelTransformation;
+  tiepoint not at origin + PixelIsPoint; nodata; plain TIFF and user-defined CRS not georeferenced;
+  channels-first read; metric area exact; GeoJSON real shape in lon/lat (Austin, TX) with pixel count
+  77,500 and 1 hole; image coordinates without georef; saved mask GeoTIFF round-trips CRS + transform
+  + bounds; joint stretch passes 8-bit through; joint stretch does not invent change.
+- `tests/unit/test_aoi.py` (7): reprojected AOI hits exactly columns 100–299 / rows 200–399;
+  FeatureCollection from dict, string and file (non-polygons ignored); legacy CRS member; holes; half
+  outside → coverage 0.50; each structured error; request resolution and box helper.
+- `tests/unit/test_aoi_http.py` (3): GeoTIFF upload reports CRS; AOI upload 200 / invalid 422
+  `AOI_INVALID` / wrong extension 415; `/api/analyze` with `aoi_filename` and inline `aoi_geojson`
+  both COMPLETED with valid pixels = 524,288 (the AOI), area = pixels × 0.25, and identical counts;
+  AOI on a PNG → FAILED with `AOI_REQUIRES_GEOREFERENCED_RASTER` in the trace.
+- Live HTTP run (`scratchpad/api_aoi.py`): 14,101 changed px in AOI vs 114,001 full scene; the
+  independent count of the full mask's western 512 columns is 14,101; GeoJSON longitudes stay west of
+  the AOI's east edge (−97.74977 vs −97.74976).
+- `pytest -q` → **180 passed, 0 failed**.
+
+### 5. Defence — "How do you know the area inside the polygon is right, and not just plausible?"
+
+"Three independent checks that don't share code. The rasteriser is tested on an AOI defined in UTM
+metres and sent in lon/lat: after reprojection it must land on exactly columns 100–299 and rows
+200–399, and it does. We tried OpenCV's polygon fill first and that same test caught it filling one
+pixel too many on each side. End to end, the pipeline's in-AOI change count equals a direct count of the
+full-scene mask's western half, 14,101 both ways, and the area is that count times 0.25 m² exactly. And
+at Sentinel-2 tile scale, a 5,000-vertex polygon's pixel area matches its analytic area to four parts in
+ten million."
+
+The caveat to volunteer: this is measured on RGB LEVIR scenes we georeferenced ourselves, to test the
+geometry. Real multispectral GeoTIFFs will read and clip correctly, but which three bands feed the
+model, and how accurate it is on them, is not measured.

@@ -112,11 +112,17 @@ async def analyze_query(request: AnalyzeRequest, db: AsyncSession = Depends(get_
             )
         image_paths.append(str(fpath))
 
+    parameters = dict(request.parameters)
+    if request.aoi_geojson is not None:
+        parameters["aoi_geojson"] = request.aoi_geojson
+    if request.aoi_filename:
+        parameters["aoi_filename"] = request.aoi_filename
+
     state = AgentState(
         request_id=req_id,
         query=request.query,
         image_paths=image_paths,
-        parameters=request.parameters
+        parameters=parameters
     )
 
     response = await agent_controller.run_pipeline(state)

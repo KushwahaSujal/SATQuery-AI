@@ -90,3 +90,40 @@ def to_pil_rgb(arr: np.ndarray) -> Image.Image:
         rgb_norm.append(norm_ch.astype(np.uint8))
 
     return Image.fromarray(np.stack(rgb_norm, axis=-1))
+
+
+def joint_rgb8_pair(arr1: np.ndarray, arr2: np.ndarray, pmin: float = 2.0, pmax: float = 98.0) -> Tuple[np.ndarray, np.ndarray, Optional[str]]:
+    """
+    Converts a bi-temporal pair to 8-bit RGB (H, W, 3) for models trained on 8-bit imagery.
+
+    8-bit RGB passes through unchanged. Anything else (uint16 reflectance, float, >3 bands) is
+    reduced to the first three bands and stretched with ONE set of per-band percentiles computed
+    over both dates together — stretching each date independently would manufacture radiometric
+    differences that a change detector reports as change. Returns (rgb1, rgb2, note) where note
+    describes the conversion, or None if nothing was done.
+    """
+    def hwc(a: np.ndarray) -> np.ndarray:
+        if a.ndim == 2:
+            a = a[..., None]
+        elif a.ndim == 3 and a.shape[0] < a.shape[1] and a.shape[0] < a.shape[2]:
+            a = np.transpose(a, (1, 2, 0))
+        if a.shape[2] == 1:
+            a = np.repeat(a, 3, axis=2)
+        return a[..., :3]
+
+    x1, x2 = hwc(arr1), hwc(arr2)
+    if x1.dtype == np.uint8 and x2.dtype == np.uint8 and arr1.ndim == 3 and min(arr1.shape) == 3 and min(arr2.shape) == 3:
+        return x1, x2, None
+
+    f1, f2 = x1.astype(np.float32), x2.astype(np.float32)
+    out1, out2 = np.zeros(x1.shape, np.uint8), np.zeros(x2.shape, np.uint8)
+    for b in range(3):
+        both = np.concatenate([f1[..., b][np.isfinite(f1[..., b])], f2[..., b][np.isfinite(f2[..., b])]])
+        lo, hi = (np.percentile(both, pmin), np.percentile(both, pmax)) if both.size else (0.0, 1.0)
+        scale = 255.0 / (hi - lo) if hi > lo else 0.0
+        out1[..., b] = np.clip((np.nan_to_num(f1[..., b], nan=lo) - lo) * scale, 0, 255).astype(np.uint8)
+        out2[..., b] = np.clip((np.nan_to_num(f2[..., b], nan=lo) - lo) * scale, 0, 255).astype(np.uint8)
+    bands = arr1.shape[0] if (arr1.ndim == 3 and arr1.shape[0] < arr1.shape[-1]) else (arr1.shape[-1] if arr1.ndim == 3 else 1)
+    note = (f"Input is {arr1.dtype} with {bands} band(s); converted to 8-bit RGB from the first three bands using a "
+            f"joint {pmin:g}-{pmax:g}% stretch across both dates. ChangeFormer was trained on 8-bit RGB (LEVIR-CD).")
+    return out1, out2, note

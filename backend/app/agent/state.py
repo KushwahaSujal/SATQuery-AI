@@ -46,6 +46,8 @@ class AgentState:
     quality_status: str = "PASS"
     quality_flags: List[str] = field(default_factory=list)
     cache_hit: bool = False
+    # GeoJSON area of interest rasterised against the first raster (geo/aoi.RasterizedAOI), if requested.
+    aoi: Optional[Any] = None
 
     def add_trace(
         self,

@@ -101,24 +101,29 @@ class RasterInspector:
 
                     tags_dict: Dict[str, Any] = {}
                     for tag in page.tags.values():
+                        if tag.code in (33550, 33922, 34264, 34735, 34736, 34737):
+                            continue  # GeoTIFF binary tags are parsed below, not stringified
                         tags_dict[tag.name] = str(tag.value)
+
+                    geo = RasterInspector._georeference_from_tifffile(tif, int(w), int(h))
 
                     return RasterMetadata(
                         filepath=str(path.resolve()),
                         filename=path.name,
-                        format="TIFF",
+                        format="GeoTIFF" if geo["crs"] else "TIFF",
                         width=int(w),
                         height=int(h),
                         bands=int(bands),
                         dtype=dtype,
-                        crs=None,
-                        bounds=None,
-                        transform=None,
-                        resolution=None,
-                        nodata=None,
+                        crs=geo["crs"],
+                        bounds=geo["bounds"],
+                        transform=geo["transform"],
+                        resolution=geo["resolution"],
+                        nodata=geo["nodata"],
                         band_descriptions=[f"Band {i+1}" for i in range(bands)],
                         tags=tags_dict,
-                        is_georeferenced=False
+                        acquisition_date=tags_dict.get("DateTime"),
+                        is_georeferenced=geo["crs"] is not None and geo["transform"] is not None
                     )
             except Exception as e:
                 logger.warning(f"tifffile failed on {path}: {e}. Falling back to PIL.")
@@ -143,6 +148,73 @@ class RasterInspector:
                 tags={},
                 is_georeferenced=False
             )
+
+    @staticmethod
+    def _georeference_from_tifffile(tif: Any, width: int, height: int) -> Dict[str, Any]:
+        """
+        Reads GeoTIFF georeferencing without rasterio/GDAL (rules.md §2: no system binaries).
+
+        CRS from ProjectedCSTypeGeoKey (3072) or GeographicTypeGeoKey (2048) as EPSG codes.
+        Transform from ModelTransformation (34264), else ModelPixelScale (33550) + ModelTiepoint
+        (33922). Returned in rasterio Affine order [a, b, c, d, e, f]:
+            x = a*col + b*row + c,   y = d*col + e*row + f
+        so metadata is identical whichever reader produced it. PixelIsPoint rasters are shifted by
+        half a pixel to the area convention, as GDAL does. User-defined CRSs (32767) are reported
+        as not georeferenced rather than guessed.
+        """
+        out: Dict[str, Any] = {"crs": None, "transform": None, "bounds": None, "resolution": None, "nodata": None}
+        try:
+            page = tif.pages[0]
+            nodata_tag = page.tags.get(42113)
+            if nodata_tag is not None:
+                try:
+                    out["nodata"] = float(str(nodata_tag.value).strip("\x00 "))
+                except ValueError:
+                    pass
+            if not getattr(tif, "is_geotiff", False):
+                return out
+            g = tif.geotiff_metadata or {}
+        except Exception as e:
+            logger.warning(f"GeoTIFF key parsing failed: {e}")
+            return out
+
+        def code(key: str) -> Optional[int]:
+            v = g.get(key)
+            try:
+                return int(v) if v is not None else None
+            except (TypeError, ValueError):
+                return None
+
+        epsg = code("ProjectedCSTypeGeoKey")
+        if epsg is None or epsg == 32767:
+            epsg = code("GeographicTypeGeoKey")
+        if epsg is not None and epsg != 32767:
+            out["crs"] = f"EPSG:{epsg}"
+        elif g:
+            logger.warning("GeoTIFF has a user-defined or missing CRS; treating raster as not georeferenced.")
+
+        a = b = c = d = e = f = None
+        if g.get("ModelTransformation") is not None:
+            m = np.asarray(g["ModelTransformation"], dtype=float).reshape(4, 4)
+            a, b, c, d, e, f = m[0, 0], m[0, 1], m[0, 3], m[1, 0], m[1, 1], m[1, 3]
+        elif g.get("ModelPixelScale") is not None and g.get("ModelTiepoint") is not None:
+            sx, sy = float(g["ModelPixelScale"][0]), float(g["ModelPixelScale"][1])
+            i, j, _, x, y, _ = [float(v) for v in list(g["ModelTiepoint"])[:6]]
+            a, b, d, e = sx, 0.0, 0.0, -sy
+            c, f = x - i * sx, y + j * sy
+        if a is None:
+            out["crs"] = None
+            return out
+
+        if code("GTRasterTypeGeoKey") == 2:  # RasterPixelIsPoint
+            c, f = c - 0.5 * a - 0.5 * b, f - 0.5 * d - 0.5 * e
+
+        out["transform"] = [float(v) for v in (a, b, c, d, e, f)]
+        xs = [c, a * width + c, b * height + c, a * width + b * height + c]
+        ys = [f, d * width + f, e * height + f, d * width + e * height + f]
+        out["bounds"] = [float(min(xs)), float(min(ys)), float(max(xs)), float(max(ys))]
+        out["resolution"] = [float(abs(a) if b == 0 else np.hypot(a, d)), float(abs(e) if d == 0 else np.hypot(b, e))]
+        return out
 
     @staticmethod
     def _inspect_image(path: Path) -> RasterMetadata:

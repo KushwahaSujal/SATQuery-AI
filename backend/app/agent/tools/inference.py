@@ -90,7 +90,8 @@ def run_grounding(state: AgentState) -> None:
     meta = state.metadata[0] if state.metadata else None
     pipeline_res = run_grounding_pipeline(
         image=state.image_paths[0],
-        query=state.query
+        query=state.query,
+        aoi_mask=state.aoi.mask if state.aoi is not None else None
     )
 
     state.answer = pipeline_res.get("answer")
@@ -165,7 +166,31 @@ def run_change_detection(state: AgentState) -> None:
     adapter = model_registry.get_adapter("changeformer")
     arr1, meta1 = RasterInspector.read_as_array(state.image_paths[0])
     arr2, meta2 = RasterInspector.read_as_array(state.image_paths[1])
-    res = adapter.predict({"arr1": arr1, "arr2": arr2})
+    from backend.app.geo.optical_preprocessing import joint_rgb8_pair
+    rgb1, rgb2, conversion_note = joint_rgb8_pair(arr1, arr2)
+    if conversion_note:
+        state.warnings.append(conversion_note)
+    res = adapter.predict({"arr1": rgb1, "arr2": rgb2})
+    if state.aoi is not None and res.masks:
+        # Restrict the change result to the requested area of interest. Full-scene masks are kept
+        # alongside so nothing computed is discarded; counts, GeoJSON and statistics use the clipped ones.
+        aoi_mask = state.aoi.mask
+        m0 = res.masks[0]
+        for key in ("binary_mask", "raw_mask", "filtered_mask"):
+            if m0.get(key) is not None and m0[key].shape == aoi_mask.shape:
+                m0[f"{key}_full_scene"] = m0[key]
+                m0[key] = (m0[key] > 0).astype(np.uint8) & aoi_mask.astype(np.uint8)
+        in_aoi = int(m0["binary_mask"].sum())
+        res.metadata["aoi_applied"] = True
+        res.metadata["change_pixel_count_full_scene"] = res.metadata.get("change_pixel_count")
+        res.metadata["change_pixel_count"] = in_aoi
+        res.metadata["aoi_pixel_count"] = state.aoi.pixel_count
+        res.metadata["change_ratio_pct"] = 100.0 * in_aoi / max(1, state.aoi.pixel_count)
+        res.answer = (
+            f"Bi-temporal change detection within the area of interest: {in_aoi:,} of {state.aoi.pixel_count:,} "
+            f"AOI pixels changed ({res.metadata['change_ratio_pct']:.2f}% of the AOI; "
+            f"{res.metadata['change_pixel_count_full_scene']:,} px across the full scene)."
+        )
     state.model_results.append(res)
 
     if res.masks:
@@ -183,7 +208,7 @@ def run_change_detection(state: AgentState) -> None:
 
         # 2. Persist binary masks as GeoTIFF and PNG
         mask_path = dirs["masks"] / "change_mask.tif"
-        save_mask_as_geotiff(filtered_mask, mask_path)
+        save_mask_as_geotiff(filtered_mask, mask_path, metadata=meta1)
         Image.fromarray((filtered_mask * 255).astype(np.uint8)).save(str(dirs["masks"] / "change_mask.png"))
         Image.fromarray((filtered_mask * 255).astype(np.uint8)).save(str(dirs["masks"] / "change_filtered_mask.png"))
         if raw_mask is not None:
@@ -196,6 +221,9 @@ def run_change_detection(state: AgentState) -> None:
         try:
             base_pil = to_pil_rgb(arr1)
             overlay_img = create_change_overlay(base_pil, filtered_mask, color=(239, 68, 68), alpha=0.45)
+            if state.aoi is not None:
+                from backend.app.geo.aoi import draw_aoi_outline
+                overlay_img = draw_aoi_outline(overlay_img, state.aoi.mask)
             overlay_path = dirs["overlays"] / "change_overlay.png"
             save_image(overlay_img, overlay_path)
             state.evidence.spatial.overlay_path = str(overlay_path)
