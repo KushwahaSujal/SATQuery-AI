@@ -1,0 +1,25 @@
+{
+  "permissions": {
+    "allow": [
+      "Shell(.venvScriptspip.exe:*)",
+      "powershell",
+      "Shell(more:*)",
+      "Shell(.venvScriptspython.exe:*)",
+      "Shell(D:SATQuery-AISATQuery-AI-backend.venvScriptspip.exe:*)",
+      "Shell(D:SATQuery-AISATQuery-AI-backend.venvScriptspython.exe:*)",
+      "Shell(findstr:*)",
+      "Shell(Get-ChildItem:*)",
+      "Shell(Select-Object:*)",
+      "Shell(dir \"C:\\Users\\sandi\\.cache\\huggingface\\modules\\transformers_modules\\\" /b 2>$null)",
+      "Shell(dir:*)",
+      "Shell(dir \"C:\\Users\\sandi\\.cache\\huggingface\\modules\\transformers_modules\\locate_anything_3b\\3a5a39197f92c4d3\\\" /b 2>$null)",
+      "Shell(Remove-Item:*)",
+      "Shell(dir D:\\SATQuery-AI\\SATQuery-AI-backend\\backend\\app\\api\\v1\\endpoints /b 2>$null)",
+      "Shell(dir D:\\SATQuery-AI\\SATQuery-AI-backend\\frontend/src /b /s 2>$null | findstr /i \"ground\\|detect\\|locate\\|analy\\|upload\\|api\")",
+      "Shell(dir D:\\SATQuery-AI\\SATQuery-AI-backend\\frontend/src 2>$null; dir D:\\SATQuery-AI\\SATQuery-AI-backend\\frontend 2>$null)",
+      "Shell()"
+    ],
+    "deny": [],
+    "defaultMode": "default"
+  }
+}

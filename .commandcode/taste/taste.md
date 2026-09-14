@@ -1,0 +1,2 @@
+- Prefers using HF transformers directly (AutoModel.from_pretrained with trust_remote_code, device_map="auto") to serve model results via frontend, rather than custom adapter/wrapper infrastructure. Confidence: 0.9
+- Prefers 4-bit NF4 quantization (BitsAndBytesConfig with load_in_4bit=True, bnb_4bit_quant_type="nf4", bnb_4bit_use_double_quant=True, bnb_4bit_compute_dtype=float16) to reduce VRAM usage when loading models via HF transformers. Confidence: 0.8

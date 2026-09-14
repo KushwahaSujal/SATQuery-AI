@@ -131,7 +131,7 @@ class LocateAnythingAdapter(BaseModelAdapter):
         logger.info(f"Loading LocateAnything ({self.model_id}) onto device {self.device}...")
 
         try:
-            from transformers import AutoModel, AutoProcessor
+            from transformers import AutoModel, AutoProcessor, BitsAndBytesConfig
 
             # Prefer the on-disk HF checkpoint repo (offline-capable); fall back
             # to the Hub id only if the local repo is missing.
@@ -150,11 +150,25 @@ class LocateAnythingAdapter(BaseModelAdapter):
             # only registers `AutoModel` -> `LocateAnythingForConditionalGeneration`
             # in its `auto_map`. AutoModelForCausalLM has no mapping for this custom
             # architecture and would refuse to load it. This mirrors the model's own
-            # reference worker. `.to(device)` (not device_map) is used because the
-            # custom MTP generate loop assumes a single device for kv-cache indexing.
+            # reference worker.
+            #
+            # 4-bit quantization config to fit in <4GB VRAM. Shrinks the 7.66 GB
+            # model down to ~2.5-3.5 GB. device_map="auto" places quantized layers
+            # on GPU and any overflow on CPU.
+            bnb_config = BitsAndBytesConfig(
+                load_in_4bit=True,
+                bnb_4bit_compute_dtype=torch.float16,
+                bnb_4bit_use_double_quant=True,
+                bnb_4bit_quant_type="nf4",
+            )
+
             self._model = (
-                AutoModel.from_pretrained(source, torch_dtype="auto", trust_remote_code=True)
-                .to(self.device)
+                AutoModel.from_pretrained(
+                    source,
+                    quantization_config=bnb_config,
+                    device_map="auto",
+                    trust_remote_code=True,
+                )
                 .eval()
             )
             self._torch_dtype = next(self._model.parameters()).dtype
@@ -314,9 +328,10 @@ class LocateAnythingAdapter(BaseModelAdapter):
                 messages, tokenize=False, add_generation_prompt=True
             )
             images, videos = self._processor.process_vision_info(messages)
+            model_device = next(self._model.parameters()).device
             inputs = self._processor(
                 text=[text], images=images, videos=videos, return_tensors="pt"
-            ).to(self.device)
+            ).to(model_device)
 
             pixel_values = inputs["pixel_values"].to(self._torch_dtype)
             input_ids = inputs["input_ids"]

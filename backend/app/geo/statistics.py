@@ -1,6 +1,7 @@
 from typing import Optional
 import numpy as np
 import pyproj
+from scipy import ndimage
 from backend.app.geo.metadata import RasterMetadata
 from backend.app.schemas.evidence import AreaStatistics
 from backend.app.logging import logger
@@ -21,14 +22,20 @@ def calculate_area_statistics(
     h, w = binary_mask.shape
     total_pixels = h * w
 
+    # Ensure binary mask
+    binary = (binary_mask > 0).astype(np.uint8)
+
     if nodata_mask is not None:
         valid_pixels = int(np.sum(~nodata_mask))
-        changed_pixels = int(np.sum((binary_mask > 0) & (~nodata_mask)))
+        changed_pixels = int(np.sum(binary & (~nodata_mask)))
     else:
         valid_pixels = total_pixels
-        changed_pixels = int(np.sum(binary_mask > 0))
+        changed_pixels = int(np.sum(binary))
 
     ratio = (changed_pixels / valid_pixels) if valid_pixels > 0 else 0.0
+
+    # Count connected regions using connected component labeling
+    labeled_array, region_count = ndimage.label(binary)
 
     area_sq_m: Optional[float] = None
     area_sq_km: Optional[float] = None
@@ -65,6 +72,7 @@ def calculate_area_statistics(
         changed_pixels=changed_pixels,
         total_valid_pixels=valid_pixels,
         change_ratio=round(ratio, 6),
+        region_count=region_count,
         estimated_area_sq_m=round(area_sq_m, 2) if area_sq_m is not None else None,
         estimated_area_sq_km=round(area_sq_km, 4) if area_sq_km is not None else None,
         area_unit="sq_meters",

@@ -13,6 +13,7 @@ from backend.app.workflows.grounding_reasoner import (
 from backend.app.ml.registry import model_registry
 from backend.app.ml.adapters.grounding_dino import GroundingDINOAdapter
 from backend.app.ml.adapters.sam2 import SAM2Adapter
+from backend.app.ml.adapters.locate_anything import LocateAnythingAdapter
 from backend.app.agent.state import AgentState
 from backend.app.schemas.agent import JobStatus, TaskType, ExecutionStep
 from backend.app.schemas.responses import AnalyzeResponse
@@ -66,6 +67,7 @@ def run_grounding_pipeline(
     text_threshold: float = 0.25,
     iou_nms_threshold: float = 0.50,
     grounding_adapter: Optional[GroundingDINOAdapter] = None,
+    grounding_model: str = "grounding_dino",
     sam2_adapter: Optional[SAM2Adapter] = None
 ) -> Dict[str, Any]:
     """
@@ -132,24 +134,57 @@ def run_grounding_pipeline(
         "modifiers": {k: v for k, v in parsed.items() if v and k not in ("category", "target_category", "raw_query", "clean_prompt")}
     })
 
-    # Step 4: Call GroundingDINOAdapter
-    gd_adapter = grounding_adapter or model_registry.get_adapter("grounding_dino")
+    # Step 4: Call grounding adapter (GroundingDINO or LocateAnything)
+    # When grounding_model is "auto", try GroundingDINO first and fall back
+    # to LocateAnything if it returns zero candidates for this image/query.
     prompt = clean_prompt
-    record_step("call_grounding_dino", "started", tool="GroundingDINOAdapter", details={"prompt": prompt})
+    primary_model = grounding_model if grounding_model != "auto" else "grounding_dino"
+    fallback_model = "locate_anything"
+    used_model = primary_model
 
-    try:
-        det_result = gd_adapter.predict(
-            image_or_context=pil_img,
-            prompt=prompt,
-            box_threshold=box_threshold,
-            text_threshold=text_threshold
-        )
-        record_step("call_grounding_dino", "success", tool="GroundingDINOAdapter", details={
-            "raw_detections": len(det_result.get("boxes", []))
-        })
-    except Exception as e:
-        record_step("call_grounding_dino", "error", tool="GroundingDINOAdapter", details={"error": str(e)})
-        raise InferenceError(f"Grounding DINO inference error: {e}", model_name="grounding_dino") from e
+    def _run_detection(model_key: str, adapter: Optional[Any]) -> Tuple[str, Any, List[Dict[str, Any]]]:
+        if model_key == "locate_anything":
+            ad = adapter or model_registry.get_adapter("locate_anything")
+            tool_name = "LocateAnythingAdapter"
+        else:
+            ad = adapter or model_registry.get_adapter("grounding_dino")
+            tool_name = "GroundingDINOAdapter"
+        record_step("call_grounding", "started", tool=tool_name, details={"model": model_key, "prompt": prompt})
+        try:
+            res = ad.predict(
+                image_or_context=pil_img,
+                prompt=prompt,
+                box_threshold=box_threshold,
+                text_threshold=text_threshold
+            )
+            record_step("call_grounding", "success", tool=tool_name, details={
+                "raw_detections": len(res.get("boxes", []))
+            })
+            return tool_name, res, res.get("boxes", [])
+        except Exception as e:
+            record_step("call_grounding", "error", tool=tool_name, details={"error": str(e)})
+            raise InferenceError(f"{tool_name} inference error: {e}", model_name=model_key) from e
+
+    tool_name, det_result, raw_detections = _run_detection(primary_model, grounding_adapter)
+
+    # Fallback to LocateAnything if primary returned no boxes
+    if not raw_detections and primary_model != fallback_model:
+        # Check if fallback model is available before attempting
+        if model_registry.is_model_available(fallback_model):
+            logger.info(f"{primary_model} returned 0 detections; falling back to {fallback_model}.")
+            record_step("fallback_to_locate_anything", "started", details={"reason": "no_detections"})
+            try:
+                tool_name, det_result, raw_detections = _run_detection(fallback_model, None)
+                used_model = fallback_model
+                record_step("fallback_to_locate_anything", "success", details={
+                    "raw_detections": len(raw_detections)
+                })
+            except InferenceError as e:
+                logger.warning(f"Fallback to {fallback_model} failed: {e}. Returning empty detections.")
+                record_step("fallback_to_locate_anything", "failed", details={"error": str(e)})
+        else:
+            logger.info(f"{primary_model} returned 0 detections but {fallback_model} is not available. Skipping fallback.")
+            record_step("fallback_to_locate_anything", "skipped", details={"reason": "model_not_available"})
 
     # Step 5: Obtain multiple candidate boxes
     raw_candidates = det_result.get("boxes", [])
@@ -204,7 +239,7 @@ def run_grounding_pipeline(
         query=norm_query,
         img_shape=(h, w),
         image=pil_img,
-        adapter=gd_adapter,
+        adapter=model_registry.get_adapter(used_model),
         iou_nms_threshold=iou_nms_threshold
     )
     record_step("run_grounding_reasoner", "success", tool="grounding_reasoner", details={
