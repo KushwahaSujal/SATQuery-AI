@@ -33,6 +33,7 @@ export default function JobsPage() {
   const queryClient = useQueryClient();
 
   // Fetch jobs with React Query caching
+  // Only refetch when tab is active and stale, not on navigation
   const { data: jobs = [], isLoading } = useQuery<{ job_id: string; task?: string; query?: string; status?: string; created_at?: string }[]>({
     queryKey: ["jobs"],
     queryFn: async () => {
@@ -45,9 +46,11 @@ export default function JobsPage() {
         created_at: (item.created_at as string) || new Date().toISOString(),
       }));
     },
-    staleTime: 60_000,      // Cache for 1 minute
-    gcTime: 5 * 60_000,     // Keep in cache for 5 minutes
-    refetchOnWindowFocus: false,
+    staleTime: 5 * 60_000,     // Data is fresh for 5 minutes - no refetch on navigation
+    gcTime: 10 * 60_000,        // Keep in cache for 10 minutes
+    refetchOnWindowFocus: false, // Don't refetch when switching tabs
+    refetchOnMount: false,       // Don't refetch when navigating to page
+    refetchInterval: 30_000,     // Check for new jobs every 30s if tab is open
   });
 
   const clearMutation = useMutation({
