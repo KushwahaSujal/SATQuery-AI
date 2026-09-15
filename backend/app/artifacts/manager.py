@@ -1,10 +1,15 @@
 import os
+import re
 import json
 import shutil
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 from backend.app.config import settings
 from backend.app.logging import logger
+from backend.app.exceptions import InvalidInputError
+
+# A job directory name: starts alphanumeric, so "." and ".." can never match.
+_JOB_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,127}")
 
 
 class ArtifactManager:
@@ -26,9 +31,14 @@ class ArtifactManager:
         self.base_dir.mkdir(parents=True, exist_ok=True)
 
     def get_job_dir(self, request_id: str, create: bool = False) -> Path:
-        # Sanitize request_id to prevent path traversal
-        clean_id = Path(request_id).name
+        # Path(request_id).name alone let "." and ".." through: results/.. is the repo root, so
+        # GET /api/results/../download zipped the whole 20 GB checkout, .env included (Q-017).
+        clean_id = Path(str(request_id)).name
+        if not _JOB_ID.fullmatch(clean_id):
+            raise InvalidInputError(f"Invalid job id '{request_id}'.", code="INVALID_JOB_ID")
         job_dir = self.base_dir / clean_id
+        if job_dir.resolve().parent != self.base_dir.resolve():
+            raise InvalidInputError(f"Invalid job id '{request_id}'.", code="INVALID_JOB_ID")
         if create:
             job_dir.mkdir(parents=True, exist_ok=True)
         return job_dir

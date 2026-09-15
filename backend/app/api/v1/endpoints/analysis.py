@@ -4,7 +4,7 @@ SatQuery AI — Analysis submission, job lifecycle, results, trace and PDF repor
 Split out of the former monolithic api/routes.py (1246 lines).
 """
 import os
-import io
+import tempfile
 import uuid
 import shutil
 import zipfile
@@ -13,6 +13,7 @@ from typing import List, Optional
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 from fastapi.responses import FileResponse, JSONResponse
+from starlette.background import BackgroundTask
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.schemas.requests import AnalyzeRequest
@@ -340,32 +341,41 @@ async def download_pdf_report(request_id: str, db: AsyncSession = Depends(get_db
 
 
 @router.get("/results/{request_id}/download")
-async def download_result_zip(request_id: str):
+def download_result_zip(request_id: str):
     """
     Zips the entire result folder for a given request_id and streams it as a
     downloadable ZIP file. Includes all subdirectories: input, masks, overlays,
     reports, vectors, visualizations, plus result.json and trace.json.
+
+    A plain `def` so FastAPI runs it in the threadpool: zipping a large job (video inputs) must not block the
+    event loop, and the archive is written to a temporary file rather than held in memory (Q-017).
     """
-    job_dir = artifact_manager.get_job_dir(request_id)
-    if not job_dir.exists() or not job_dir.is_dir():
+    try:
+        job_dir = artifact_manager.get_job_dir(request_id)
+    except InvalidInputError:
+        job_dir = None
+    if job_dir is None or not job_dir.is_dir():
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Result folder not found for request ID '{request_id}'."
         )
 
-    zip_buffer = io.BytesIO()
-    with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
-        for file_path in sorted(job_dir.rglob("*")):
-            if file_path.is_file():
-                arcname = str(file_path.relative_to(job_dir))
-                zf.write(file_path, arcname)
-    zip_buffer.seek(0)
+    tmp = tempfile.NamedTemporaryFile(prefix="satquery_results_", suffix=".zip", delete=False)
+    tmp.close()
+    try:
+        with zipfile.ZipFile(tmp.name, "w", zipfile.ZIP_DEFLATED) as zf:
+            for file_path in sorted(job_dir.rglob("*")):
+                if file_path.is_file() and not file_path.is_symlink():
+                    zf.write(file_path, str(file_path.relative_to(job_dir)))
+    except Exception:
+        os.unlink(tmp.name)
+        raise
 
-    from starlette.responses import StreamingResponse
-    return StreamingResponse(
-        zip_buffer,
+    return FileResponse(
+        tmp.name,
         media_type="application/zip",
-        headers={"Content-Disposition": f'attachment; filename="SatQuery_Results_{request_id}.zip"'},
+        filename=f"SatQuery_Results_{job_dir.name}.zip",
+        background=BackgroundTask(os.unlink, tmp.name),
     )
 
 

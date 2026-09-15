@@ -1507,3 +1507,60 @@ overlays produced, with a README of prompts and measured results.
 the next roof at 0.70 — and the check reuses the same colour formula the reasoner already used; what changed
 is which pixels feed it: the object's mask instead of its box. White cars fail, and we recorded that instead
 of lowering the bar until they passed."
+
+---
+
+## Q-017 · Merging Sandipan's results export (`d81e049`): path traversal, in-memory ZIP, video JSON
+
+**Recorded** 2026-09-15, merge `45e4efd` of `origin/main` `d81e049` into `prototype` `7c6025b` (no conflicts).
+`d81e049` adds `GET /api/results/{request_id}/download` (ZIP of `results/<id>/`) and "Download Results ↓"
+buttons on the analysis page and results panel.
+
+### 1. Mechanism — defects found and fixed
+
+1. **Path traversal (security).** `ArtifactManager.get_job_dir` sanitised with `Path(request_id).name`, which
+   returns `.` and `..` unchanged; `results/..` is the repository root. `GET /api/results/%2E%2E/download`
+   (curl `--path-as-is`) began zipping the 20 GB checkout — `.env` (database credentials), `checkpoints/`,
+   `datasets/raw/` — into memory: the server's RSS reached **5.9 GB after 3 min 19 s** before it was killed.
+   The same helper backs 28 call sites, including uploads that accept a client `request_id`. Fix: the id
+   must match `[A-Za-z0-9][A-Za-z0-9_.-]{0,127}` and resolve to a direct child of `results/`, else
+   `InvalidInputError` (`INVALID_JOB_ID`, 400); the download endpoint maps it to 404.
+2. **ZIP built in RAM on the event loop.** `async def` + `io.BytesIO`: a large job blocks every other request
+   while it is compressed and holds the whole archive in memory. Now a plain `def` (threadpool), written to a
+   `NamedTemporaryFile`, returned as `FileResponse`, deleted by a `BackgroundTask`; symlinks are skipped.
+3. **Video exports had no JSON.** Image jobs write `result.json`/`trace.json` in `agent/controller.py`; the video
+   endpoint never did, so a video ZIP held frames and the MP4 only. `POST /api/video/analyze` now saves both.
+4. **No download button on the video page.** Added, same styling as the analysis page.
+
+Not a defect: one video flag has no `mask_frame_*.png` — the flagger only writes a mask when SAM 2 produced one
+for the peak frame (`video/flagger.py`).
+
+### 2. Rationale
+
+- **Fix in `get_job_dir`, not only the new endpoint** — every job-scoped path goes through it.
+- **Allow-list, not deny-list** — existing ids (`uuid4`, `oom-mode`, `test_geo_req`, `showcase-3096b285`) all match.
+
+### 3. Blast radius
+
+- Any caller passing a job id with spaces or other characters now gets 400. No such id exists in `results/`
+  (`ls results`) or in the tests.
+- Exports include `input/` — uploaded imagery and videos are in the ZIP by design.
+- The repo is **public**; model weights were not pushed (see `DEMO_SETUP.md`).
+
+### 4. Verification
+
+- `tests/unit/test_results_download.py` (17): 8 bad ids rejected, 4 existing id styles accepted, 4 traversal/missing
+  URLs → 404, a real ZIP with `masks/…png` and `result.json`.
+- `pytest -q tests` → **262 passed, 1 skipped**.
+- Live, fixed server: `%2E%2E`, `%2e`, `.`, `..`, `..%2F..%2Fetc` → 404 in ≤ 26 ms, server RSS 0.89 GB.
+- Live exports: masking job 8 files 1.52 MB (input, mask, overlay, preview, PDF, result.json, trace.json, GeoJSON);
+  LEVIR change job 14 files 15.6 MB (before/after, 4 masks + GeoTIFF + probability, 3 overlays, PDF, JSON, GeoJSON);
+  video job 8 files incl. `result.json` whose flags are 14.88–18.72 s and 25.44–27.36 s.
+- Playwright on the rebuilt frontend: "Download Results ↓" on `/analysis/636537d3…` and `/video/a6bd7563…`
+  each downloaded `SatQuery_Results_<id>.zip`; the PDF inside starts `%PDF-1.4`.
+
+### 5. Defence — "Nobody would type `..` into a job id."
+
+"They wouldn't have to type it into the UI — it's one GET request to a public route, and the response was the
+repository with its `.env`. Before it finished, it would have taken the demo machine's memory. The fix is an
+allow-list in the one function every job path goes through, with tests for the exact URLs that worked."
