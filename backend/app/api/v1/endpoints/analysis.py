@@ -4,8 +4,10 @@ SatQuery AI — Analysis submission, job lifecycle, results, trace and PDF repor
 Split out of the former monolithic api/routes.py (1246 lines).
 """
 import os
+import io
 import uuid
 import shutil
+import zipfile
 from pathlib import Path
 from typing import List, Optional
 
@@ -334,6 +336,36 @@ async def download_pdf_report(request_id: str, db: AsyncSession = Depends(get_db
         path=str(pdf_path),
         media_type="application/pdf",
         filename=f"SatQuery_Report_{request_id}.pdf"
+    )
+
+
+@router.get("/results/{request_id}/download")
+async def download_result_zip(request_id: str):
+    """
+    Zips the entire result folder for a given request_id and streams it as a
+    downloadable ZIP file. Includes all subdirectories: input, masks, overlays,
+    reports, vectors, visualizations, plus result.json and trace.json.
+    """
+    job_dir = artifact_manager.get_job_dir(request_id)
+    if not job_dir.exists() or not job_dir.is_dir():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Result folder not found for request ID '{request_id}'."
+        )
+
+    zip_buffer = io.BytesIO()
+    with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
+        for file_path in sorted(job_dir.rglob("*")):
+            if file_path.is_file():
+                arcname = str(file_path.relative_to(job_dir))
+                zf.write(file_path, arcname)
+    zip_buffer.seek(0)
+
+    from starlette.responses import StreamingResponse
+    return StreamingResponse(
+        zip_buffer,
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="SatQuery_Results_{request_id}.zip"'},
     )
 
 

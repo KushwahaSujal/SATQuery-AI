@@ -235,6 +235,12 @@ export const api = {
   ) =>
     `${API_BASE}${endpoints.exportLayer(jobId, layerId)}?format=${format}`,
 
+  reportUrl: (requestId: string) =>
+    `${API_BASE}${endpoints.report(requestId)}`,
+
+  downloadUrl: (requestId: string) =>
+    `${API_BASE}${endpoints.downloadResult(requestId)}`,
+
   videoJob: (jobId: string) =>
     http<VideoJobResult>(endpoints.videoJob(jobId)),
 

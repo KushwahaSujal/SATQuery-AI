@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useJob, useAnalysisResult } from "@/hooks/useSystem";
+import { api } from "@/lib/api";
 import type { AnalysisResult } from "@/lib/types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -134,6 +135,16 @@ export default function ResultsPanel({ result: propsResult, isAnalyzing, jobId }
                         Visual Analytics
                       </Button>
                     </Link>
+                    <a
+                      href={api.downloadUrl(jobId)}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="block"
+                    >
+                      <Button variant="outline" className="w-full" size="sm">
+                        Download Results ↓
+                      </Button>
+                    </a>
                   </div>
                 )}
               </div>
