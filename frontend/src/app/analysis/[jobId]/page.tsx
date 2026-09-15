@@ -116,6 +116,14 @@ export default function AnalysisWorkspacePage() {
         >
           Visual Analytics →
         </Link>
+        <a
+          href={api.downloadUrl(jobId)}
+          target="_blank"
+          rel="noreferrer"
+          className="font-mono-data text-[11px] text-[var(--t4)] border border-[var(--b2)] hover:border-[var(--b3)] hover:text-[var(--t2)] px-2.5 py-1 rounded transition-colors"
+        >
+          Download Results ↓
+        </a>
       </div>
 
       {/* Query */}

@@ -25,6 +25,9 @@ export const endpoints = {
   exportLayer: (jobId: string, layerId: string) =>
     `/api/analysis/${jobId}/export/${layerId}`,
 
+  report: (requestId: string) => `/api/reports/${requestId}`,
+  downloadResult: (requestId: string) => `/api/results/${requestId}/download`,
+
   videoUpload: "/api/video/upload",
   videoAnalyze: "/api/video/analyze",
   videoJob: (jobId: string) => `/api/video/${jobId}`,
