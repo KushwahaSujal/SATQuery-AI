@@ -1616,3 +1616,65 @@ allow-list in the one function every job path goes through, with tests for the e
 
 "We read the element's own clock: 18.60 while playing, then 18.72 and paused, every sample after. The end is checked
 every frame, not on the browser's quarter-second time event, and the position is then set to the end exactly."
+
+---
+
+## Q-019 · Video only: a box that follows the object while the event plays; outlines instead of colour-hiding masks
+
+**Recorded** 2026-09-15, atop `prototype` `a462c4a`. Image masking and its overlays are unchanged.
+
+### 1. Mechanism
+
+Problem: the only visual evidence was one keyframe with a 45% green mask fill — a red car rendered green, so the
+requested colour could not be checked — and detections existed only on coarse samples (8 frames over 3.36 s,
+~2 fps), too sparse to draw a moving box.
+
+- `backend/app/video/tracker.py` (new) `track_event`: for each flagged event, re-reads frames from `start_frame` to
+  `end_frame` at ~10 fps (stride `round(fps/10)`, ≤ 90 frames, the peak frame always included), prompts SAM 2.1
+  video propagation with the event's confirmed box at the peak frame, and propagates **forwards and backwards**
+  (`SAM2Adapter.predict_video(bidirectional=True)`, a second `propagate_in_video(reverse=True)` pass). Each mask →
+  normalised box; masks < 0.02% of the frame are "object not visible" and omitted. Per point it stores the median
+  RGB of the object's saturated mask pixels (saturation > 0.3), or of all mask pixels when fewer than 20% are
+  saturated (white/grey/black objects). Stored as `flag.metadata["track"]`, so it is persisted with the flag
+  (`metadata_json`) and returned by both `POST /video/analyze` and `GET /video/{id}`.
+- `backend/app/workflows/video_analysis.py` step 6b calls it for every flag; failure is a per-event warning.
+- `backend/app/video/flagger.py`: the annotated keyframe draws the SAM 2 mask **boundary** (2 px, `draw_mask_outline`)
+  instead of `create_change_overlay(..., alpha=0.45)`.
+- `frontend/src/components/video/TrackOverlay.tsx` (new): positioned over the `<video>`'s letterboxed content area,
+  it interpolates each track linearly between points by `video.currentTime` (rAF while playing), hides across gaps
+  > 0.5 s, and draws a 2 px cyan outline with no fill, a label (`red car · 0.89`) and a swatch of the measured colour.
+
+### 2. Rationale
+
+- **SAM 2 video propagation over re-running Grounding DINO per frame:** it follows the one object the event was
+  confirmed on, instead of re-choosing among candidates on each frame (which can hop between two cars).
+- **Bidirectional:** the confirmed (peak) frame is usually mid-event; forward-only propagation left the start blank.
+- **Saturated-pixel median:** measured on frame 228's mask (12,385 px): all pixels [148, 96, 111] (reads pink —
+  windows and shadow), saturation > 0.2 → [123, 45, 59], > 0.3 → [120, 39, 53] (67% of pixels), > 0.4 → [106, 24, 36] (49%).
+
+### 3. Blast radius
+
+- Adds ~10 s per video request on this clip (red car 35.9 s → 44.8 s; white car, 3 events, 33.3 s → 57.1 s).
+- The swatch is a median, not a classifier: the white car's swatch reads light grey rgb(155,157,159) at 6.2 s (a large
+  black rear window); the red car's first point [236,124,149] is pink from glare at the frame edge.
+- Tracks cover the event window only (the playback segment), not the whole video.
+
+### 4. Verification
+
+- `tests/unit/test_video_tracker.py` (4): normalised box from a mask; a synthetic red square moving 1 px/frame is
+  tracked with `bidirectional=True`, 21 frames at stride 2, an empty-mask frame omitted, boxes move right, colour
+  red, temp frames removed; saturated median ignores grey glass but keeps a white car white; keyframe outline
+  leaves object pixels unchanged. `pytest -q tests` → **267 passed, 1 skipped**.
+- Live, `real_aerial_footage.mp4`: `find red car` → event 15.36–18.72 s, **43 track points**, also returned by
+  `GET /video/{id}` (43); `find white car` → 43, 43 and 25 points for its three events, colours in
+  [148–251] grey/white range.
+- Playwright on the built frontend, replaying the red-car event and sampling every 0.22 s: a box on every sample,
+  moving y = 77.9% → 0% as the car drives off, colour swatch present; paused at 18.72 with the final box. Seeked to
+  16.2 s: the outline encloses the red car and the car's paint is visible (screenshot); white car at 6.2 s likewise.
+- Annotated keyframe `flag_b6c230f9_annotated_frame_228.png`: red car with a green outline, no fill.
+
+### 5. Defence — "How do you know it's the red car and not just any car?"
+
+"Watch it: the box follows one car through the clip and nothing covers it, so the paint you see is the answer. The
+swatch beside the label is the median colour of that car's own pixels on that frame, measured, not predicted — and
+where the median is fooled by a black window or glare, the record above says so."

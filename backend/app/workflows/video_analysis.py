@@ -372,6 +372,35 @@ class VideoAnalysisWorkflow:
                             f"{rj['frames_verified']}/{rj['frames_checked']} frames (best matches: {', '.join(sorted(set(rj['top_matches'])))})."
                         )
 
+                # 6b. Per-event object track for the player: a box that follows the object between the
+                # coarse detection samples (Q-019).
+                if flags and model_registry.is_model_available("sam2"):
+                    from backend.app.video.tracker import track_event
+                    sam2_tracker = model_registry.get_adapter("sam2")
+                    tracked = 0
+                    for f in flags:
+                        if not f.box_2d:
+                            continue
+                        try:
+                            f.metadata["track"] = track_event(
+                                decoder=decoder,
+                                sam2_adapter=sam2_tracker,
+                                start_frame=f.start_frame,
+                                end_frame=f.end_frame,
+                                anchor_frame=f.peak_frame,
+                                anchor_box_2d=f.box_2d,
+                                work_dir=video_artifacts_dir,
+                            )
+                            tracked += 1 if f.metadata["track"] else 0
+                        except Exception as e:
+                            logger.warning(f"Object tracking failed for event {f.flag_id}: {e}")
+                            warnings.append(f"Object tracking unavailable for event {f.start_timestamp:.2f}-{f.end_timestamp:.2f}s: {e}")
+                    add_trace(
+                        f"Tracked the object through {tracked}/{len(flags)} event(s)",
+                        model="sam2",
+                        details="SAM 2.1 propagation forwards and backwards from each event's confirmed box, ~10 fps.",
+                    )
+
                 if not flags and rejected_by_colour and not detections:
                     # Everything the detector proposed failed the colour check, so the
                     # requested colour is not present. Say so, rather than reporting the

@@ -7,6 +7,7 @@ import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { useSegmentPlayer } from "@/hooks/useSegmentPlayer";
+import TrackOverlay, { type ObjectTrack } from "@/components/video/TrackOverlay";
 
 const fmt = (s: number) => {
   const m = Math.floor(s / 60);
@@ -46,6 +47,9 @@ export default function VideoIntelligencePage() {
   const videoStreamUrl = api.videoStreamUrl(jobId);
   const { videoRef, currentTime, duration, activeSegment, status, playSegment, seek } = useSegmentPlayer();
   const [videoError, setVideoError] = useState(false);
+  const tracks: ObjectTrack[] = (videoJob?.flags ?? [])
+    .filter((f) => (f.metadata?.track?.length ?? 0) > 0)
+    .map((f) => ({ id: f.flag_id, label: f.label, score: f.event_score, points: f.metadata!.track! }));
   // The old fallback was a hard-coded 45.2 s, which misplaced every marker on any other clip.
   const totalSec = duration ?? videoJob?.video_metadata?.duration_sec ?? 0;
   const pctOf = (sec: number) => (totalSec > 0 ? Math.min(Math.max((sec / totalSec) * 100, 0), 100) : 0);
@@ -132,6 +136,8 @@ export default function VideoIntelligencePage() {
               className={cn("w-full h-full object-contain max-h-[500px]", videoError && "hidden")}
               onError={() => setVideoError(true)}
             />
+
+            {!videoError && <TrackOverlay videoRef={videoRef} tracks={tracks} activeId={activeSegment?.id} />}
 
             {activeSegment && statusText && (
               <div
