@@ -9,3 +9,4 @@
 - Strongly dislikes fabricated, hardcoded, or mock data in production code — expects all UI to display real backend data with proper null/empty handling. Will repeatedly flag fake defaults, invented values, and placeholder data. Confidence: 0.85
 - Expects production-quality, error-free code output — phrases like "without errors as like professional developer" indicate a high bar for code cleanliness and correctness. Confidence: 0.75
 - Prefers unavailable/disabled UI elements to be hidden entirely rather than shown greyed-out. Clean, minimal UI where only actionable controls are visible — no dead buttons cluttering the interface. Confidence: 0.8
+- Prefers aggressive frontend data caching — data should only refetch when there's new data to show (e.g. after running a task) or when the cache is stale, never on page navigation or tab switching. Expects cached data to display immediately without empty-flash-then-load patterns. Confidence: 0.8
