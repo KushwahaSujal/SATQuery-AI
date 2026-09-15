@@ -243,6 +243,14 @@ async def analyze_video(
         db_session=db
     )
 
+    # Image jobs write result.json and trace.json (agent/controller.py); video jobs did not, so the results
+    # ZIP for a video had frames but no machine-readable output (Q-017).
+    try:
+        artifact_manager.save_result_json(req_id, response.model_dump(mode="json"))
+        artifact_manager.save_trace_json(req_id, [s.model_dump(mode="json") for s in response.execution_trace])
+    except Exception as e:
+        logger.warning(f"Could not persist video result.json/trace.json for {req_id}: {e}")
+
     return response
 
 

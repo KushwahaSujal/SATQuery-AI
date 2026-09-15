@@ -1,3 +1,4 @@
+import hashlib
 from typing import Any, Dict, List, Optional, Tuple, Union
 from pathlib import Path
 import numpy as np
@@ -133,11 +134,13 @@ class SAM2Adapter(BaseModelAdapter):
 
             device_str = "cuda" if str(self.device).startswith("cuda") and torch.cuda.is_available() else "cpu"
             self._predictor = SAM2ImagePredictor.from_pretrained(self.model_id, device=device_str)
+            self._image_key = None
             self._loaded = True
             logger.info("SAM 2 predictor weights loaded successfully.")
         except Exception as e:
             self._loaded = False
             self._predictor = None
+            self._image_key = None
             err_msg = f"Failed to load SAM 2 model '{self.model_id}': {e}"
             logger.error(err_msg)
             raise ModelUnavailableError(
@@ -151,6 +154,7 @@ class SAM2Adapter(BaseModelAdapter):
         if self._predictor is not None:
             del self._predictor
             self._predictor = None
+            self._image_key = None
         if self._video_predictor is not None:
             del self._video_predictor
             self._video_predictor = None
@@ -276,8 +280,12 @@ class SAM2Adapter(BaseModelAdapter):
         parsed_box = self._parse_box(raw_box, (img_w, img_h))
 
         try:
-            # 1. Set image in predictor
-            self._predictor.set_image(img_arr)
+            # 1. Set image in predictor. Multi-instance grounding prompts SAM 2 once per box on the same image,
+            # so the image embedding is reused when the pixels are identical (content hash, not object id).
+            image_key = (img_arr.shape, hashlib.blake2b(np.ascontiguousarray(img_arr).tobytes(), digest_size=16).hexdigest())
+            if getattr(self, "_image_key", None) != image_key:
+                self._predictor.set_image(img_arr)
+                self._image_key = image_key
 
             # 2. Run genuine SAM 2 inference
             box_tensor = parsed_box[None, :] # shape (1, 4)

@@ -29,9 +29,13 @@ class IntentClassifier:
         r"\b(storage tank|oil tank|water tank|silo|fuel depot|storage depot|depot)\b",
         r"\b(platform|oil platform|offshore platform)\b",
         r"\b(container|shipping container|cargo container)\b",
-        r"\b(field|farm|plantation|forest|tree canopy|canopy|vegetation)\b",
+        r"\b(field|farm|plantation|forest|tree canopy|canopy|vegetation|tree)\b",
         r"\b(water body|lake|river|pond|reservoir|coastline)\b"
     ]
+    # Plural forms ("trees", "buildings", "buses") must match too; group(1) stays the singular (Q-015).
+    # Only a singular noun still implies grounding without a verb: "how many buildings are in this image?" stays VQA.
+    SINGULAR_OBJECT_PATTERNS = OBJECT_PATTERNS
+    OBJECT_PATTERNS = [p[:-2] + r"(?:e?s)?\b" for p in OBJECT_PATTERNS]
 
     COLOR_PATTERNS = [
         r"\b(red|dark-colored|dark|white|blue|green|yellow|silver|gray|grey|black|bright|orange|brown)\b"
@@ -70,7 +74,7 @@ class IntentClassifier:
     ]
 
     GROUNDING_VERB_PATTERNS = [
-        r"\b(locate|find|highlight|point\s+out|where\s+is|where\s+are|identify\s+the|show\s+me|detect|segment|outline|isolate|box|search\s+for)\b"
+        r"\b(locate|find|highlight|point\s+out|where\s+is|where\s+are|identify\s+the|show\s+me|detect|segment|outline|isolate|box|search\s+for|mask|masks|masking|mark|delineate)\b"
     ]
 
     @classmethod
@@ -81,16 +85,19 @@ class IntentClassifier:
         q = query.lower().strip()
         entities = ExtractedQueryEntities(raw_query=query)
 
-        # 1. Object class from dictionary
+        # 1. Object class from dictionary. The target is the object before a relation phrase: in "trees near
+        # houses" it is trees, not whichever of the two comes first in OBJECT_PATTERNS.
+        rel_m = next((m for m in (re.search(rp, q) for rp in cls.RELATION_PATTERNS) if m), None)
+        target_text = q[:rel_m.start()] if rel_m and rel_m.start() > 0 else q
         for p in cls.OBJECT_PATTERNS:
-            m = re.search(p, q)
+            m = re.search(p, target_text)
             if m:
                 entities.object_class = m.group(1)
                 break
 
         # Fallback noun phrase extractor if grounding verb is present but dictionary missed
         if not entities.object_class:
-            m_verb = re.search(r"(?:locate|find|highlight|point\s+out|where\s+is|where\s+are|identify\s+the|show\s+me|detect|segment|outline|isolate|box|search\s+for)\s+(?:the\s+|a\s+|an\s+)?([a-zA-Z0-9_\s-]+?)(?:\s+(?:near|next\s+to|adjacent|beside|in|on|at|around|within|outside|between)|[?.!,]|$)", q)
+            m_verb = re.search(r"(?:locate|find|highlight|point\s+out|where\s+is|where\s+are|identify\s+the|show\s+me|detect|segment|outline|isolate|box|search\s+for|mask|masks|masking|mark|delineate)\s+(?:the\s+|a\s+|an\s+)?([a-zA-Z0-9_\s-]+?)(?:\s+(?:near|next\s+to|adjacent|beside|in|on|at|around|within|outside|between)|[?.!,]|$)", q)
             if m_verb:
                 candidate = m_verb.group(1).strip()
                 for word in ["red", "dark", "white", "blue", "green", "yellow", "black", "small", "large", "huge", "damaged", "offshore"]:
@@ -184,7 +191,9 @@ class IntentClassifier:
         has_sar = any("sar" in m.lower() for m in modalities) or any(bool(re.search(p, q)) for p in cls.SAR_PATTERNS)
         has_spectral = any(bool(re.search(p, q)) for p in cls.SPECTRAL_PATTERNS)
         has_change = bool(entities.change_intent) or any(bool(re.search(p, q)) for p in cls.CHANGE_PATTERNS)
-        has_grounding = any(bool(re.search(p, q)) for p in cls.GROUNDING_VERB_PATTERNS) or bool(entities.object_class and not has_change)
+        has_singular_object = any(bool(re.search(p, q)) for p in cls.SINGULAR_OBJECT_PATTERNS)
+        has_grounding = any(bool(re.search(p, q)) for p in cls.GROUNDING_VERB_PATTERNS) or bool(
+            entities.object_class and has_singular_object and not has_change)
 
         # 1. Video intent
         if is_video:

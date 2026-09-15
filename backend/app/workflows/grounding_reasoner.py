@@ -173,6 +173,9 @@ def parse_v4_query(query: str) -> Dict[str, Any]:
         # "spot" was absent, so "spot a red car" asked the detector for a
         # nonexistent "spot car" class (project/pre-demo.md 3f).
         "spot", "track", "count", "look", "search", "where", "give", "me", "any",
+        # "mask" was absent, so "mask trees" asked the detector for a "mask trees" class (Q-015).
+        "mask", "masks", "masking", "every", "each", "delineate", "isolate", "extract",
+        "how", "many", "are", "there", "visible", "present",
         "located", "situated", "positioned", "corner", "side", "part", "area", "portion",
         "image", "scene", "photo", "picture", "satellite", "colored", "colour", "color"
     }

@@ -1326,3 +1326,241 @@ we reproduced both on a clean GPU and found the earlier run had silently fallen 
 after running out of memory. That's also a real bug: the API didn't say which mode ran. It does now, and
 the old entry carries a correction pointing here, rather than being quietly edited. The consistency checks
 in that entry held in both modes; only the headline figure depended on a hidden condition."
+
+---
+
+## Q-015 · `prototype` branch: repairing the 15 Sep merge, and "mask trees" returning text or one mask
+
+**Recorded** 2026-09-15, atop `origin/main` `d5e59eb`, on branch `prototype`. Reported symptom: "when I
+ask to mask trees it sometimes barely masks one or two or doesn't mask at all — just a textual answer."
+
+### 1. Mechanism — what was wrong, and what changed
+
+All four remote branches (`main`, `checkpoints`, `refactor/s0-remove-dead-layers`,
+`feat/ayushman-demo-model-handoff`) were already ancestors of `origin/main`; no commits were missing.
+**Content** was: merge `7efb6f2` resolved its two conflicts (`agent/tools/inference.py`,
+`workflows/grounding.py`) to the *merge-base* blobs (`664813f`, `ae99446` = `977587d`), which dropped
+**both** sides — Ushnik's two-agent verification, relaxed re-evaluation, AOI clipping, ChangeFormer
+inference-mode reporting and CDVQA adjudication (Q-008/011/012/014), *and* Sandipan's LocateAnything
+fallback and `ModelResult` confidence fix (`e1be13b`). On `origin/main` 13 tests failed; 12 of them passed
+on `refactor/s0-remove-dead-layers`. Repair: `git merge-file` 3-way on those two files (ours `3e35ea2`,
+base `977587d`, theirs `a431b02`), four hunks resolved by hand keeping both sides.
+
+Four independent causes of the symptom, each measured on the real server:
+
+1. **Routing** — `IntentClassifier.GROUNDING_VERB_PATTERNS` had no `mask`/`mark`, and `OBJECT_PATTERNS`
+   matched only singular nouns. `"mask trees"`, `"mask all the trees"`, `"mask the buildings"` →
+   `single_image_vqa` (text only). Added `mask|masks|masking|mark|delineate` and a plural suffix
+   (`group(1)` stays singular). A plural noun alone does not imply grounding, so
+   `"how many buildings are in this image?"` stays VQA (Q-013's test).
+2. **Detector prompt** — `parse_v4_query` kept the verb: `"mask trees"` → prompt `"mask trees."`.
+   Added `mask`, `every`, `each`, `how`, `many`, `are`, `there`, … to its stop words → `"trees."`.
+3. **One box only** — the pipeline sent only `selected_box` to SAM 2. New step 9b
+   (`segment_all_instances`): when `_wants_all_instances` (quantifier, `mask` verb, or plural noun; not
+   size/position/ordinal/"the largest"), every reasoner candidate not NMS-overlapping a kept box
+   (IoU > `iou_nms_threshold`) and not contradicted by the verifier is segmented and OR-ed into one mask,
+   capped at 50. For relational plurals (`"trees near houses"`) a candidate must satisfy
+   `_satisfies_relation`: edge-to-edge gap ≤ 8% of the image diagonal (41 px at 512²) and not the
+   reference object itself (IoU > 0.5). `relation_score` (centre distance, used for ranking) is unchanged.
+   Each instance box is added to `evidence.spatial.boxes`. SAM 2 now skips `set_image` when the pixel
+   content hash (blake2b) matches the previous call, so N boxes cost one image encode.
+4. **Cache replay** — `controller.py` cached only `{answer, confidence}`; a repeat of the same query on the
+   same image (the frontend uploads a new job each time) returned the text with an **empty evidence
+   package**: `has_mask: false`, `overlay_path: null`, `boxes: []` (measured, request `0bc265af`). Results
+   carrying a mask, boxes or overlay are no longer cached.
+
+Also: trace step renamed by the merge (`call_grounding`) restored to `call_grounding_dino` /
+`call_locate_anything`; LocateAnything fallback was dead because `grounding_dino` is always in
+`selected_models` — now `auto` unless LocateAnything is explicitly selected; the relational target is the
+object before the relation phrase (`"trees near houses"` reported `targeting 'house'`); the rasterio demo
+test uses `pytest.importorskip`; `package-lock.json` synced to `package.json` (`@mui/x-charts` was missing,
+2 `tsc` errors).
+
+### 2. Rationale — why this over the alternatives
+
+- **3-way merge, not "take ours".** Taking `refactor/…` would drop Sandipan's LocateAnything wiring and
+  confidence fix a second time; taking `main` keeps the regression.
+- **Union mask, not per-instance masks.** Overlay, statistics, GeoJSON and the frontend all consume one
+  binary mask; a union needs no schema change. Instances stay separable via `evidence.instances` and
+  `region_count`.
+- **Verification on the top instance only.** RemoteCLIP per box would add ~N crops per request; the trace
+  says so explicitly (`note` in `segment_all_instances`).
+- **Don't cache spatial results rather than cache the files.** Artifacts live under the old job id and
+  the frontend fetches by job id; a replay would need copying. A re-run took 5.9–6.5 s warm.
+
+### 3. Blast radius
+
+- **Detector recall is the ceiling.** On VRSBench `P0725_0005.png`, `"mask houses"` masked 4 houses; the
+  grey houses left and right of the orange-roofed one were not proposed by Grounding DINO at
+  `box_threshold 0.25`, and the jetty in the water was masked as a house (plain query). This change does
+  not improve the detector.
+- Extra instances are **unverified** detector boxes; a false positive there (the jetty) is reported.
+- `"how many cars"`-style questions are unaffected (still VQA). Queries with `mask`/`mark` + a noun now
+  route to grounding where they previously went to VQA.
+- Answer text changes to `"Segmented N instances of X (… px in total …). Top-ranked instance: …"` when N > 1.
+
+### 4. Verification
+
+- `tests/unit/test_mask_all_instances.py` (25 cases): routing, prompt, instance decision, relational
+  target/reference, edge-gap relation, 3 mock trees → union of exactly 400+1600+400 px, "the largest tree" → 1.
+- `pytest -q tests` → **243 passed, 1 skipped** (rasterio). The 3 `test_changeformer_accuracy` cases OOM'd
+  while the demo server held VRAM (8 GB RTX 3070) and passed 9/9 after stopping it.
+- `npx tsc --noEmit` exit 0; `next build` exit 0.
+- Live HTTP, real models, `P0725_0005.png` (512²), all `workflow_grounding`, models `grounding_dino, sam2`,
+  decision `accepted_verified`, overlay produced:
+
+| query | instances | px | regions | refs | dropped by relation | s |
+|---|---|---|---|---|---|---|
+| mask houses | 4 | 38,335 | 11 | – | – | 13.6 |
+| mask houses (repeat) | 4 | 38,335 | 11 | – | – | 5.9 |
+| mask houses near cars | 3 | 36,912 | 10 | 11 cars | 1 (the jetty) | 6.1 |
+| mark trees near houses | 9 | 17,294 | 7 | 5 houses | 0 | 6.5 |
+| mark houses near trees | 4 | 38,335 | 11 | 9 trees | 0 | 6.1 |
+| mask trees | 8 | 16,311 | 6 | – | – | 5.9 |
+
+- Frontend (`next start`, Playwright): upload → "mark trees near houses" → analysis page shows 9 green tree
+  masks on the image, 9 evidence rows, confidence 87.7%, regions 7.
+
+### 5. Defence — "It found 4 houses in an image with at least 8. Is that 'working'?"
+
+"The bug was that it found zero or one, or answered in text. Routing, the detector prompt, the single-box
+limit and the cache replay were four separate causes, each measured, each with a test. What's left is
+detector recall: Grounding DINO at our threshold didn't propose the grey houses, and the pipeline can only
+segment what the detector proposes. The table shows the raw counts — including the jetty it wrongly
+called a house, which the relational query then correctly dropped."
+
+---
+
+## Q-016 · Colour-qualified masking ("white houses", "cars near the red house"), and `demo_resources/`
+
+**Recorded** 2026-09-15, atop `prototype` `d4c2c2d`. **Extends [Q-015](#q-015--prototype-branch-repairing-the-15-sep-merge-and-mask-trees-returning-text-or-one-mask)**:
+Q-015's instance step filtered on relation only; its colour behaviour described there is superseded here.
+
+### 1. Mechanism
+
+Q-015's step 9b added every ranked candidate regardless of colour, and the reference object's colour
+(`reference_category = "red house"`) was never checked. Measured on `P0897_0048.png` before this change:
+`mask white houses` → **26** instances (every roof); on `P0725_0005.png`, `find cars near red house` → 4, one on
+a grey rooftop.
+
+Now, in multi-instance mode (`workflows/grounding.py`):
+- **Target colour** (`parsed["color"]`): each instance, *the top-ranked one included*, is scored with the
+  reasoner's unchanged `color_score` formulas applied to the **median RGB of its SAM 2 mask pixels**
+  (`_mask_color_score`), not the box mean. Kept if ≥ `COLOR_MATCH_THRESHOLD` (white/bright 0.8, black/dark 0.3,
+  others 0.6).
+- **Reference colour** (a colour word inside `reference_category`): each reference box is segmented and kept
+  only if its mask passes the same test. If none survive, no target is "near" one.
+- If nothing passes: the top-ranked candidate is returned with the answer prefixed
+  *"No instance satisfied every condition of '…'"*. If the top fails but others pass, it is excluded and the
+  answer says so; `selected_box` becomes the first kept instance.
+- `evidence.instance_filters` records `dropped_by_color`, `references_dropped_by_color`, `dropped_by_relation`,
+  `top_instance_failed_filters`.
+
+### 2. Rationale
+
+- **Median over mask, not mean over box.** With the filter disabled, per-house scores on `P0897_0048` using
+  the *mean* put the white house at [205,234,254,311] at 0.558 (shadow and lawn in the mask) — inseparable from
+  grey roofs (0.55–0.63). With the **median**, the five white roofs score 0.92–1.00 and the next is 0.698; dark
+  roofs 0.33–0.52. 0.8 sits in that gap.
+- **Filter the top instance too.** The detector ranks by "houses" confidence, not whiteness; the top box was a
+  dark roof in the mock test and can be in real scenes.
+- **Reuse `color_score`.** Ranking (and the VRSBench numbers behind Q-008) stays untouched.
+
+### 3. Blast radius
+
+- Thresholds were set on **one image** (`P0897_0048`), 26 houses. The orange-tile roof on `P0725_0005` scores
+  0.66 for `red` (threshold 0.6): close. Treat colours other than white/red as untested.
+- **White cars fail**: 0.47–0.58 on `P0897_0048` (tiny masks with shadow) → "no instance satisfied".
+- Colour only filters what the detector proposed: the two red cars beside the white house are not proposed for
+  `cars.`, so `mask cars near white houses` omits them.
+- Single-instance queries (`find the red car`) are unchanged: still the reasoner's ranking.
+
+### 4. Verification
+
+- `tests/unit/test_mask_all_instances.py` +2: a scene with two white and two dark boxes where the detector
+  ranks dark first → exactly the two white boxes, 3,200 px, `dropped_by_color == 2`; and all-dark → top kept
+  with the "No instance satisfied" answer. File: 27 passed.
+- `pytest -q tests` → **245 passed, 1 skipped**, server stopped.
+- Live HTTP on `prototype`:
+
+| image | prompt | before (Q-015) | after |
+|---|---|---|---|
+| P0897_0048 | mask white houses | 26 | **5** (the white roofs) |
+| P0897_0048 | mask cars near white houses | 15 | 5 |
+| P0897_0048 | mask red cars | 2 | 2 |
+| P0725_0005 | find cars near red house | 4 (1 on a rooftop) | 3 (street cars by the tile house; top box excluded) |
+| P0725_0005 | mask cars near white houses | 11 | 1 + "No instance satisfied every condition" |
+
+- Regression re-runs on `prototype`, same server: change detection LEVIR 100 → 118,997 px (= Q-014 native);
+  CDVQA question → `CDVQA_UNINFORMATIVE` adjudication; `real_pair` → 16,685 px; video `real_aerial_footage.mp4`
+  → events 14.88–18.72 s and 25.44–27.36 s (= Q-014); `derived_patrol.mp4` → 0; optical-SAR → honest
+  `NOT_CONFIGURED`. Sentinel-2 demo pair → **0 px** with AOI applied (7,588 px AOI) — model domain, not a code
+  path; recorded so nobody demos change detection on it.
+
+**`demo_resources/`** collects every input used above, 8 more "known weak" images with their failure
+modes (tennis courts → grass field; pools → roofs; dark parking lot → kerb; 2/8 storage tanks), and the
+overlays produced, with a README of prompts and measured results.
+
+### 5. Defence — "You tuned a threshold on one picture."
+
+"Yes, and the entry says so. The threshold sits in a measured gap on that image — white roofs at 0.92 and up,
+the next roof at 0.70 — and the check reuses the same colour formula the reasoner already used; what changed
+is which pixels feed it: the object's mask instead of its box. White cars fail, and we recorded that instead
+of lowering the bar until they passed."
+
+---
+
+## Q-017 · Merging Sandipan's results export (`d81e049`): path traversal, in-memory ZIP, video JSON
+
+**Recorded** 2026-09-15, merge `45e4efd` of `origin/main` `d81e049` into `prototype` `7c6025b` (no conflicts).
+`d81e049` adds `GET /api/results/{request_id}/download` (ZIP of `results/<id>/`) and "Download Results ↓"
+buttons on the analysis page and results panel.
+
+### 1. Mechanism — defects found and fixed
+
+1. **Path traversal (security).** `ArtifactManager.get_job_dir` sanitised with `Path(request_id).name`, which
+   returns `.` and `..` unchanged; `results/..` is the repository root. `GET /api/results/%2E%2E/download`
+   (curl `--path-as-is`) began zipping the 20 GB checkout — `.env` (database credentials), `checkpoints/`,
+   `datasets/raw/` — into memory: the server's RSS reached **5.9 GB after 3 min 19 s** before it was killed.
+   The same helper backs 28 call sites, including uploads that accept a client `request_id`. Fix: the id
+   must match `[A-Za-z0-9][A-Za-z0-9_.-]{0,127}` and resolve to a direct child of `results/`, else
+   `InvalidInputError` (`INVALID_JOB_ID`, 400); the download endpoint maps it to 404.
+2. **ZIP built in RAM on the event loop.** `async def` + `io.BytesIO`: a large job blocks every other request
+   while it is compressed and holds the whole archive in memory. Now a plain `def` (threadpool), written to a
+   `NamedTemporaryFile`, returned as `FileResponse`, deleted by a `BackgroundTask`; symlinks are skipped.
+3. **Video exports had no JSON.** Image jobs write `result.json`/`trace.json` in `agent/controller.py`; the video
+   endpoint never did, so a video ZIP held frames and the MP4 only. `POST /api/video/analyze` now saves both.
+4. **No download button on the video page.** Added, same styling as the analysis page.
+
+Not a defect: one video flag has no `mask_frame_*.png` — the flagger only writes a mask when SAM 2 produced one
+for the peak frame (`video/flagger.py`).
+
+### 2. Rationale
+
+- **Fix in `get_job_dir`, not only the new endpoint** — every job-scoped path goes through it.
+- **Allow-list, not deny-list** — existing ids (`uuid4`, `oom-mode`, `test_geo_req`, `showcase-3096b285`) all match.
+
+### 3. Blast radius
+
+- Any caller passing a job id with spaces or other characters now gets 400. No such id exists in `results/`
+  (`ls results`) or in the tests.
+- Exports include `input/` — uploaded imagery and videos are in the ZIP by design.
+- The repo is **public**; model weights were not pushed (see `DEMO_SETUP.md`).
+
+### 4. Verification
+
+- `tests/unit/test_results_download.py` (17): 8 bad ids rejected, 4 existing id styles accepted, 4 traversal/missing
+  URLs → 404, a real ZIP with `masks/…png` and `result.json`.
+- `pytest -q tests` → **262 passed, 1 skipped**.
+- Live, fixed server: `%2E%2E`, `%2e`, `.`, `..`, `..%2F..%2Fetc` → 404 in ≤ 26 ms, server RSS 0.89 GB.
+- Live exports: masking job 8 files 1.52 MB (input, mask, overlay, preview, PDF, result.json, trace.json, GeoJSON);
+  LEVIR change job 14 files 15.6 MB (before/after, 4 masks + GeoTIFF + probability, 3 overlays, PDF, JSON, GeoJSON);
+  video job 8 files incl. `result.json` whose flags are 14.88–18.72 s and 25.44–27.36 s.
+- Playwright on the rebuilt frontend: "Download Results ↓" on `/analysis/636537d3…` and `/video/a6bd7563…`
+  each downloaded `SatQuery_Results_<id>.zip`; the PDF inside starts `%PDF-1.4`.
+
+### 5. Defence — "Nobody would type `..` into a job id."
+
+"They wouldn't have to type it into the UI — it's one GET request to a public route, and the response was the
+repository with its `.env`. Before it finished, it would have taken the demo machine's memory. The fix is an
+allow-list in the one function every job path goes through, with tests for the exact URLs that worked."
