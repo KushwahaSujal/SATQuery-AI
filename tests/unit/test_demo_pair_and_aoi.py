@@ -4,7 +4,7 @@ Unit tests validating the real demo GeoTIFF pair and AOI GeoJSON assets.
 import json
 from pathlib import Path
 import pytest
-import rasterio
+rasterio = pytest.importorskip("rasterio", reason="demo GeoTIFF checks need rasterio; the backend itself reads GeoTIFFs without it")
 from shapely.geometry import shape, box
 from shapely.ops import transform as shapely_transform
 import pyproj

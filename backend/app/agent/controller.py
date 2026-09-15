@@ -164,8 +164,11 @@ class AgentController:
                 consistency = ConsistencyChecker.check_change_consistency(ch_res, vqa_res, ch_pixels)
                 state.evidence.consistency = consistency
 
-                # Cache valid result
-                if state.answer:
+                # Cache valid result. Only answer and confidence are stored, and masks, boxes and overlays are
+                # files under this job's directory, so a result with spatial evidence must never be replayed:
+                # a repeated "mask trees" came back as text with an empty evidence package (Q-015).
+                spatial = state.evidence.spatial
+                if state.answer and not (spatial.has_mask or spatial.boxes or spatial.overlay_path):
                     orchestration_cache.put(cache_key, {
                         "answer": state.answer,
                         "confidence": state.confidence

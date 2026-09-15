@@ -77,7 +77,9 @@ class EvidenceFusionEngine:
         grounding_score: Optional[float] = None,
         sam2_score: Optional[float] = None,
         summary: Optional[str] = None,
-        extra_metadata: Optional[Dict[str, Any]] = None
+        extra_metadata: Optional[Dict[str, Any]] = None,
+        instance_boxes: Optional[List[List[float]]] = None,
+        instance_scores: Optional[List[float]] = None
     ) -> EvidencePackage:
         """
         Connects grounding workflow output to the evidence engine:
@@ -108,6 +110,18 @@ class EvidenceFusionEngine:
                 metadata=metadata
             )
             boxes.append(norm_box)
+            # Multi-instance requests ("mask trees"): every segmented instance gets its own box (Q-015).
+            for i, extra in enumerate(instance_boxes or []):
+                if list(extra) == list(selected_box):
+                    continue
+                boxes.append(normalize_box(
+                    box=extra,
+                    img_width=img_w,
+                    img_height=img_h,
+                    label=target_category,
+                    score=(instance_scores[i] if instance_scores and i < len(instance_scores) else None),
+                    metadata=metadata
+                ))
 
         # 2. Segmentation Mask, Geospatial Polygons & Statistics
         has_mask = False
