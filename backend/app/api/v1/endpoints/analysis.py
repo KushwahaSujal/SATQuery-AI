@@ -301,6 +301,13 @@ async def get_job_results(request_id: str, db: AsyncSession = Depends(get_db)):
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"No results found for request ID '{request_id}'."
         )
+    # Video jobs also write result.json (a VideoAnalysisResponse, Q-017). Parsing that as an AnalyzeResponse
+    # raised a 500 without CORS headers, which the home page retried every second as a CORS error.
+    if "request_id" not in data and ("flags" in data or "video_metadata" in data):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"'{request_id}' is a video job; its results are at /api/video/{request_id}."
+        )
     return AnalyzeResponse(**data)
 
 

@@ -48,3 +48,15 @@ def test_download_zips_the_job_folder(client):
     finally:
         import shutil
         shutil.rmtree(artifact_manager.get_job_dir(job), ignore_errors=True)
+
+
+def test_image_results_endpoint_returns_404_not_500_for_a_video_job(client):
+    job = "q017-video-result-json"
+    artifact_manager.save_result_json(job, {"job_id": job, "status": "COMPLETED", "flags": [], "video_metadata": {}})
+    try:
+        r = client.get(f"/api/results/{job}")
+        assert r.status_code == 404
+        assert "video job" in r.text
+    finally:
+        import shutil
+        shutil.rmtree(artifact_manager.get_job_dir(job), ignore_errors=True)

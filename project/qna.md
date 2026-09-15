@@ -1564,3 +1564,55 @@ for the peak frame (`video/flagger.py`).
 "They wouldn't have to type it into the UI — it's one GET request to a public route, and the response was the
 repository with its `.env`. Before it finished, it would have taken the demo machine's memory. The fix is an
 allow-list in the one function every job path goes through, with tests for the exact URLs that worked."
+
+---
+
+## Q-018 · Video: auto-play the detected event's time range, pause at its end, highlight the playhead
+
+**Recorded** 2026-09-15, atop `prototype` `152b38c`. Also fixes a regression introduced by Q-017.
+
+### 1. Mechanism
+
+- `frontend/src/hooks/useSegmentPlayer.ts` (new): `playSegment({start, end})` seeks the `<video>` to `start`, plays,
+  and pauses at `end`, setting `currentTime = end` exactly. `timeupdate` fires ~4×/s (up to 250 ms overshoot), so
+  the end is checked on every `requestAnimationFrame` while a segment plays. If unmuted autoplay is refused, it
+  retries muted; if that fails too, status `blocked` ("Click an event to play"). A manual seek > 0.25 s outside the
+  segment releases it. Zero-length events play 1 s.
+- `frontend/src/app/video/[jobId]/page.tsx`: when results arrive, the first event auto-plays once. Timeline shows
+  events as start→end bars (were start-only dots) and a playhead at `currentTime`; the playhead is highlighted
+  (amber, glow; pulsing once stopped) while inside the active event. Event bars and event cards play their segment.
+  Status badge on the player: "Playing event / Paused in event / Stopped at event end · start → end".
+  Timeline length uses the video's real duration (was a hard-coded 45.2 s fallback); the "Stream: …" placeholder
+  box, previously always drawn over the player, now appears only if the stream fails.
+- **Regression from Q-017:** video jobs now write `result.json` in `VideoAnalysisResponse` shape; `GET
+  /api/results/{id}` parsed it as `AnalyzeResponse` → pydantic `request_id Field required` → **500 with no CORS
+  header**, which the home page's `useAnalysisResult` retried ~1×/s (20 CORS errors in the console during the test).
+  It now returns 404 "is a video job; its results are at /api/video/{id}".
+
+### 2. Rationale
+
+- **rAF, not `timeupdate`**, for the pause: the requirement is "pause at 21", and a 250 ms overshoot is visible.
+- **Custom playhead** on our timeline: the native `<video controls>` scrubber cannot be styled or highlighted.
+- **HTTP Range** was already served by `/api/video/{id}/stream` (`206 Partial Content`), so seeking needed no backend work.
+
+### 3. Blast radius
+
+- Only the first event auto-plays; others play on click.
+- Browsers that block autoplay entirely show the "Click an event to play" state instead of playing.
+
+### 4. Verification
+
+- API: `find red car` on `real_aerial_footage.mp4` (30.16 s) → one event 15.36–18.72 s, score 0.893; the raw keyframe
+  (frame 228) shows a red sedan. `find white car` → 4.80–8.16, 14.88–18.24, 25.44–27.36 s.
+- Playwright, built frontend, real flow (upload on home page → "find red car" → redirected to `/video/12fdfcb3…`):
+  status "Stopped at event end · 0:15.4 → 0:18.7"; `video.currentTime = 18.72`, `paused = true`, `muted = false`;
+  playhead `left = 62.069%` (= 18.72 / 30.16), `data-highlighted = true`.
+- Clicking "▶ play this event", sampled every 250 ms: 15.38, 15.60, 15.85 … 18.35, 18.60, then 18.72 paused ×6 —
+  real-time playback, stop at exactly 18.72.
+- After the 404 fix: reload video page → auto-plays and stops again; home page 10 s → **0 console errors**.
+- `tsc --noEmit` 0, `eslint` 0, `next build` 0; `pytest -q tests` → **263 passed, 1 skipped** (+1 regression test).
+
+### 5. Defence — "Does it really stop at the end or just near it?"
+
+"We read the element's own clock: 18.60 while playing, then 18.72 and paused, every sample after. The end is checked
+every frame, not on the browser's quarter-second time event, and the position is then set to the end exactly."
