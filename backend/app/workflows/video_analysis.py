@@ -122,6 +122,9 @@ class VideoAnalysisWorkflow:
                 # Detections dropped as low-confidence or degenerate boxes.
                 rejected_low_quality = 0
                 best_rejected_colour_score = 0.0
+                # Read by the verification step below for every task type.
+                v4_parsed: Dict[str, Any] = {}
+                target_label: Optional[str] = None
 
                 if task in (TaskType.VIDEO_GROUNDING, TaskType.VIDEO_GROUNDING_TRACKING):
                     gd_adapter = model_registry.get_adapter("grounding_dino")
@@ -139,12 +142,30 @@ class VideoAnalysisWorkflow:
                     for frame_idx, ts_sec, pil_img in sampled_frames:
                         img_w, img_h = pil_img.size
                         try:
-                            gd_res = gd_adapter.predict({
+                            gd_request = {
                                 "image_pil": pil_img,
                                 "query": target_label,
                                 "box_threshold": 0.25,
                                 "text_threshold": 0.25
-                            })
+                            }
+                            try:
+                                gd_res = gd_adapter.predict(gd_request)
+                            except Exception as frame_error:
+                                # Image-analysis models left resident by earlier requests can exhaust
+                                # the GPU. Release everything this workflow does not use and retry the
+                                # frame once, as the agent executor does for heavy tools (Q-010).
+                                from backend.app.agent.executor import SafeToolExecutor
+                                if not SafeToolExecutor._is_cuda_oom(frame_error):
+                                    raise
+                                released = model_registry.release_gpu_memory(
+                                    exclude=("grounding_dino", "sam2", "remoteclip")
+                                )
+                                add_trace(
+                                    "GPU memory released after out-of-memory during frame detection; retrying",
+                                    status="warning",
+                                    details=f"Frame {frame_idx}. Released: {released}.",
+                                )
+                                gd_res = gd_adapter.predict(gd_request)
 
                             raw_candidates = gd_res.boxes  # GroundingResult exposes boxes top-level, not in metadata
                             if raw_candidates:
@@ -320,13 +341,36 @@ class VideoAnalysisWorkflow:
 
                 # 6. Temporal Aggregation & Flagging
                 add_trace("Aggregating detections and generating event flags")
+                from backend.app.evidence.verifier import DetectionVerifier
+                video_verifier = DetectionVerifier() if detections else None
+                if video_verifier is not None and not video_verifier.is_available():
+                    video_verifier = None
+                verification_rejections: List[Dict[str, Any]] = []
                 flags = VideoFlagger.generate_flags(
                     detections=detections,
                     job_id=job_id,
                     video_id=job_id,
                     artifacts_video_dir=video_artifacts_dir,
-                    config=flagging_cfg
+                    config=flagging_cfg,
+                    verifier=video_verifier,
+                    target_label=(v4_parsed.get("category") if v4_parsed else None) or target_label,
+                    rejections=verification_rejections
                 )
+                if video_verifier is not None:
+                    if "remoteclip" not in models_used:
+                        models_used.append("remoteclip")
+                    add_trace(
+                        f"Verification agent (RemoteCLIP) kept {len(flags)} event(s), rejected {len(verification_rejections)}",
+                        status="warning" if verification_rejections else "success",
+                        model="remoteclip",
+                        details=str(verification_rejections[:5]) if verification_rejections else None,
+                    )
+                    for rj in verification_rejections:
+                        warnings.append(
+                            f"Dropped '{rj['label']}' event {rj['start_timestamp']:.2f}-{rj['end_timestamp']:.2f}s: "
+                            f"detector score {rj['detector_score']}, but the verification agent confirmed "
+                            f"{rj['frames_verified']}/{rj['frames_checked']} frames (best matches: {', '.join(sorted(set(rj['top_matches'])))})."
+                        )
 
                 if not flags and rejected_by_colour and not detections:
                     # Everything the detector proposed failed the colour check, so the

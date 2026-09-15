@@ -86,35 +86,16 @@ def run_grounding(state: AgentState) -> None:
     Grounding DINO -> V4 Reasoning -> SAM2 -> Evidence Engine
     """
     from backend.app.workflows.grounding import run_grounding_pipeline
-    from backend.app.schemas.models import ModelResult
 
     meta = state.metadata[0] if state.metadata else None
-    # Use "auto" mode: GroundingDINO first, LocateAnything fallback when empty.
-    grounding_model = "auto"
-    if "locate_anything" in state.selected_models:
-        grounding_model = "locate_anything"
-    elif "grounding_dino" in state.selected_models:
-        grounding_model = "grounding_dino"
     pipeline_res = run_grounding_pipeline(
         image=state.image_paths[0],
-        query=state.query,
-        grounding_model=grounding_model
+        query=state.query
     )
 
     state.answer = pipeline_res.get("answer")
-    grounding_confidence = pipeline_res.get("sam2_score") or pipeline_res.get("grounding_score")
-    state.confidence = grounding_confidence
+    state.confidence = pipeline_res.get("sam2_score") or pipeline_res.get("grounding_score")
     ev_dict = pipeline_res.get("evidence", {})
-
-    # Append to model_results so controller doesn't overwrite confidence
-    used_model = pipeline_res.get("strategy", "grounding_dino")
-    state.model_results.append(ModelResult(
-        model_name=used_model,
-        task="grounding",
-        answer=state.answer,
-        confidence=grounding_confidence,
-        metadata={"sam2_score": pipeline_res.get("sam2_score"), "grounding_score": pipeline_res.get("grounding_score")}
-    ))
 
     # Connect grounding workflow output to Evidence Engine
     state.evidence = EvidenceFusionEngine.build_grounding_evidence(
@@ -310,10 +291,6 @@ def run_optical_sar(state: AgentState) -> None:
     state.model_results.append(res)
     state.answer = res.answer
     state.confidence = res.confidence
-    if res.warnings:
-        for w in res.warnings:
-            if w not in state.warnings:
-                state.warnings.append(w)
     if "dofa" not in state.selected_models:
         state.selected_models.append("dofa")
     if "satquery_optical_sar_fusion" not in state.selected_models:

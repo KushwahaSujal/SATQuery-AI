@@ -95,6 +95,7 @@ class AdvancedWorkflowPlanner:
             "single_image_caption": TaskType.SINGLE_IMAGE_CAPTION,
             "video_grounding": TaskType.VIDEO_GROUNDING,
             "video_grounding_tracking": TaskType.VIDEO_GROUNDING_TRACKING,
+            "unsupported_analysis": TaskType.UNSUPPORTED,
         }
         legacy_task = task_mapping.get(cap_id, TaskType.UNSUPPORTED)
 

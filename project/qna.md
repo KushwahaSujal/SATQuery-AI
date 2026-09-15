@@ -47,6 +47,14 @@ and the commit it describes. Extracted, never re-litigated; anything missing is 
 | [Q-004](#q-004--colour-reaches-the-detector-prompt) | Colour reaches the detector prompt; verb stoplist; overlay colour fidelity | 2026-09-07 | Recorded |
 | [Q-005](#q-005--absent-colours-report-not_applicable) | Absent colours report NOT_APPLICABLE (colour gate) | 2026-09-07 | Recorded |
 | [Q-006](#q-006--retiring-the-approval-gate-qnamd-becomes-a-transcript) | Retiring the approval gate; `qna.md` becomes a transcript | 2026-09-11 | Recorded |
+| [Q-007](#q-007--changeformer-ayushmans-epoch-20-checkpoint-on-vendored-upstream-architecture) | ChangeFormer — Ayushman's epoch-20 checkpoint on vendored upstream architecture | 2026-09-14 | Recorded |
+| [Q-010](#q-010--gpu-out-of-memory-recovery-for-resident-models) | GPU out-of-memory recovery for resident models | 2026-09-14 | Recorded |
+| [Q-011](#q-011--geotiff-georeferencing-without-rasterio-and-geojson-area-of-interest-input) | GeoTIFF georeferencing without rasterio; GeoJSON area-of-interest input | 2026-09-14 | Recorded · numbers corrected by Q-014 |
+| [Q-012](#q-012--change-detection-two-agents-changeformer-vs-cdvqa-adjudication) | Change detection two agents: ChangeFormer vs CDVQA adjudication | 2026-09-14 | Recorded |
+| [Q-013](#q-013--routing-scene-description-and-honest-refusal-for-unsupported-analyses) | Routing: scene description, and honest refusal for unsupported analyses | 2026-09-14 | Recorded |
+| [Q-014](#q-014--demo-rehearsal-over-http-and-a-correction-to-q-011s-numbers) | Demo rehearsal over HTTP, and a correction to Q-011's numbers | 2026-09-15 | Recorded |
+| [Q-008](#q-008--two-agent-detection-verification-backtracking-and-re-evaluation) | Two-agent detection: verification, backtracking and re-evaluation (stills + video) | 2026-09-14 | Recorded · superseded in part by Q-009 |
+| [Q-009](#q-009--two-agent-detection-attribute-queries-are-labelled-not-backtracked) | Two-agent detection: attribute queries are labelled, not backtracked (supersedes Q-008 rule) | 2026-09-14 | Recorded |
 
 ---
 
@@ -522,3 +530,799 @@ edited after the fact. Test coverage now does the merge-gating, which is a bette
 
 The caveat to volunteer: this only works if entries actually get written at the time. A transcript
 nobody keeps is worse than a gate nobody passes.
+
+---
+
+## Q-007 · ChangeFormer — Ayushman's epoch-20 checkpoint on vendored upstream architecture
+
+**Recorded** 2026-09-14. Uncommitted at time of recording — working tree on
+`refactor/s0-remove-dead-layers` atop `977587d`. Closes `pre-demo.md` §1.3; resolves the finding in
+commit `9620919`.
+
+**Scope:** 5 files edited, 1 test file added · **Result:** LEVIR-CD test IoU **0.019 → 0.7385**
+(all 2,048 pairs); suite 132 → **141 passed, 0 failed**.
+
+### 1. Mechanism — what runs now, step by step?
+
+1. **Checkpoint.** `checkpoints/changeformer/changeformer_v6_levir_levircd256_epoch20_best.pt`
+   (492,691,833 bytes, sha256 `1d756d33…c63023f4b`), from Ayushman's
+   `SatQuery_ChangeFormer_Package.zip`. The two zips he sent are byte-identical (all 11 files
+   sha256-matched). Upstream trainer layout: `model_G_state_dict`, 373 tensors; 41,029,259 elements
+   − 2,585 BatchNorm buffer elements = **41,026,674 parameters**, exactly his claim.
+2. **Network.** `ml/adapters/changeformer/network.py` is replaced by the 15 definitions in
+   `ChangeFormerV6`'s dependency closure, extracted by AST from `wgcban/ChangeFormer` @ `afd1b7ed`
+   (MIT). Copied verbatim; the only change is `timm.models.layers` → `timm.layers`.
+3. **Preprocessing** (`adapter.py::preprocess_changeformer_input`): RGB → [0,1] →
+   `(x − 0.5) / 0.5`, the upstream `datasets/data_utils.py:18` contract. No resize.
+4. **Forward** (`adapter.py::_forward_logits`): whole scene in one pass if both sides ≤
+   `max_native_side` (1024, `configs/models.yaml`), else non-overlapping windows of that size.
+   Each window is reflect-padded to a multiple of 32 and cropped back. Takes `outputs[-1]`, the
+   full-resolution map of the 5 returned.
+5. **Threshold** 0.435 from `configs/models.yaml`, frozen on the LEVIR-CD validation split per his
+   `reports/frozen_validation_threshold.json`. Mask post-processing, quality flags and the
+   `ModelResult` shape are unchanged, so downstream tools needed no edits.
+
+### 2. Rationale — why vendor upstream instead of fixing the in-repo network, and why native resolution?
+
+**Vendor, not fix:** the in-repo reimplementation loads all 373 tensors `strict=True` yet computes
+something else. Head counts, for example, are `[1,2,5,8]` there vs `[1,2,4,8]` upstream, and head
+count changes no tensor shape. Hunting for every such divergence would still leave a hand-written
+network. Vendoring the exact source gives provable equivalence: max abs logit difference vs upstream
+is **0.0 at all five output scales** on random input. Same checkpoint, 200 LEVIR-CD test pairs,
+threshold 0.435 (`results/evaluations/changeformer_ab_upstream_vs_inrepo_levir200_20260914.json`):
+
+| network / normalisation | IoU | F1 | AUC | identical-pair changed |
+|---|---|---|---|---|
+| upstream / [-1,1] | **0.7260** | **0.8413** | **0.9905** | **0.0%** |
+| upstream / ImageNet | 0.3391 | 0.5065 | 0.9404 | ~0% |
+| in-repo / [-1,1] | 0.0206 | 0.0403 | 0.6968 | 2.3% |
+| in-repo / ImageNet *(old prod contract)* | 0.0189 | 0.0371 | 0.5093 | 3.2% |
+
+**The checkpoint also mattered.** On 2026-09-07, upstream code with the *old* epoch-10 checkpoint
+scored IoU 0.0737 (`pre-demo.md` §1.3). Neither the new weights alone nor the vendored network alone
+would have fixed this.
+
+**Native, not tiled or resized:** his contract says 256×256, but LEVIR-CD-256 is 1024 scenes cut
+4×4, and the network has no positional embeddings. Measured on his 1024 scenes
+(`…scale_strategy_levir1024_20260914.json`), raw-mask IoU:
+
+| strategy | test_100 | test_101 | test_105 |
+|---|---|---|---|
+| native 1024 | **0.8075** | **0.6300** | **0.7913** |
+| 256 tiles | 0.7883 | 0.5957 | 0.7671 |
+| resize to 256 | 0.0891 | 0.0000 | 0.0000 |
+
+Native wins on all three. Windowing is kept above 1024 because stage-4 attention (sr_ratio 1)
+grows quadratically with area.
+
+### 3. Blast radius — what breaks if this is wrong, and what does it not cover?
+
+- **It is a building-change detector.** LEVIR-CD labels only building construction and demolition.
+  On test_101 the largest false-positive cluster is bare construction ground: real change, but not a
+  building. Claiming general land-cover change on stage would overstate it.
+- **Out-of-domain accuracy is NOT MEASURED.** Every number here is LEVIR-CD: 0.5 m/px Google Earth
+  RGB over Texas. Sentinel-2 at 10 m, multispectral, or seasonal pairs are untested.
+- **Confidence is uncalibrated.** `ModelResult.confidence` is the mean change-probability over
+  predicted pixels (0.875 on test_100). It comes from real logits, but it is not a calibrated
+  probability of correctness.
+- **Windowed path is less accurate than native:** 256 windows cost 0.02–0.03 IoU above. 1024 windows
+  on >1024 scenes have seams and are NOT MEASURED against labels.
+- **Precision/recall differ slightly from his report** with the adapter's morphological filter:
+  P 0.8656 / R 0.8341 vs his 0.8608 / 0.8387, same IoU. Attributed to the filter, not isolated.
+- Files: `network.py` (replaced), `adapter.py`, `config.py` (`ModelSpec.max_native_side`),
+  `configs/models.yaml`, `ml/registry.py`. The old epoch-10 checkpoint stays on disk, unreferenced.
+
+A latent bug found on the way: `models.yaml` already held `threshold: 0.5` and `input_size: 512`
+*below* the new keys, and YAML keeps the last duplicate. The first comparison run silently used 0.5;
+`AgentState` metadata exposed it. Both stale keys are removed.
+
+### 4. Verification — what proves it?
+
+- **Full LEVIR-CD test split through the production adapter:**
+  `python scripts/evaluate_changeformer_levircd.py --limit 2048 --threshold 0.435` → IoU **0.7385**,
+  F1 **0.8496**, 0.039 s/pair (`results/evaluations/changeformer_levircd_20260914T161054Z.json`).
+  His report: IoU 0.7386, F1 0.8496.
+- **His scenes, old vs new production path** (`…old_vs_new_levir1024_20260914.json`): IoU 0.1061 →
+  0.8086, 0.0433 → 0.6289, 0.0546 → 0.7909 (filtered mask). The old path flagged ~68% of every scene
+  as changed; ground truth is 5–11%.
+- **Agent pipeline end-to-end** on test_100: `temporal_change_detection`, 6/6 tools succeed, 118,997
+  px changed vs 118,843 ground truth, overlay + 5 masks + GeoJSON + report produced.
+- **`tests/models/test_changeformer_accuracy.py`**, 9 tests: threshold is 0.435; IoU floor on 64
+  LEVIR pairs; per-scene floors; identical pair → 0 changed px; windowed path; non-multiple-of-32
+  sizes; mismatched sizes rejected. **Run against the old code with `git stash`: 8 of 9 fail.** The
+  one that passes checks only shapes and finite values, the kind of test that let the broken
+  network through before.
+- `pytest -q` → 141 passed, 0 failed.
+
+### 5. Defence — a reviewer asks: "it loaded strict=True before too. Why believe it now?"
+
+"Because we stopped treating loading as evidence. Strict loading proves the parameter *names and
+shapes* line up. It says nothing about the computation, and our old network proved that by loading
+cleanly and scoring 0.019 IoU. What we trust now is three measurements. First, the vendored network
+matches upstream's logits bit-for-bit. Second, the production adapter reproduces the checkpoint
+author's held-out test score on all 2,048 LEVIR-CD pairs to four decimal places. Third, an identical
+before/after pair produces exactly zero changed pixels. And we added tests that assert accuracy
+rather than shapes, and confirmed they fail on the old code."
+
+The caveat to volunteer: this is a building-change model, measured only on LEVIR-CD. Say that
+before anyone asks what it does on Sentinel-2.
+
+---
+
+## Q-008 · Two-agent detection: verification, backtracking and re-evaluation
+
+> **Superseded in part by [Q-009](#q-009--two-agent-detection-attribute-queries-are-labelled-not-backtracked)
+> (same night, before commit).** The rule below (R3) backtracked on every query type; measured per
+> query type it cost attribute queries 6.8 points of R@0.5. Q-009 keeps R3 for plain category queries
+> and only labels attribute queries. The headline numbers in this entry are R3's and are replaced there.
+
+**Recorded** 2026-09-14, written with the change on `refactor/s0-remove-dead-layers` atop `dee8e53`.
+Plan: `project/plan-2026-09-14-agent-parity-geo.md` phases 1–2.
+
+**Result, 300 present + 300 absent VRSBench queries:** absent-object queries that still return a box
+**64.7% → 28.0%**; present-object R@0.5 **38.7% → 36.0%**, mIoU **0.349 → 0.327**. Road-footage
+"find the airplane" **3 events → 0**, at the cost of **one real car event**.
+
+### 1. Mechanism — what are the two agents, and what exactly decides?
+
+- **Agent 1, detection:** Grounding DINO proposes boxes with a detector confidence; the existing V4
+  reasoner ranks them by query attributes (position, size, colour, relations).
+- **Agent 2, verification** (`backend/app/evidence/verifier.py`): RemoteCLIP (real weights: 302
+  tensors, 0 missing) crops each candidate and scores it against the query label *and* a 32-label
+  remote-sensing vocabulary. Synonym groups (car/vehicle/truck…) are collapsed by max before the
+  softmax. Verdict: **verified** (query group in top 3) · **contradicted** (not top 3, best match is
+  another object) · **unverified** (not top 3, best match is scene context: road, parking lot, trees…).
+- **Deliberation** (`workflows/grounding.py`), walking the reasoner's order:
+  - verified → **accept**;
+  - contradicted → **backtrack** to the next candidate; the box is excluded from later passes;
+  - unverified → hold the first one as a fallback and keep looking for a verified candidate;
+  - nothing verified and nothing held → **re-evaluate**: rerun Grounding DINO at box threshold 0.15
+    (from 0.25), and accept only a *verified* candidate from that pass;
+  - still nothing → **NOT_FOUND**, no mask.
+  Ordinal queries ("second from left") verify only the selected box, because another box would be a
+  different answer.
+- Every attempt is recorded in `evidence.metadata.agent_deliberation.attempts`, and in the trace as an
+  `agent_deliberation` step. Each record holds both confidences, the verifier's rank and top match,
+  and the decision. Answers name both agents' confidences; "with high precision" is gone.
+- **Video** (`video/flagger.py`): after the persistence/score filters, up to 3 of an event's
+  highest-detector-score frames are verified. The event is kept iff ≥1 frame is verified; that frame
+  becomes the keyframe (preferring one with a SAM 2 mask). Dropped events are listed in `warnings`
+  with detector score, frames confirmed and the verifier's best matches.
+- Config: `configs/app.yaml` `agent_verification` (top_k 3, crop_pad 1.0, min_crop_side 96, relaxed
+  threshold 0.15, 3 video frames, vocabulary, synonyms, context labels).
+
+### 2. Rationale — why this rule and not a simpler one? What was tried and rejected?
+
+Everything below was measured before it was wired in, and all files are in `results/evaluations/`.
+
+1. **Raw similarity floor, rejected.** On 973 VRSBench ground-truth crops (40 per class), raw
+   RemoteCLIP similarity separates true from wrong labels at AUC 0.928, but the scores sit in a narrow
+   band (mean 0.278 true vs 0.207 wrong). Contrastive ranking gives AUC 0.955
+   (`remoteclip_verifier_probe_20260914.json`).
+2. **Hard top-k veto, rejected.** The implemented verifier accepts 78.3% of true labels and 5.5% of
+   wrong ones. But it accepts only **42.5% of real vehicles**, the main demo class
+   (`detection_verifier_vrsbench_20260914.json`). No crop/top-k setting fixes that: getting vehicles
+   to 67% lets 27–35% of non-vehicles verify as "vehicle" (`detection_verifier_sweep_20260914.json`).
+3. **Three verdicts instead of two.** A real vehicle that fails usually loses to *context*; a wrong
+   label loses to *another object*. At pad 1.0 / min side 96
+   (`detection_verifier_3way_20260914.json`):
+
+   | crop vs label | verified | unverified | contradicted |
+   |---|---|---|---|
+   | true label | 80.7% | 6.2% | 13.2% |
+   | wrong label | 6.3% | 9.6% | 84.2% |
+   | real vehicle as "vehicle" | 55.5% | 25.5% | 19.0% |
+   | real vehicle as "airplane" | 3.5% | 46.5% | 50.0% |
+
+4. **The deliberation rule itself was chosen on 300 present + 300 absent queries**, with candidates
+   and verdicts cached once and six rules simulated
+   (`agent_deliberation_rules_vrsbench_20260914.json`). The first version (R1) also held unconfirmed
+   candidates in the relaxed pass. It returned a box for 45.0% of absent queries; R3, the shipped rule,
+   returns one for 28.0%, with identical present R@0.5. Stricter rules cut absent boxes further (R5:
+   18.7%) but drop present R@0.5 to 32.7%.
+5. **Simulation = implementation:** the real pipeline run on 40 cached records (80 queries) made the
+   same decision and the same box as the R3 simulation **80/80**.
+
+### 3. Blast radius — what does this cost, and what can go wrong?
+
+- **Present-object recall drops:** R@0.5 38.7% → 36.0%, mIoU 0.349 → 0.327. The verifier sometimes
+  contradicts the *correct* box. Worked example, VRSBench `05865_0000.png` "find the vehicle": the
+  first candidate overlaps the ground-truth red vehicle at IoU 0.704, but RemoteCLIP ranked "vehicle"
+  7th (best match "ship"). Under R1 it backtracked to a box with IoU 0.0. Under R3 the same case still
+  backtracks: it is a genuine failure mode, not a fixed one.
+- **12.7% of absent-object queries still return a box marked *verified*.** The second agent reduces
+  hallucination; it does not eliminate it. A further 15.3% return a box explicitly marked UNCONFIRMED.
+- **Video false rejection on the demo clip:** `real_aerial_footage.mp4` "find all vehicles" went from
+  3 events to 2. The dropped 4.80–7.68s event is a **real white car** (checked visually on the
+  single-agent keyframe `results/1de5e372…/video/flag_b034e517_annotated_frame_60.png`); RemoteCLIP
+  read it as building/ship on 0/3 frames. Keeping the crop window inside the frame did not change that
+  verdict. Most likely a domain gap: RemoteCLIP is satellite-nadir, and this is a low-altitude close-up.
+- `tests/unit/test_video_workflow.py::test_video_flag_mask_is_not_empty` sampled only the first
+  12s, whose only vehicle event is that car. Its window was widened to 40 frames (reaches the 14.9s
+  event), with the reason written in the test.
+- `tests/models/test_grounding_workflow.py::test_grounding_pipeline_execution` feeds a flat grey image
+  through a mock detector claiming a vehicle. The real verifier correctly found no vehicle, so this
+  plumbing test now injects a stub verifier.
+- Latency: ~8.6 ms per verification (measured over 1,946 verifications); up to 5 per pass. GPU: adds
+  RemoteCLIP ViT-B/32 to resident models; the change-detection OOM (plan phase 3) gets worse, not better.
+- **Not calibrated:** `verifier_confidence` is a softmax over the vocabulary, a relative score.
+- Found while checking masks, **not caused by this change:** with verification disabled, 64 sampled
+  frames give SAM 2 masks on only 1 of 3 vehicle events. Propagation runs forward from one anchor
+  (`pre-demo.md` §2.1e).
+
+### 4. Verification — what proves it?
+
+- `tests/unit/test_agent_deliberation.py`, 8 tests with scripted verdicts: accept first verified;
+  backtrack past contradicted; prefer a later verified over an earlier unconfirmed; unconfirmed
+  returned but labelled; re-evaluate when all contradicted (contradicted boxes not re-verified); relaxed
+  pass rejects unconfirmed; NOT_FOUND; no verifier → single-agent behaviour.
+- Live, VRSBench (`agent_deliberation_live_vrsbench_20260914.json`, run under R1): present objects
+  4/4 verified (airplane, vehicle, ship, storage tank); absent 3/4 NOT_FOUND, the fourth UNCONFIRMED
+  on a relaxed-pass box — the case that motivated R3.
+- Live video after the change: "find the airplane" 0 flags, with three warnings naming detector scores
+  0.71/0.52/0.73 and 0/3, 0/3, 0/2 frames confirmed; "find the red car" 1 flag (15.36–18.24s); "find
+  all vehicles" 2 flags (verified 2/3 and 1/2 frames).
+- `pytest -q` → 161 passed + the widened video test passing (7/7 in `test_video_workflow.py`).
+
+### 5. Defence — a mentor asks: "RemoteCLIP isn't trained for this. Why should its opinion override the detector's?"
+
+"It doesn't override it; it's a second, independent witness with a different failure pattern, and we
+measured exactly how good a witness it is before we let it vote. Grounding DINO will always return
+*something* for any prompt: on our set, it put a box on 64.7% of queries for objects that aren't in
+the image. RemoteCLIP, asked whether a crop is the named category rather than 32 alternatives, confirms
+a wrong label 6.3% of the time. So we only overrule the detector when the verifier positively says
+it's a *different object*; when it only sees background, we keep the detection but mark it unconfirmed.
+That cut hallucinated boxes to 28.0% and cost 2.7 points of recall, and every decision, with both
+confidences, is in the trace."
+
+The caveat to volunteer: it has a real blind spot on close-up, low-altitude footage. It rejected a
+genuine white car in our own demo video. Say so before the demo does.
+
+---
+
+## Q-009 · Two-agent detection: attribute queries are labelled, not backtracked
+
+**Recorded** 2026-09-14, same session as Q-008 and before either was committed. **Supersedes the
+deliberation rule and headline numbers of Q-008**; Q-008's verifier design, measurements and video
+behaviour stand.
+
+**Result, same 300 present + 300 absent VRSBench queries:**
+
+| | single agent | Q-008 rule (R3) | **this rule (R7)** |
+|---|---|---|---|
+| present R@0.5 | 38.7% | 36.0% | **40.7%** |
+| present mIoU | 0.349 | 0.327 | **0.371** |
+| absent queries that return a box | 64.7% | 28.0% | **28.0%** |
+
+### 1. Mechanism — what changed from Q-008?
+
+The deliberation now branches on the reasoner's strategy (`workflows/grounding.py::deliberate`).
+
+- **Attribute queries** (`multi_attribute_ranking`, or `ordinal_*`: "the largest building", "white car
+  at the bottom left", "second from left"): only the reasoner's selected box is verified, and it is
+  always returned. The verifier sets the label — **verified**, **unconfirmed**, or **DISPUTED** when
+  it contradicts. No backtrack, no relaxed re-evaluation.
+- **Plain category queries** ("find the ship"): Q-008's R3 rule, unchanged — backtrack on
+  contradiction, hold the first unconfirmed, relaxed re-evaluation accepts only verified, else
+  NOT_FOUND.
+
+`agent_deliberation.mode` records which branch ran; `decision` gains `accepted_disputed`; the tool adds
+a warning for disputed answers.
+
+### 2. Rationale — what showed Q-008's rule was wrong?
+
+The verifier judges *category*, not *attributes*. For "the largest building", backtracking replaces the
+largest box with a smaller building the verifier likes better, which answers a different question. The
+visible symptom was the demo image `GR_DINO_TEST/05945_0000.png`: "segment the largest building"
+backtracked past the two largest candidates and returned a 1,247 px box, and "find the white car at
+the bottom left" backtracked away from the car the single agent had found.
+
+Split by query type from the same cache (`agent_deliberation_rules_vrsbench_20260914_stdout.txt`):
+
+| rule | attribute R@0.5 (n=206) | plain R@0.5 (n=94) |
+|---|---|---|
+| single agent | 48.1% | 18.1% |
+| R3 — backtrack everywhere (Q-008) | 41.3% | 24.5% |
+| R6 — attribute: no backtrack, contradicted → NOT_FOUND | 37.9% | 24.5% |
+| **R7 — attribute: label only** | **48.1%** | **24.5%** |
+
+Backtracking helps plain queries (+6.4 points) and hurts attribute queries (−6.8). R7 takes the better
+branch for each, and beats the single agent on all three headline measures.
+
+### 3. Blast radius — what does R7 give up?
+
+- **Attribute queries for absent objects still return a box.** Measured on 220 absent attribute
+  queries (VRSBench referring expressions with the object class replaced by one not in the image;
+  `agent_verifier_absent_attribute_queries_20260914.json`): no candidates 26.4% · **DISPUTED 61.4%** ·
+  unconfirmed 7.3% · **verified 5.0%**. So 73.6% return a box, and the protection is the label, not a
+  refusal. A UI that ignores the label would show hallucinations again.
+- Every absent query in the headline 300 is a plain "find the X", so the 28.0% figure describes
+  category queries only.
+- On the demo image both previously regressed queries now return the single agent's original boxes,
+  **labelled DISPUTED** (verifier's best match "ground track field" and "roundabout"). Both boxes touch
+  the image edge; the black-padded crop is the likely cause. Keeping crops inside the frame was tested
+  on video frames only and did not change those verdicts, so it was not adopted.
+
+### 4. Verification
+
+- Implementation vs R7 simulation on 40 cached records (80 queries): **80/80** identical decision and
+  box.
+- `tests/unit/test_agent_deliberation.py` now 11 tests: the Q-008 eight, plus attribute query →
+  DISPUTED with no backtrack and a single verification, attribute verified, and mode recorded.
+
+### 5. Defence — "So when the agents disagree on 'the largest building', you just ignore the verifier?"
+
+"We don't ignore it; we stop letting it answer a question it can't evaluate. The verifier knows whether
+a crop looks like a building. It has no idea which building is largest. When it vetoed attribute
+answers, accuracy on those queries fell from 48.1% to 41.3%, because it kept swapping the right answer
+for a smaller building it liked better. So on attribute queries it tells the user it disagrees, and on
+plain 'find the X' queries, where category is the whole question, it is allowed to backtrack. That split
+is measured, not assumed, and it is better than one agent on every number we track."
+
+---
+
+## Q-010 · GPU out-of-memory recovery for resident models
+
+**Recorded** 2026-09-14. Committed *before* Q-008/Q-009's verifier, because the verifier adds another
+resident model and the suite is not reliably green without this.
+
+### 1. Mechanism
+
+- `ml/registry.py::release_gpu_memory(exclude)` — unloads every cached adapter except `exclude`
+  **in place**: instances stay registered, because other objects hold references (the verifier caches
+  its RemoteCLIP adapter), and they reload lazily. Besides `unload()`, it clears any attribute holding a
+  `torch.nn.Module` or a SAM 2 predictor (DOFA keeps weights in `_dofa_model`, which the base `unload()`
+  misses), then `gc.collect()` + `torch.cuda.empty_cache()`. Returns the released model keys.
+- `ml/adapters/changeformer/adapter.py::_forward_logits_resilient` — on `torch.OutOfMemoryError`:
+  release other models → retry native → 512 windows → 256 windows → raise. What happened is returned
+  in `metadata.oom_recovery` (`released_models`, `resolved_by`), and `inference_mode` becomes
+  `windowed_512`/`windowed_256` if accuracy was traded.
+- `agent/executor.py` — heavy inference tools get one retry after any error whose cause chain is a CUDA
+  OOM: release all models, add a warning trace step naming what was released, rerun the tool. Non-OOM
+  errors are not retried.
+
+### 2. Rationale
+
+Measured, not hypothesised. The in-process audit ran every demo query type in sequence
+(`scratchpad/audit_queries.py`). `temporal_change_vqa` failed both times with "CUDA out of memory. Tried
+to allocate 1024.00 MiB … 33.75 MiB is free" after BLIP, Grounding DINO and SAM 2 loaded. The API server
+keeps models resident across requests, so this is the demo configuration, not a test artefact.
+Chrome (333 MiB) and the Claude desktop app (73 MiB) also held GPU memory (`nvidia-smi`).
+
+Order of recovery is by accuracy cost. Releasing models costs a reload on the next query, but no
+accuracy. Windows cost 0.02–0.03 IoU at 256 px (Q-007). Resize-to-fit was not used: it measured IoU
+0.00–0.09 (Q-007).
+
+### 3. Blast radius
+
+- The first query after a release pays model load time again (not measured per model tonight).
+- If ChangeFormer itself cannot fit, results silently would have been an error; now they may be
+  `windowed_256`, which is visible in metadata but not yet surfaced in the answer text.
+- `release_gpu_memory` clears attributes by type. An adapter that keeps GPU tensors in a plain dict or
+  list would not be freed.
+- Suite flakiness observed before the fix: with RemoteCLIP resident, the full run failed 5–7 ChangeFormer
+  tests on OOM; after adding recovery but before isolating the accuracy fixture, one isolated run
+  failed the three `test_1024_scene_native_iou` cases and an identical rerun passed 146/146. The cause
+  of that one failure was not captured (a passing rerun leaves no assertion), most likely a windowed
+  fallback when free memory dipped. `tests/models/test_changeformer_accuracy.py`'s fixture now releases
+  other models before measuring accuracy.
+
+### 4. Verification
+
+- `tests/unit/test_gpu_oom_recovery.py`, 5 tests: recover by releasing; fall back to 512 windows when
+  release is not enough; no recovery metadata when memory is fine; executor releases + retries a heavy
+  tool once; executor does not retry non-OOM errors.
+- Live, same audit script, all models in one process: both change queries now `COMPLETED`, log
+  `Released GPU memory held by: ['general_rs_vlm', 'grounding_dino', 'sam2', 'remoteclip'] (kept:
+  ['changeformer'])` and later `['cdvqa']`.
+- Full suite with all of tonight's changes: 167 passed, 0 failed.
+
+### 5. Defence — "Isn't evicting models just hiding that you're over budget?"
+
+"We are over budget on an 8 GB card: nine models don't fit at once, and the demo server loads them
+lazily as queries arrive. The honest options are a bigger GPU, or managing memory and saying when we do
+it. We release models first, because that costs reload time and no accuracy. We only fall back to
+smaller windows if the model alone still can't fit, and when that happens the result says so in its
+metadata. The trace shows exactly which models were released for which query."
+
+**Addendum (same session, before commit).** The video workflow does not run through the agent
+executor, so it had no recovery: in an isolated suite run, Grounding DINO hit OOM on every sampled
+frame ("Tried to allocate 328.00 MiB … 157.00 MiB free") after the ChangeFormer tests, each frame was
+logged as a frame error, and 2–4 video tests failed. `workflows/video_analysis.py` now retries a frame
+once after releasing every model except `grounding_dino`, `sam2` and `remoteclip`, with a warning trace
+step. Isolated suite at the two-agent commit afterwards: 157 passed, 0 failed.
+
+---
+
+## Q-011 · GeoTIFF georeferencing without rasterio, and GeoJSON area-of-interest input
+
+> **Corrected by [Q-014](#q-014--demo-rehearsal-over-http-and-a-correction-to-q-011s-numbers).** The live
+> AOI figures below (14,101 changed px, 3,525.25 m², 114,001 full scene) came from a run that silently
+> fell back to 512-px windows after GPU out-of-memory. At native resolution the same AOI has **13,902 px /
+> 3,475.5 m²** (full scene 118,997). The equality checks — pipeline count = independent count, area =
+> pixels × 0.25 — held in both runs and still stand.
+
+**Recorded** 2026-09-14, atop `9c7caf6`. Plan phases 4–5.
+
+**Result:** a real UTM GeoTIFF now reads as `EPSG:32614` with its transform (before: `crs=None`,
+`is_georeferenced=False`). Through HTTP, change detection with a WGS84 AOI over the western half of
+LEVIR scene 100 reports **14,101 changed px = the independently counted 14,101**, **3,525.25 m² exact**,
+change ratio relative to the AOI, and GeoJSON in lon/lat.
+
+### 1. Mechanism
+
+**GeoTIFF read** (`geo/raster.py::_georeference_from_tifffile`), because `rasterio` is not installed and
+rules.md §2 keeps GDAL optional:
+- CRS from `ProjectedCSTypeGeoKey` (3072), else `GeographicTypeGeoKey` (2048), as `EPSG:n`.
+  User-defined (32767) → not georeferenced, rather than guessed.
+- Transform from `ModelTransformation` (34264), else `ModelPixelScale` (33550) + `ModelTiepoint`
+  (33922), in rasterio Affine order `[a, b, c, d, e, f]` so metadata is identical whichever reader
+  ran. `RasterPixelIsPoint` is shifted half a pixel, as GDAL does.
+- Bounds, resolution, nodata (`GDAL_NODATA` 42113).
+
+**GeoTIFF write** (`evidence/masks.py::_geotiff_tags`): change and segmentation masks carry the source
+CRS and transform; `run_change_detection` now passes `meta1`. Before, they were saved without it.
+
+**GeoJSON output** (`geo/vectors.py` path B, the no-rasterio path): real contour polygons with holes
+(`cv2.findContours` RETR_CCOMP → affine → pyproj). Before, every component became its **bounding
+rectangle**.
+
+**Non-8-bit pairs** (`geo/optical_preprocessing.py::joint_rgb8_pair`): uint16/float/multi-band input
+is reduced to the first three bands and stretched with one set of 2–98% percentiles computed across
+**both dates**, with a warning. Before, arrays went straight to ChangeFormer's `/255` scaling.
+
+**AOI input** (`geo/aoi.py`):
+- `load_aoi` accepts Polygon / MultiPolygon / Feature / FeatureCollection, as a dict, JSON string or
+  file. CRS is RFC 7946 WGS84 unless a legacy `crs` member names another. Errors are structured
+  `AOIError` (422): `AOI_INVALID`, `AOI_REQUIRES_GEOREFERENCED_RASTER`, `AOI_OUTSIDE_RASTER`.
+- `rasterize_aoi` reprojects to the raster CRS, maps world→pixel through the inverse affine, and fills
+  with an exact even-odd scanline at pixel centres (`_scanline_fill`). It reports AOI area, the area
+  inside the raster, and coverage.
+- Inputs: `AnalyzeRequest.aoi_geojson` (inline) or `aoi_filename` from the new `POST /api/upload/aoi`,
+  which validates on upload.
+- Applied in `inspect_raster` → `AgentState.aoi`, `evidence.metadata.aoi`, a trace step, and a warning
+  if coverage < 100%.
+  - **Change detection:** masks clipped to the AOI (full-scene masks kept as `*_full_scene`), answer
+    and counts are AOI-relative, AOI outline drawn on the overlay.
+  - **Statistics:** pixels outside the AOI are excluded from the valid area.
+  - **Grounding:** candidates whose centre is outside the AOI are dropped (trace step
+    `filter_area_of_interest`), and the SAM 2 mask is clipped.
+
+### 2. Rationale — why these choices?
+
+- **tifffile over adding rasterio:** a system GDAL binary is an "ask first" dependency, and the project
+  deliberately installs on a fresh Windows laptop. The GeoKeys needed are four tags.
+- **Joint stretch, not per-date:** per-date percentile stretching changes each date's radiometry
+  independently. That difference is exactly what a change detector reports as change.
+  `test_joint_stretch_does_not_invent_change_in_uint16` asserts unchanged pixels stay byte-identical
+  across dates.
+- **Scanline, not `cv2.fillPoly`:** fillPoly was implemented first and **the new tests caught it**. It
+  fills every pixel an edge touches, so a 200×200-pixel AOI rasterised to 201×201 (40,401 px, +1.0%),
+  and hole boundaries were removed too (30,200 instead of 30,000). The scanline is exact by
+  construction. Speed: a 10,980×10,980 (Sentinel-2 tile) raster with a 5,001-vertex AOI rasterises in
+  **0.25 s**, area error **−0.00004%**.
+- **Fail, don't fall back, when an AOI can't be applied:** analysing the whole scene when the user
+  asked about one area would return plausible, wrong numbers.
+
+### 3. Blast radius — limits and what isn't covered
+
+- **Only EPSG CRSs are read and written.** A WKT-defined or user-defined CRS (32767) is treated as not
+  georeferenced, so AOI requests on such files fail with `AOI_REQUIRES_GEOREFERENCED_RASTER`.
+- **Band selection is "first three bands".** Sentinel-2 stacks are usually B2,B3,B4… (blue first), so
+  RGB order may be wrong for them. The stretch warns but does not reorder. ChangeFormer is also only
+  measured on LEVIR-CD 8-bit RGB (Q-007); multispectral accuracy is **NOT MEASURED**.
+- **GeoJSON polygons trace pixel centres**, ~half a pixel inside the true boundary (−0.8% polygon area
+  on the 77,500 px test shape). Reported areas come from pixel counts, which are exact.
+- **Grounding uses the box centre** for AOI membership; a box straddling the edge is kept or dropped
+  whole. Its mask is clipped.
+- AOI applies to the first raster's grid. Pairs are required to share dimensions (Q-007), and CRS
+  equality between the two dates is not re-checked here.
+- Found on the way and fixed: `artifact_manager.save_result_json` / `save_trace_json` did not create the
+  job directory, so a pipeline that failed before any tool ran (e.g. an AOI error when the controller is
+  called directly) raised a misleading `FileNotFoundError` instead of returning FAILED. The HTTP path
+  was unaffected because upload creates the workspace.
+- The upload endpoint's first version stringified the structured error inside a generic `HTTP_ERROR`;
+  it now re-raises the `AOIError`, and the app's handler returns `{"error": {"code": "AOI_INVALID"}}`.
+
+### 4. Verification
+
+- `tests/unit/test_geotiff_georeferencing.py` (13): UTM scale+tiepoint; WGS84; ModelTransformation;
+  tiepoint not at origin + PixelIsPoint; nodata; plain TIFF and user-defined CRS not georeferenced;
+  channels-first read; metric area exact; GeoJSON real shape in lon/lat (Austin, TX) with pixel count
+  77,500 and 1 hole; image coordinates without georef; saved mask GeoTIFF round-trips CRS + transform
+  + bounds; joint stretch passes 8-bit through; joint stretch does not invent change.
+- `tests/unit/test_aoi.py` (7): reprojected AOI hits exactly columns 100–299 / rows 200–399;
+  FeatureCollection from dict, string and file (non-polygons ignored); legacy CRS member; holes; half
+  outside → coverage 0.50; each structured error; request resolution and box helper.
+- `tests/unit/test_aoi_http.py` (3): GeoTIFF upload reports CRS; AOI upload 200 / invalid 422
+  `AOI_INVALID` / wrong extension 415; `/api/analyze` with `aoi_filename` and inline `aoi_geojson`
+  both COMPLETED with valid pixels = 524,288 (the AOI), area = pixels × 0.25, and identical counts;
+  AOI on a PNG → FAILED with `AOI_REQUIRES_GEOREFERENCED_RASTER` in the trace.
+- Live HTTP run (`scratchpad/api_aoi.py`): 14,101 changed px in AOI vs 114,001 full scene; the
+  independent count of the full mask's western 512 columns is 14,101; GeoJSON longitudes stay west of
+  the AOI's east edge (−97.74977 vs −97.74976).
+- `pytest -q` → **180 passed, 0 failed**.
+
+### 5. Defence — "How do you know the area inside the polygon is right, and not just plausible?"
+
+"Three independent checks that don't share code. The rasteriser is tested on an AOI defined in UTM
+metres and sent in lon/lat: after reprojection it must land on exactly columns 100–299 and rows
+200–399, and it does. We tried OpenCV's polygon fill first and that same test caught it filling one
+pixel too many on each side. End to end, the pipeline's in-AOI change count equals a direct count of the
+full-scene mask's western half, 14,101 both ways, and the area is that count times 0.25 m² exactly. And
+at Sentinel-2 tile scale, a 5,000-vertex polygon's pixel area matches its analytic area to four parts in
+ten million."
+
+The caveat to volunteer: this is measured on RGB LEVIR scenes we georeferenced ourselves, to test the
+geometry. Real multispectral GeoTIFFs will read and clip correctly, but which three bands feed the
+model, and how accurate it is on them, is not measured.
+
+---
+
+## Q-012 · Change detection two agents: ChangeFormer vs CDVQA adjudication
+
+**Recorded** 2026-09-14, atop `3043c72`. Ushnik's item 1 in `split-ushnik-ayushman.md`.
+
+**Headline finding, measured before building:** on LEVIR-CD imagery, **CDVQA's change answers carry
+essentially no information**. It says "yes, changes are observed" for 57.8% of pairs with building
+change, 59.1% without, and **53.9% of identical image pairs**. The adjudicator is built around that fact
+rather than around the assumption that two models are two independent good witnesses.
+
+### 1. Mechanism
+
+`backend/app/evidence/adjudicator.py::EvidenceAdjudicator.adjudicate_change_vqa`, called from
+`run_change_vqa` after CDVQA answers. It is deterministic; rules are applied in order.
+
+1. **Identical inputs** (`np.array_equal` on the two rasters) → `INPUTS_IDENTICAL`, the answer is "No
+   change". A conflict is recorded if either model claimed change.
+2. **Counterfactual probe:** CDVQA is asked the same question with the first image twice. If it returns
+   the same change-claiming answer (anything except `no`/`0`), its answer does not depend on what changed
+   → `CDVQA_UNINFORMATIVE`; the answer comes from ChangeFormer only.
+3. **Answer-type check:** the question is classified into SECOND-CDVQA's types (change_or_not,
+   increase/decrease_or_not, change_ratio(_types), change_to_what, largest/smallest_change) and must get
+   the matching answer type (yes/no · ratio bucket · land-cover class). Otherwise
+   `CDVQA_ANSWER_TYPE_MISMATCH`, answered from ChangeFormer where a building mask can answer it
+   ("did it change?"). For increase/decrease it gives no answer, because a building mask has no direction.
+4. **Comparable claims only.** ChangeFormer measures *building* change (LEVIR-CD); CDVQA *all*
+   land-cover change (SECOND-CDVQA). Building change is a subset of all change, so:
+
+   | CDVQA says | ChangeFormer building change | verdict |
+   |---|---|---|
+   | no | ≥ 1.0% | CONFLICT |
+   | yes, general question | < 0.1% | CONSISTENT_WITH_CAVEAT (change is not buildings) |
+   | yes, building question | < 0.1% | CONFLICT |
+   | ratio bucket [lo, hi] | ratio × precision 0.8656 > hi (for "0%": ≥ 1.0%) | CONFLICT |
+   | ratio bucket, building question | ratio outside bucket | CONFLICT |
+   | "buildings" (class) | < 0.1% | CONFLICT |
+   | other class | — | NOT_COMPARABLE |
+   | otherwise | — | CONSISTENT |
+
+- **Confidence:** CDVQA's own softmax score when CONSISTENT / CONSISTENT_WITH_CAVEAT / NOT_COMPARABLE;
+  `None` for every other status. `AgentState.confidence_final` stops the controller from overwriting it.
+- **Output:** `evidence.metadata.change_adjudication` — both models' outputs, question type, probe
+  answer, thresholds, CDVQA's measured accuracy for that question type, rule, conflict details. Plus a
+  trace step. Disagreements add a warning and set `quality_status = REVIEW_REQUIRED`.
+- **Config:** `configs/app.yaml` `change_adjudication`.
+
+### 2. Rationale — what was measured, and why the design changed twice
+
+- **The old adjudicator was never called**, returned constant confidences (0.88, 0.35, `or 0.5`), and
+  read `masks[0]["changed_pixels"]` / `["change_ratio"]`, keys ChangeFormer never produces. Its three
+  tests asserted those invented values. It was replaced, not patched.
+- **Thresholds** from LEVIR-CD-256 test, 1,113 pairs with no building change (`scratchpad/perpair.json`,
+  production adapter): predicted ratio exceeds 1.0% on **2.1%** of them and 0.1% on 5.9%; 1.7% of
+  real-change pairs have a true ratio below 0.1%. A conflict claim uses the stricter 1.0%.
+- **CDVQA on LEVIR-CD** (`results/evaluations/cdvqa_on_levircd_test_20260914.json`, all 2,048 pairs):
+
+  | question → answers | yes-rate / distribution |
+  |---|---|
+  | "are there any changes?" — pairs with building change (935) | yes 57.8% |
+  | same — pairs with no building change (1,113) | yes 59.1% |
+  | same — **identical pairs** (1,113) | **yes 53.9%** |
+  | "what percentage of the area changed?" — all | "10–20%" 82.3% (1,686 / 2,048) |
+
+- **Probe measurement** (`cdvqa_counterfactual_probe_levircd_20260914.json`): it flags **45.95%** of yes/no
+  answers and **74.80%** of ratio answers as identical to the no-change answer. Yes/no agreement with
+  building ground truth: 48.58% overall, 44.95% on flagged, **51.67% on the 1,107 kept**. The probe
+  removes the least informative answers, but what remains is still near chance on this imagery.
+- **First design iteration (before the probe),** run live on LEVIR 1024 scenes 100/101 and an identical
+  pair: identical pairs came out "AGREE" (CDVQA "40–50%" vs 0 building px is not refuted by the subset
+  rule). That, plus the measurement above, led to rules 1–2, and to renaming AGREE → **CONSISTENT**
+  ("not refuted", not "confirmed").
+- **Confidence overwrite, found live:** the controller averaged every model's confidence after the tools
+  ran, mixing ChangeFormer's mean pixel probability with CDVQA's softmax. TYPE_MISMATCH showed 0.5163
+  instead of None. The same averaging is why single-image grounding has always returned
+  `confidence=None` (no model results to average). Grounding is deliberately **not** changed here.
+
+### 3. Blast radius
+
+- **On LEVIR-like imagery, nearly every change answer now comes from ChangeFormer alone.** Live, 9 of 12
+  queries were UNINFORMATIVE or INPUTS_IDENTICAL; the 3 CONSISTENT ones (scene 101) passed the probe
+  but, per the measurement, CDVQA is still ~chance there. **Do not present CDVQA as a second witness on
+  this imagery.** The honest demo claim is the opposite: the system detects that CDVQA isn't answering.
+- **CDVQA's measured accuracy is on SECOND-CDVQA only** (docs/models/CDVQA.md §18; the raw metrics JSON
+  is not on this machine). Answers say so explicitly.
+- **No ground truth for the adjudicator's own accuracy.** LEVIR-CD labels only buildings and has no
+  questions; SECOND-CDVQA is not on this machine. **Adjudication accuracy is NOT MEASURED.**
+- The probe costs one extra CDVQA forward pass per question (latency not measured separately).
+- The question classifier is keyword rules. Phrasings outside them classify as `unknown`, which skips
+  the type check (rules 1, 2 and 4 still apply).
+- `AdjudicationResult.confidence` is now `Optional`; its only consumer is this module.
+
+### 4. Verification
+
+- `tests/unit/test_adjudicator.py`, 26 tests. Nine question classifications; answer types; the audit
+  case (ratio answer to "has any new building been constructed?"); no direction guess for
+  increase/decrease; each CONFLICT rule; the non-building caveat; a small false-positive area not
+  triggering conflict; the 0% bucket needing ≥1.0%; the AOI pixel count as denominator; the measured
+  accuracy note; identical inputs; probe flags; probe passes; probe on ratio.
+- Live through the agent controller (`results/evaluations/change_adjudication_live_levir1024_20260914.json`),
+  4 questions × {scene 100, scene 101, identical pair}. Identical pair: 4/4 `INPUTS_IDENTICAL`, confidence
+  None. Scene 100: 4/4 `CDVQA_UNINFORMATIVE`, e.g. "Yes — building change is detected … 11.35% …
+  CDVQA's answer '60% to 70% change.' was set aside". Scene 101: 1 UNINFORMATIVE, 3 CONSISTENT with
+  CDVQA's own confidence (0.531 / 0.228 / 0.170).
+- `pytest -q` → **203 passed, 0 failed**.
+
+### 5. Defence — "You have two change models. Why does the answer only use one?"
+
+"Because we measured whether the second one was answering the question, and on this imagery it isn't.
+CDVQA says 'yes, changes are observed' for more than half of image pairs that are literally the same
+image twice. So before trusting any CDVQA answer, the system asks it again with nothing changed. If it
+gives the same answer, that answer can't be about the change, and we say so and answer from ChangeFormer,
+whose building-change accuracy we did measure: IoU 0.74. When CDVQA's answer does pass that check, we
+only call it 'consistent', because building change can bound total change from below but can't confirm
+it. The point of two agents is not to average them; it's to catch the one that's wrong."
+
+The caveat to volunteer: we cannot yet measure the adjudicator's accuracy end to end. No dataset here
+has both building masks and change questions.
+
+---
+
+## Q-013 · Routing: scene description, and honest refusal for unsupported analyses
+
+**Recorded** 2026-09-14, atop `23d105d`. Ushnik's item 2 in `split-ushnik-ayushman.md`.
+
+### 1. Mechanism
+
+- **Caption wording** (`orchestration/intent_classifier.py`): a single image now routes to
+  `single_image_caption` for "describe … image/scene/picture/area/this", "description of", "what does
+  this image show/contain/depict", "what do you see", "summarise". Before, only "caption", "summarize",
+  "overview of scene" and "brief description" did. Grounding is still checked first, so "describe the red
+  car at the bottom" stays grounding.
+- **New capability `unsupported_analysis`** — definition, DAG branch
+  (`inspect_raster → explain_unsupported_request → generate_report`), `KNOWN_CAPABILITIES`,
+  `TaskType.UNSUPPORTED` mapping, and a tool whitelist entry.
+- **Matcher:** when intent is `multispectral_analysis` or `sar_analysis` and either the input modality
+  is wrong or the capability has no executable branch (`DependencyGraph.has_branch_for`), route to
+  `unsupported_analysis`. The routing reason says which case applied.
+- **Tool `explain_unsupported_request`** (`agent/tools/unsupported.py`) answers from raster metadata.
+  - For an index request it names the bands the index needs. On ≤3 bands: "cannot be computed from this
+    image". Otherwise: "not implemented in this version".
+  - For SAR polarimetry: "not implemented".
+  - Confidence `None` (`confidence_final`), plus a warning.
+
+### 2. Rationale
+
+Measured in tonight's audit (`scratchpad/audit_queries.py`): "compute NDVI for this scene" on an RGB PNG
+routed to `single_image_vqa`, and BLIP answered **"No."** with confidence 0.5962. The intent classifier
+had already identified `multispectral_analysis`; the matcher only honoured it for >3-band rasters, and
+that capability has no DAG branch anyway, so the query fell through to generic VQA. An unrelated
+model's answer with a confidence is worse than a refusal: it looks like a result. The refusal is the
+honest output until spectral indices exist, and it separates "impossible on this input" from "not built
+yet". "describe this image" also routed to VQA, not captioning.
+
+### 3. Blast radius
+
+- Queries matching the spectral/SAR patterns on single images no longer reach VQA at all. A query that
+  mentions "infrared" or "NIR" conversationally now gets the refusal.
+- **Caption quality is unchanged**: `run_caption` still prompts BLIP-VQA (`Salesforce/blip-vqa-base`)
+  for a caption, so answers are one or two words ("Football field." on `05945_0000.png`). Only the routing
+  was wrong here; captioning with a VQA model is `pre-demo.md` §1.2's problem.
+- **Found on the way:** `agent/validator.py::PlanValidator.PERMITTED_TOOLS` is a separate hand-kept
+  whitelist. The first live run failed with "Security violation: Proposed step
+  'explain_unsupported_request' is not in the authorized tool whitelist". `rules.md` §3 listed four files
+  for a new capability; it now lists five, and a test asserts every DAG tool is registered and
+  whitelisted.
+- `tests/integration/test_pipeline_end_to_end.py` hard-codes the tool count: 14 → 15.
+
+### 4. Verification
+
+- Live, through the agent controller (`scratchpad/routing_e2e.py`):
+
+  | query | input | result |
+  |---|---|---|
+  | "describe this image" | RGB PNG | `single_image_caption`, run_caption |
+  | "compute NDVI for this scene" | RGB PNG | `unsupported_analysis`: "NDVI needs red and near-infrared (NIR) bands, and this image has 3 band(s) (PNG) … cannot be computed from this image" |
+  | "compute NDVI for this scene" | 4-band uint16 GeoTIFF | "… This image has 4 band(s), but spectral-index computation is not implemented" |
+  | "show SAR backscatter in dB" | RGB PNG | "SAR polarimetric analysis … is not implemented" |
+  | "how many buildings are in this image?" | RGB PNG | unchanged: `single_image_vqa` |
+
+- `tests/unit/test_routing_unsupported.py`, 11 tests: 7 intent wordings, including grounding priority;
+  RGB spectral/SAR → unsupported; multispectral → unsupported while unimplemented; explanation text for
+  the RGB / multispectral / SAR cases; every tool in every executable DAG is registered and whitelisted.
+- `pytest -q` → **214 passed, 0 failed**.
+
+### 5. Defence — "Your system can't compute NDVI. Isn't a refusal a failure?"
+
+"It's a missing feature, and the system now says so precisely: NDVI needs a near-infrared band, and an
+RGB photo doesn't have one. Before this change the same question got 'No.' from a generic VQA model with
+59.6% confidence. That's the real failure, because it looks like an analysis result. We'd rather show
+what we can't do than dress up an unrelated model's output as a spectral index."
+
+---
+
+## Q-014 · Demo rehearsal over HTTP, and a correction to Q-011's numbers
+
+**Recorded** 2026-09-15, atop `ca6f893`. Ushnik's item 3 in `split-ushnik-ayushman.md`. **Corrects the
+live AOI figures in [Q-011](#q-011--geotiff-georeferencing-without-rasterio-and-geojson-area-of-interest-input).**
+
+### 1. Mechanism — what was run, and what changed
+
+**Rehearsal.** A real uvicorn server on port 8010 (`backend.app.main:app`, PostgreSQL connected, CUDA)
+and an `httpx` client (`scratchpad/rehearsal.py`), in demo order, in one server process so models
+accumulate as they will on stage. Responses are saved in `results/evaluations/demo_rehearsal_20260915/`.
+
+| # | request | HTTP | result | s |
+|---|---|---|---|---|
+| 01 | VQA "how many buildings" (05945) | 200/200 | "3.", conf 0.3668 | 7.9 |
+| 02 | "describe this image" | 200/200 | caption "Football field." | 7.4 |
+| 03 | "find the vehicle" (VRSBench 05865) | 200/200 | accepted_verified — **wrong box** (see §3) | 15.5 |
+| 04 | "find the airplane" (05865) | 200/200 | not_found, 2 contradicted | 7.4 |
+| 05 | "segment the largest building" (05945) | 200/200 | DISPUTED (ground track field) | 7.8 |
+| 06 | "compute NDVI" (RGB) | 200/200 | refusal naming missing NIR band | 6.9 |
+| 07 | change + AOI upload (UTM GeoTIFF pair) | 200/200 | 13,902 px, 3,475.5 m², AOI applied | 10.0 |
+| 08 | "has any new building been constructed?" | 200/200 | CDVQA_UNINFORMATIVE → "Yes — building change … 11.35%" | 9.2 |
+| 09 | video "find all vehicles" | 200/200 | events 14.88–18.72s (2/3 verified), 25.44–27.36s (1/3) | 33.4 |
+| 10 | video "find the airplane" | 200/200 | 0 events, 3 dropped with warnings | 25.7 |
+
+Every overlay and PDF report URL returned 200. The server log shows one out-of-memory recovery
+(`Released GPU memory held by: ['general_rs_vlm', 'grounding_dino', 'sam2', 'remoteclip']`).
+
+**Code change.** `run_change_detection` now puts `inference_mode`, `oom_recovery` and `max_native_side` in
+`evidence.metadata.change_inference`. It warns when an out-of-memory fallback ran in windows (accuracy
+traded), and notes when other models were released (no accuracy cost). Before, the mode was only in
+the ChangeFormer `ModelResult` metadata, which the API response does not include.
+
+### 2. Rationale — the discrepancy that led here
+
+Item 07 reported 13,902 changed px in the AOI; Q-011 recorded 14,101 for the same pair and AOI. Reproduced
+on a clean GPU after stopping the server (`nvidia-smi` 1,346 MiB used):
+
+| max_native_side | mode | full scene px | AOI (west half) px | IoU vs ground truth |
+|---|---|---|---|---|
+| 1024 | native | **118,997** | **13,902** | **0.8086** |
+| 512 | windowed | 114,001 | 14,101 | 0.7997 |
+| 256 | windowed | 111,556 | 13,014 | 0.7872 |
+
+Q-011's figures match the 512-window row exactly. That run happened in a process with other models
+resident, so ChangeFormer ran out of memory, released models, still could not fit, and fell back to 512 px —
+**with nothing in the response to say so**. A first attempt to reproduce ran while the rehearsal server
+still held GPU memory, and it too fell back to 512 px; that is how the mechanism was confirmed. The
+rehearsal's 13,902 is the native result.
+
+### 3. Blast radius
+
+- **Q-011's absolute live numbers are wrong for native inference; its checks are not.** "Pipeline count
+  equals independent count" and "area = pixels × 0.25" were computed on the same mask in both runs. The
+  HTTP test (`test_aoi_http.py`) asserts only those relations, so it passes in either mode.
+- **Window fallback moves results by ~4% of changed pixels on this scene** and costs 0.009 (512) / 0.021
+  (256) IoU. It stays available as a last resort, now visible.
+- **Do not demo** `VRSBench 05865 "find the vehicle"`: the plain-category rule backtracks from the true red
+  vehicle (IoU 0.704) to a box with IoU 0.0 and calls it verified (Q-008 §3). Use a verified-correct image.
+- Captions remain one or two words (Q-013).
+- Ayushman's real GeoTIFF inputs were not ready; this rehearsal used LEVIR scene 100 georeferenced by us.
+
+### 4. Verification
+
+- `tests/unit/test_gpu_oom_recovery.py::test_change_tool_reports_inference_mode_and_warns_on_windowed_fallback`:
+  a simulated OOM at 1024 px resolves at 512 windows, and `change_inference` plus the warning appear on the state.
+- The rehearsal table above: 10/10 requests COMPLETED over HTTP.
+- `pytest -q` → **215 passed, 0 failed**.
+
+### 5. Defence — "Your own record had the wrong number. Why trust the rest?"
+
+"Because the record caught it. The rehearsal produced a different count from the one we'd written down, so
+we reproduced both on a clean GPU and found the earlier run had silently fallen back to smaller windows
+after running out of memory. That's also a real bug: the API didn't say which mode ran. It does now, and
+the old entry carries a correction pointing here, rather than being quietly edited. The consistency checks
+in that entry held in both modes; only the headline figure depended on a hidden condition."

@@ -111,6 +111,19 @@ class CapabilityRegistry:
                 validation_requirements={"min_duration_sec": 1.0}
             ),
             CapabilityDefinition(
+                capability_id="unsupported_analysis",
+                name="Unsupported Analysis Explanation",
+                description="Explains why a requested analysis (spectral indices, SAR polarimetry) cannot be performed on this input or is not implemented, instead of answering it with an unrelated model.",
+                accepted_input_types=["image/png", "image/jpeg", "image/tiff"],
+                required_modalities=["optical", "multispectral", "sar"],
+                output_types=["answer", "report"],
+                required_models=[],
+                required_tools=["inspect_raster", "explain_unsupported_request", "generate_report"],
+                workflow="workflow_unsupported",
+                priority=CapabilityPriority.VISUALIZATION,
+                validation_requirements={"min_images": 1, "max_images": 2}
+            ),
+            CapabilityDefinition(
                 capability_id="multispectral_analysis",
                 name="Multispectral Band & Index Analysis",
                 description="Calculates normalized spectral indices (NDVI, NDWI, NDBI) and renders false-color composite layers from multi-band imagery.",

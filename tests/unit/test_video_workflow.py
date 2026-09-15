@@ -131,8 +131,10 @@ async def test_video_flag_mask_is_not_empty():
         video_path=Path("datasets/samples/video/real_aerial_footage.mp4"),
         query="find all vehicles",
         job_id="test_mask_job",
-        # As above: reach the real vehicle rather than the first few empty seconds.
-        sampling_config=VideoSamplingConfig(sample_fps=2.0, max_frames=24),
+        # As above: reach the real vehicle rather than the first few empty seconds. 40 frames at
+        # 2 fps reaches the 14.9s event: the verification agent (Q-008) rejects the earlier 4.8s
+        # close-up white car (RemoteCLIP reads it as "building/ship"), a recorded false rejection.
+        sampling_config=VideoSamplingConfig(sample_fps=2.0, max_frames=40),
         flagging_config=VideoFlagConfig(min_event_score=0.1, min_persistence_frames=1),
     )
 

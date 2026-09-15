@@ -153,8 +153,9 @@ class AgentController:
                             state.quality_flags.extend(ch_warnings)
 
                 # 8. Evaluate Confidence & Multi-Model Consistency
-                scores = [r.confidence for r in state.model_results]
-                state.confidence = ConfidenceEvaluator.evaluate(scores)
+                if not state.confidence_final:
+                    scores = [r.confidence for r in state.model_results]
+                    state.confidence = ConfidenceEvaluator.evaluate(scores)
 
                 # Check change consistency if applicable
                 ch_res = next((r for r in state.model_results if r.task == "change_detection"), None)

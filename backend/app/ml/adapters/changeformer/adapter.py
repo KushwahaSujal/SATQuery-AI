@@ -23,18 +23,22 @@ from backend.app.ml.adapters.changeformer.network import ChangeFormerV6
 # Exact Training-Time Inference Preprocessing
 # ============================================================================
 
+#: Upstream wgcban/ChangeFormer datasets/data_utils.py normalises with mean=std=0.5.
+_NORM_MEAN = 0.5
+_NORM_STD = 0.5
+
+
 def preprocess_changeformer_input(
     img: Union[np.ndarray, Image.Image, torch.Tensor],
-    target_size: Tuple[int, int] = (512, 512)
 ) -> Tuple[torch.Tensor, Tuple[int, int]]:
     """
-    Reproduces the exact training-time preprocessing for ChangeFormer:
-      1. Converts input to 3-channel RGB float array.
+    Reproduces the upstream ChangeFormer training-time preprocessing:
+      1. Converts input to a 3-channel RGB float array.
       2. Rescales [0, 255] to [0.0, 1.0].
-      3. Normalizes using standard ImageNet mean/std:
-         mean = [0.485, 0.456, 0.406], std = [0.229, 0.224, 0.225].
-      4. Resizes to target_size (divisible by 32).
-      5. Returns (tensor, original_hw).
+      3. Normalises to [-1, 1] with mean = std = 0.5 (upstream data_utils.py).
+      4. Returns ((1, 3, H, W) tensor, (H, W)). No resizing: the model is run at
+         native resolution — resizing a 1024 LEVIR-CD scene to 256 measured IoU
+         0.00-0.09 against 0.63-0.81 native (see project/qna.md).
     """
     if isinstance(img, Image.Image):
         arr = np.array(img.convert("RGB"), dtype=np.float32)
@@ -68,18 +72,8 @@ def preprocess_changeformer_input(
     if arr.max() > 1.0:
         arr = arr / 255.0
 
-    # ImageNet normalization
-    mean = np.array([0.485, 0.456, 0.406], dtype=np.float32)
-    std = np.array([0.229, 0.224, 0.225], dtype=np.float32)
-    arr = (arr - mean) / std
-
-    # Transpose to (C, H, W)
-    tensor = torch.from_numpy(arr).permute(2, 0, 1).unsqueeze(0).float()
-
-    # Resize if not matching target size
-    if (orig_h, orig_w) != target_size:
-        tensor = F.interpolate(tensor, size=target_size, mode="bilinear", align_corners=False)
-
+    arr = (arr - _NORM_MEAN) / _NORM_STD
+    tensor = torch.from_numpy(np.ascontiguousarray(arr)).permute(2, 0, 1).unsqueeze(0).float()
     return tensor, (orig_h, orig_w)
 
 
@@ -90,17 +84,23 @@ def preprocess_changeformer_input(
 class ChangeFormerAdapter(BaseModelAdapter):
     """
     Adapter for ChangeFormer: Transformer-based Siamese Architecture for Remote Sensing Change Detection.
-    Loads checkpoints/changeformer/satquery_changeformer_best.pt and runs inference.
+    Loads the LEVIR-CD-256 epoch-20 ChangeFormerV6 checkpoint (upstream trainer format)
+    and runs it at native resolution, windowing only above `max_native_side`.
     """
+
+    #: Upstream encoder downsamples by 32 overall; inputs are reflect-padded to a multiple.
+    _STRIDE = 32
+    _DEFAULT_MAX_NATIVE_SIDE = 1024
+    #: Frozen on the LEVIR-CD validation split before test evaluation (Ayushman's report).
+    _DEFAULT_THRESHOLD = 0.435
     def __init__(self):
         super().__init__("changeformer")
         self._model: Optional[ChangeFormerV6] = None
 
     def _resolve_checkpoint_path(self) -> Path:
         candidates = [
-            Path("checkpoints/changeformer/satquery_changeformer_best.pt"),
             self.checkpoint_path,
-            Path("checkpoints/changeformer/changeformer_satquery.pth"),
+            Path("checkpoints/changeformer/changeformer_v6_levir_levircd256_epoch20_best.pt"),
         ]
         for c in candidates:
             if c and Path(c).is_file():
@@ -129,17 +129,24 @@ class ChangeFormerAdapter(BaseModelAdapter):
         logger.info(f"Loading verified ChangeFormer checkpoint from {ckpt_file} onto device {self.device}...")
 
         try:
-            model = ChangeFormerV6()
-            ckpt = torch.load(str(ckpt_file), map_location=self.device)
+            model = ChangeFormerV6(embed_dim=256)
+            ckpt = torch.load(str(ckpt_file), map_location="cpu", weights_only=False)
 
-            if isinstance(ckpt, dict) and "model_state_dict" in ckpt:
-                state_dict = ckpt["model_state_dict"]
-            elif isinstance(ckpt, dict):
-                state_dict = ckpt
-            else:
+            if not isinstance(ckpt, dict):
                 raise ValueError(f"Unexpected checkpoint payload type: {type(ckpt)}")
+            # Upstream trainer saves model_G_state_dict; earlier exports used model_state_dict.
+            for key in ("model_G_state_dict", "model_state_dict"):
+                if key in ckpt:
+                    state_dict = ckpt[key]
+                    break
+            else:
+                state_dict = ckpt
 
             model.load_state_dict(state_dict, strict=True)
+            logger.info(
+                f"ChangeFormer checkpoint epoch={ckpt.get('epoch_id', ckpt.get('epoch'))} "
+                f"best_f1={ckpt.get('best_f1')}"
+            )
             model.to(self.device)
             model.eval()
 
@@ -159,6 +166,80 @@ class ChangeFormerAdapter(BaseModelAdapter):
             raise InvalidInputError("ChangeFormer requires two input images ('arr1'/'image_a' and 'arr2'/'image_b').")
         if "arr2" not in context and "image_b" not in context:
             raise InvalidInputError("ChangeFormer requires two input images ('arr1'/'image_a' and 'arr2'/'image_b').")
+
+    def _configured_threshold(self) -> float:
+        if self.config and self.config.threshold is not None:
+            return float(self.config.threshold)
+        return self._DEFAULT_THRESHOLD
+
+    @property
+    def max_native_side(self) -> int:
+        v = getattr(self.config, "max_native_side", None) if self.config else None
+        return int(v) if v else self._DEFAULT_MAX_NATIVE_SIDE
+
+    def _forward_logits_resilient(self, t1: torch.Tensor, t2: torch.Tensor) -> Tuple[torch.Tensor, Dict[str, Any]]:
+        """
+        `_forward_logits` with CUDA out-of-memory recovery, in order of accuracy cost:
+          1. release every other resident model and retry at native resolution (no accuracy cost);
+          2. fall back to 512- then 256-pixel windows (256 measured 0.02-0.03 IoU below native on
+             LEVIR-CD 1024 scenes, project/qna.md Q-007).
+        What happened is returned so it is reported, not hidden.
+        """
+        info: Dict[str, Any] = {"oom_recovery": None}
+        try:
+            return self._forward_logits(t1, t2), info
+        except torch.OutOfMemoryError:
+            pass
+        from backend.app.ml.registry import model_registry
+
+        torch.cuda.empty_cache()
+        released = model_registry.release_gpu_memory(exclude=("changeformer",))
+        info["oom_recovery"] = {"released_models": released}
+        try:
+            logits = self._forward_logits(t1, t2)
+            info["oom_recovery"]["resolved_by"] = "released_other_models"
+            return logits, info
+        except torch.OutOfMemoryError:
+            torch.cuda.empty_cache()
+        for window in (512, 256):
+            try:
+                logits = self._forward_logits(t1, t2, window=window)
+                info["oom_recovery"]["resolved_by"] = f"windowed_{window}"
+                return logits, info
+            except torch.OutOfMemoryError:
+                torch.cuda.empty_cache()
+        raise torch.OutOfMemoryError("ChangeFormer ran out of GPU memory even at 256-pixel windows after releasing other models.")
+
+    def _forward_logits(self, t1: torch.Tensor, t2: torch.Tensor, window: Optional[int] = None) -> torch.Tensor:
+        """
+        Full-resolution 2-class logits (1, 2, H, W) for a (1, 3, H, W) pair.
+
+        Runs the whole scene in one pass when both sides fit max_native_side (more context,
+        no seams: IoU 0.63-0.81 native vs 0.60-0.79 with 256 tiles on LEVIR-CD 1024 scenes);
+        otherwise non-overlapping windows of max_native_side, since stage-4 attention memory
+        grows quadratically with area. Inputs are reflect-padded to a multiple of 32 and the
+        logits cropped back, so arbitrary sizes are accepted.
+        """
+        _, _, h, w = t1.shape
+        win = window or self.max_native_side
+        tile_h = min(h, win)
+        tile_w = min(w, win)
+        logits = torch.empty((1, 2, h, w), dtype=torch.float32, device=t1.device)
+        for y in range(0, h, tile_h):
+            for x in range(0, w, tile_w):
+                a = t1[..., y:y + tile_h, x:x + tile_w]
+                b = t2[..., y:y + tile_h, x:x + tile_w]
+                th, tw = a.shape[-2:]
+                pad_h = (-th) % self._STRIDE
+                pad_w = (-tw) % self._STRIDE
+                if pad_h or pad_w:
+                    mode = "reflect" if pad_h < th and pad_w < tw else "replicate"
+                    a = F.pad(a, (0, pad_w, 0, pad_h), mode=mode)
+                    b = F.pad(b, (0, pad_w, 0, pad_h), mode=mode)
+                out = self._model(a, b)
+                out = out[-1] if isinstance(out, (list, tuple)) else out
+                logits[..., y:y + th, x:x + tw] = out[..., :th, :tw]
+        return logits
 
     @staticmethod
     def postprocess_mask(
@@ -210,11 +291,11 @@ class ChangeFormerAdapter(BaseModelAdapter):
             context = image_a
             arr1 = context.get("arr1", context.get("image_a"))
             arr2 = context.get("arr2", context.get("image_b"))
-            thresh = threshold or context.get("threshold", self.config.threshold if self.config else 0.5)
+            thresh = threshold or context.get("threshold") or self._configured_threshold()
         else:
             arr1 = image_a
             arr2 = image_b
-            thresh = threshold or kwargs.get("threshold", self.config.threshold if self.config else 0.5)
+            thresh = threshold or kwargs.get("threshold") or self._configured_threshold()
 
         if arr1 is None or arr2 is None:
             raise InvalidInputError("ChangeFormer requires two valid non-null images.")
@@ -223,22 +304,20 @@ class ChangeFormerAdapter(BaseModelAdapter):
         if self._model is None:
             raise ModelUnavailableError(f"Model '{self.name}' is not loaded.")
 
-        target_size = kwargs.get("target_size", (512, 512))
-
         try:
-            t1_tensor, orig_shape1 = preprocess_changeformer_input(arr1, target_size=target_size)
-            t2_tensor, orig_shape2 = preprocess_changeformer_input(arr2, target_size=target_size)
+            t1_tensor, orig_shape1 = preprocess_changeformer_input(arr1)
+            t2_tensor, orig_shape2 = preprocess_changeformer_input(arr2)
+            if orig_shape1 != orig_shape2:
+                raise InvalidInputError(
+                    f"ChangeFormer requires co-registered images of equal size; got "
+                    f"{orig_shape1[1]}x{orig_shape1[0]} and {orig_shape2[1]}x{orig_shape2[0]}."
+                )
             t1_tensor = t1_tensor.to(self.device)
             t2_tensor = t2_tensor.to(self.device)
+            orig_h, orig_w = orig_shape1
 
             with torch.no_grad():
-                # Forward pass through ChangeFormerV6
-                logits = self._model(t1_tensor, t2_tensor)  # (1, 2, 512, 512)
-
-                # Interpolate logits back to native input resolution
-                orig_h, orig_w = orig_shape1
-                if logits.shape[2:] != (orig_h, orig_w):
-                    logits = F.interpolate(logits, size=(orig_h, orig_w), mode="bilinear", align_corners=False)
+                logits, forward_info = self._forward_logits_resilient(t1_tensor, t2_tensor)  # (1, 2, H, W)
 
                 # Softmax across 2 classes (0: background / no change, 1: change)
                 probs = torch.softmax(logits, dim=1)  # (1, 2, orig_h, orig_w)
@@ -303,7 +382,13 @@ class ChangeFormerAdapter(BaseModelAdapter):
                 }],
                 metadata={
                     "threshold": thresh,
-                    "target_inference_size": target_size,
+                    "inference_mode": (
+                        (forward_info["oom_recovery"] or {}).get("resolved_by", "")
+                        if str((forward_info["oom_recovery"] or {}).get("resolved_by", "")).startswith("windowed")
+                        else ("native" if max(orig_h, orig_w) <= self.max_native_side else "windowed")
+                    ),
+                    "oom_recovery": forward_info["oom_recovery"],
+                    "max_native_side": self.max_native_side,
                     "output_shape": [orig_h, orig_w],
                     "raw_change_pixel_count": raw_pixel_count,
                     "raw_change_ratio_pct": raw_change_ratio,

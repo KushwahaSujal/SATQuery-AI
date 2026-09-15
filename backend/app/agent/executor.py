@@ -1,4 +1,5 @@
 import time
+import torch
 from datetime import datetime
 from typing import Optional
 from backend.app.agent.state import AgentState
@@ -18,6 +19,16 @@ class SafeToolExecutor:
     }
 
     @staticmethod
+    def _is_cuda_oom(error: BaseException) -> bool:
+        seen = set()
+        while error is not None and id(error) not in seen:
+            seen.add(id(error))
+            if isinstance(error, torch.OutOfMemoryError) or "out of memory" in str(error).lower():
+                return True
+            error = error.__cause__ or error.__context__
+        return False
+
+    @staticmethod
     async def execute_tool(tool_name: str, state: AgentState) -> None:
         if tool_name not in TOOL_REGISTRY:
             raise KeyError(f"Tool '{tool_name}' not found in registered tools.")
@@ -31,7 +42,22 @@ class SafeToolExecutor:
         try:
             if tool_name in SafeToolExecutor.HEAVY_INFERENCE_TOOLS:
                 async with gpu_lock.acquire(tool_name):
-                    tool_func(state)
+                    try:
+                        tool_func(state)
+                    except Exception as first_error:
+                        if not SafeToolExecutor._is_cuda_oom(first_error):
+                            raise
+                        # Resident models from earlier queries can exhaust an 8 GB GPU. Release them
+                        # all (they reload lazily) and retry once; recorded in the trace, never silent.
+                        from backend.app.ml.registry import model_registry
+                        released = model_registry.release_gpu_memory()
+                        state.add_trace(
+                            step_name=f"GPU memory released after out-of-memory in {tool_name}; retrying once",
+                            status="warning",
+                            tool=tool_name,
+                            details=f"Released: {released}. First error: {str(first_error)[:200]}",
+                        )
+                        tool_func(state)
             else:
                 tool_func(state)
 

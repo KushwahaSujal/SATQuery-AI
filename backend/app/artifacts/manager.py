@@ -56,6 +56,8 @@ class ArtifactManager:
     def save_result_json(self, request_id: str, data: Dict[str, Any]) -> Path:
         job_dir = self.get_job_dir(request_id)
         out_path = job_dir / "result.json"
+        # A pipeline that fails before any tool creates the workspace must still record its result.
+        job_dir.mkdir(parents=True, exist_ok=True)
         with open(out_path, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2, default=str)
         return out_path
@@ -71,6 +73,8 @@ class ArtifactManager:
     def save_trace_json(self, request_id: str, trace_data: List[Dict[str, Any]]) -> Path:
         job_dir = self.get_job_dir(request_id)
         out_path = job_dir / "trace.json"
+        # A pipeline that fails before any tool creates the workspace must still record its result.
+        job_dir.mkdir(parents=True, exist_ok=True)
         with open(out_path, "w", encoding="utf-8") as f:
             json.dump(trace_data, f, indent=2, default=str)
         return out_path

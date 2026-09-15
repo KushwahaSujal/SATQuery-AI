@@ -37,7 +37,10 @@ def calculate_statistics(state: AgentState) -> None:
                 bin_mask = r.masks[0]["binary_mask"]
                 raw_mask = r.masks[0].get("raw_mask", bin_mask)
                 meta = state.metadata[0] if state.metadata else None
-                stats = calculate_area_statistics(bin_mask, meta)
+                aoi_mask = state.aoi.mask if state.aoi is not None and state.aoi.mask.shape == bin_mask.shape else None
+                # With an AOI, pixels outside it are excluded from the valid area, so change_ratio is
+                # relative to the AOI rather than the whole scene.
+                stats = calculate_area_statistics(bin_mask, meta, nodata_mask=(~aoi_mask) if aoi_mask is not None else None)
                 stats.raw_changed_pixels = r.metadata.get("raw_change_pixel_count", int(np.sum(raw_mask > 0)))
                 stats.region_count = r.metadata.get("region_count", 0)
                 stats.quality_status = r.metadata.get("quality_status", "PASS")

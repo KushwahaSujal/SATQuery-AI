@@ -88,6 +88,43 @@ router = APIRouter(prefix="/api", tags=["SatQuery AI"])
 router = APIRouter(tags=["SatQuery AI"])
 
 
+@router.post("/upload/aoi")
+async def upload_area_of_interest(
+    file: UploadFile = File(...),
+    request_id: str = Form(...),
+):
+    """
+    Uploads a GeoJSON area of interest into an existing job workspace.
+    Validated on upload (parseable, contains polygons, known CRS); pass the returned `aoi_filename` to
+    POST /analyze. Overlap with the raster is checked at analysis time, once the raster's CRS is known.
+    """
+    from backend.app.geo.aoi import AOIError, load_aoi
+    import pyproj
+    from shapely.ops import transform as shp_transform
+
+    name = Path(file.filename or "aoi.geojson").name
+    if Path(name).suffix.lower() not in (".geojson", ".json"):
+        raise HTTPException(status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+                            detail="Area of interest must be a .geojson or .json file.")
+    dirs = artifact_manager.init_job_workspace(request_id)
+    dest = dirs["input"] / name
+    with open(dest, "wb") as buffer:
+        shutil.copyfileobj(file.file, buffer)
+    try:
+        aoi = load_aoi(dest)
+    except AOIError:
+        dest.unlink(missing_ok=True)
+        raise  # SatQueryException handler returns {"error": {"code": "AOI_INVALID", ...}} with HTTP 422
+    to_wgs84 = pyproj.Transformer.from_crs(aoi.crs, "EPSG:4326", always_xy=True).transform
+    return {
+        "request_id": request_id,
+        "aoi_filename": name,
+        "crs": aoi.crs,
+        "feature_count": aoi.feature_count,
+        "bounds_wgs84": [round(v, 7) for v in shp_transform(to_wgs84, aoi.geometry).bounds],
+    }
+
+
 @router.post("/upload", response_model=UploadResponse)
 async def upload_rasters(
     files: List[UploadFile] = File(...),

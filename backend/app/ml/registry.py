@@ -1,4 +1,5 @@
-from typing import Any, Dict, List, Optional, Type
+import torch
+from typing import Any, Dict, List, Optional, Tuple, Type
 from backend.app.ml.base import BaseModelAdapter
 from backend.app.ml.adapters.grounding_dino import GroundingDINOAdapter
 from backend.app.ml.adapters.sam2 import SAM2Adapter
@@ -64,11 +65,11 @@ class ModelRegistry:
         },
         "changeformer": {
             "family": "ChangeFormerV6",
-            "source": "checkpoints/changeformer/satquery_changeformer_best.pt",
+            "source": "checkpoints/changeformer/changeformer_v6_levir_levircd256_epoch20_best.pt",
             "license": "MIT",
             "capabilities": ["bi_temporal_change_detection", "probability_mapping"],
-            "input_requirements": {"image_a": "RGB (512, 512, 3)", "image_b": "RGB (512, 512, 3)"},
-            "output_schema": {"change_mask": "ndarray (512, 512) uint8", "probability_map": "ndarray (512, 512) float32"},
+            "input_requirements": {"image_a": "RGB (H, W, 3), co-registered, native resolution", "image_b": "RGB (H, W, 3), same size as image_a"},
+            "output_schema": {"change_mask": "ndarray (H, W) uint8", "probability_map": "ndarray (H, W) float32"},
             "device_requirements": {"min_vram_gb": 4.0, "preferred": "cuda"},
         },
         "cdvqa": {
@@ -323,6 +324,41 @@ class ModelRegistry:
         ))
 
         return capabilities
+
+    def release_gpu_memory(self, exclude: Tuple[str, ...] = ()) -> List[str]:
+        """
+        Unloads every loaded adapter except `exclude`, in place, and returns CUDA cache to the driver.
+
+        Instances stay registered (other objects hold references to them) and reload lazily on their
+        next predict. Besides the base `unload()`, any attribute holding a torch Module or a SAM 2
+        predictor is cleared, because not every adapter keeps its weights in `_model` (DOFA uses
+        `_dofa_model`). Used as the recovery step after a CUDA out-of-memory error: on an 8 GB GPU the
+        resident models alone can leave too little headroom for ChangeFormer at native resolution.
+        """
+        import gc
+
+        released: List[str] = []
+        for key, adapter in self._instances.items():
+            if key in exclude:
+                continue
+            holds_weights = bool(getattr(adapter, "_loaded", False))
+            try:
+                adapter.unload()
+            except Exception as e:
+                logger.warning(f"unload() failed for '{key}': {e}")
+            for name, value in list(vars(adapter).items()):
+                if isinstance(value, torch.nn.Module) or name in ("_predictor", "_video_predictor", "_dofa_model"):
+                    if value is not None:
+                        holds_weights = True
+                    setattr(adapter, name, None)
+            adapter._loaded = False
+            if holds_weights:
+                released.append(key)
+        gc.collect()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+        logger.warning(f"Released GPU memory held by: {released or 'nothing'} (kept: {list(exclude)})")
+        return released
 
     def unload_all(self):
         """Unloads all cached model weights from memory."""

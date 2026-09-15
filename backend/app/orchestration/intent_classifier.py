@@ -286,7 +286,10 @@ class IntentClassifier:
             )
 
         # Captioning request
-        if any(k in q for k in ["caption", "summarize", "overview of scene", "brief description"]):
+        if any(k in q for k in ["caption", "summarize", "summarise", "overview of scene", "brief description"]) or re.search(
+            r"\b(describe|description of)\b.*\b(image|scene|picture|photo|area|this)\b"
+            r"|\bwhat (is|does) (this|the) (image|scene|picture) (show|contain|depict)|\bwhat do you see\b", q
+        ):
             return IntentClassificationResult(
                 task="single_image_caption",
                 routing_confidence=0.89,

@@ -57,10 +57,13 @@ a second deep-learning framework. Anything with a non-permissive licence (this g
 - **Tools:** every entry in `TOOL_REGISTRY` is `Callable[[AgentState], None]` and mutates state in
   place. A new tool must be (a) added to `TOOL_REGISTRY`, (b) referenced by a DAG node, **and**
   (c) listed in the owning capability's `required_tools`. All three, or it is invisible or dead.
-- **Capabilities:** adding one means touching four files —
+- **Capabilities:** adding one means touching five files —
   `capability_registry.py` (definition) → `matcher.py` (routing rule) →
-  `dependency_graph.py` (DAG branch) → `planner.py::to_legacy_workflow_plan` (TaskType mapping).
-  Skipping any of the four produces the silent-fallback bug in `decisions.md` D-104.
+  `dependency_graph.py` (DAG branch + `KNOWN_CAPABILITIES`) → `planner.py::to_legacy_workflow_plan`
+  (TaskType mapping) → `agent/validator.py::PlanValidator.PERMITTED_TOOLS` (security whitelist, for any new tool).
+  Skipping any of the first four produces the silent-fallback bug in `decisions.md` D-104; missing the
+  whitelist fails at run time with "Security violation" (found in `qna.md` Q-013).
+  `tests/unit/test_routing_unsupported.py` asserts every DAG tool is registered and whitelisted.
 - **Config:** no magic numbers in code. Thresholds, weights and paths go in `configs/*.yaml` and are
   read through `settings`. Env vars override in `Config._apply_env_overrides`.
 - **Preprocessing:** replicate each checkpoint's *original training* preprocessing exactly, and

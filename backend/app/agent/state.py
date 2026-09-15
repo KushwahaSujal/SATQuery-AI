@@ -46,6 +46,11 @@ class AgentState:
     quality_status: str = "PASS"
     quality_flags: List[str] = field(default_factory=list)
     cache_hit: bool = False
+    # GeoJSON area of interest rasterised against the first raster (geo/aoi.RasterizedAOI), if requested.
+    aoi: Optional[Any] = None
+    # Set by a tool that has decided the job's confidence itself (e.g. two-model adjudication, which reports
+    # None on conflict). The controller then does not overwrite it with an average of model scores.
+    confidence_final: bool = False
 
     def add_trace(
         self,

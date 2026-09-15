@@ -6,6 +6,28 @@ Status legend: `[ ]` not started · `[~]` in progress · `[x]` done · `[!]` blo
 
 **Baseline measured 2026-09-07**, not quoted from docs. Every number below was run on this machine.
 
+## Progress log 2026-09-14
+
+Measured tonight; sections below keep their original 2026-09-07 text. Details and numbers:
+`qna.md` Q-007 … Q-011. Owners for what is left: `split-ushnik-ayushman.md`.
+
+| Item | Status | Evidence |
+|---|---|---|
+| §1.3 ChangeFormer inference | `[x]` | LEVIR-CD test (2,048 pairs) IoU **0.7385**, F1 **0.8496** — `dee8e53`, Q-007 |
+| Change detection crashed with other models on the GPU | `[x]` | OOM recovery; both change queries complete in the all-queries run — `31dca84`, Q-010 |
+| Two agents compare confidence / backtrack / re-evaluate | `[x]` | VRSBench 300+300: present R@0.5 38.7% → 40.7%, absent returning a box 64.7% → 28.0% — `9c7caf6`, Q-008/Q-009 |
+| Absent objects "found" in video | `[x]` | "find the airplane" on road footage: 3 events → 0; one real car event lost — Q-008 |
+| GeoTIFF georeferencing | `[x]` | UTM GeoTIFF reads EPSG:32614 + transform; masks and GeoJSON georeferenced — `5d40ffe`, Q-011 |
+| GeoJSON area-of-interest input | `[x]` | HTTP: in-AOI change 14,101 px = independent count, 3,525.25 m² exact — `5d40ffe`, Q-011 |
+| ChangeFormer ⇄ CDVQA adjudication | `[x]` | CDVQA answers "yes, changes" for 53.9% of identical LEVIR pairs; identity probe sets uninformative answers aside — `23d105d`, Q-012 |
+| §1.1 Optical–SAR untrained head | `[ ]` | still emits "Permanently irrigated land (52.5%)" — do not demo; Ayushman |
+| Routing: caption / NDVI | `[x]` | caption routed; NDVI/SAR → explicit refusal naming missing bands — `ca6f893`, Q-013 |
+| §1.2 RS adaptation evidence | `[ ]` | Ayushman (adapter + score), Ushnik (wiring) |
+| Demo rehearsal over HTTP | `[x]` | 10/10 COMPLETED on a live server; found silent 512-px window fallback (AOI 14,101 → native 13,902), now reported — Q-014 |
+| Demo image choice | `[!]` | do **not** use VRSBench 05865 "find the vehicle" (wrong box, verified) — Q-014 §3 |
+
+Test suite: **215 passed, 0 failed** (was 132 at the 2026-09-07 baseline).
+
 ---
 
 ## 0. Verified baseline
@@ -66,7 +88,13 @@ artifacts. That should become the headline adaptation story rather than an after
 Minimum viable fix: wire BigEarthNet into a real capability + DAG branch so the prescribed dataset
 is demonstrably used, and lead the narrative with CDVQA. Estimate: **1–2 days.**
 
-### 1.3 `[ ]` ChangeFormer inference is broken · **mandatory req #4 (change map)**
+### 1.3 `[x]` ChangeFormer inference is broken · **mandatory req #4 (change map)**
+
+> **Closed 2026-09-14 — `qna.md` Q-007.** Ayushman's epoch-20 checkpoint on vendored upstream
+> `ChangeFormerV6`, `[-1,1]`, native resolution, threshold 0.435. LEVIR-CD test (2,048 pairs):
+> **IoU 0.7385, F1 0.8496**, matching his report. Identical pair → 0 changed px. Caveat: building
+> change only; out-of-domain NOT MEASURED. The history below is kept as it was written.
+
 Change *description* works via CDVQA; the spatial change **map** does not.
 
 Measured today, 100 LEVIR-CD test pairs at 256px `[-1,1]`:
@@ -731,15 +759,16 @@ fall outside them.
 The quiz gate was retired 2026-09-11 — **neither of these is blocked.** Both are large enough to
 earn a transcript entry, written as the change is made, not before it.
 
-- `[ ]` **§1.3 ChangeFormer** — vendor upstream `wgcban/ChangeFormer`, repoint the adapter,
-  switch preprocessing to 256/`[-1,1]`, retire `network.py`. ~5 files.
+- `[x]` **§1.3 ChangeFormer** — recorded as Q-007 (2026-09-14). Native resolution rather than 256
+  turned out better (measured); 5 files + 1 test file.
 - `[ ]` **§1.4 model-registry verification** — wire `mark_verified()` as above.
 
 ---
 
 ## 5. Waiting on Ayushman
 
-1. Which validation set produced ChangeFormer IoU 0.687 — blocks closing §1.3
+1. ~~Which validation set produced ChangeFormer IoU 0.687~~ — moot: his epoch-20 package ships its
+   own validation/test reports, reproduced here (Q-007)
 2. The real training notebook (`handoff/changeformer/TRAINING_SCRIPT.py` is a reconstruction)
 3. A working `pip freeze` from the Kaggle/Colab environment — he sent version *ranges* that
    contradict our working install (transformers 5.16.1, torch 2.14.0, 117/0 passing)

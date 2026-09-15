@@ -85,7 +85,7 @@ async def test_pipeline_emits_observable_trace(sample_image):
 
 def test_every_registered_tool_is_callable():
     """Guards against a decorator registering something that is not callable."""
-    assert len(TOOL_REGISTRY) == 14
+    assert len(TOOL_REGISTRY) == 15  # +explain_unsupported_request (Q-013)
     for name, fn in TOOL_REGISTRY.items():
         assert callable(fn), f"tool '{name}' is not callable"
 

@@ -18,6 +18,7 @@ from backend.app.agent.tools import raster        # noqa: F401,E402
 from backend.app.agent.tools import validation    # noqa: F401,E402
 from backend.app.agent.tools import inference     # noqa: F401,E402
 from backend.app.agent.tools import evidence      # noqa: F401,E402
+from backend.app.agent.tools import unsupported   # noqa: F401,E402
 
 log_registry_summary()
 
