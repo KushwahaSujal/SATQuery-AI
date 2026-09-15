@@ -100,3 +100,44 @@ def test_single_target_query_keeps_one_mask():
                                  verifier=AlwaysVerifies())
     assert res["evidence"]["instance_count"] == 1
     assert len(res["instance_boxes"]) == 1
+
+
+class ColouredScene:
+    """Two white and two dark 'houses' on a green lawn; each mock box -> a mask exactly covering it."""
+    WHITE = [[10.0, 10.0, 50.0, 50.0], [120.0, 10.0, 160.0, 50.0]]
+    DARK = [[10.0, 120.0, 50.0, 160.0], [120.0, 120.0, 160.0, 160.0]]
+
+    @classmethod
+    def image(cls):
+        arr = np.zeros((200, 200, 3), np.uint8)
+        arr[:] = (40, 120, 40)
+        for b in cls.WHITE:
+            arr[int(b[1]):int(b[3]), int(b[0]):int(b[2])] = (235, 235, 235)
+        for b in cls.DARK:
+            arr[int(b[1]):int(b[3]), int(b[0]):int(b[2])] = (60, 60, 60)
+        return Image.fromarray(arr)
+
+    @classmethod
+    def boxes(cls):
+        # dark houses score higher, so the detector's top pick is the wrong colour
+        return ([{"xyxy": b, "score": 0.9, "label": "house"} for b in cls.DARK]
+                + [{"xyxy": b, "score": 0.5, "label": "house"} for b in cls.WHITE])
+
+
+def test_colour_is_checked_on_every_instance_including_the_top_one():
+    res = run_grounding_pipeline(ColouredScene.image(), "mask white houses",
+                                 grounding_adapter=MockGroundingDINOAdapter(ColouredScene.boxes()),
+                                 sam2_adapter=BoxMaskSAM2(), verifier=AlwaysVerifies())
+    assert sorted(res["instance_boxes"]) == sorted(ColouredScene.WHITE)
+    assert int(res["segmentation_mask"].sum()) == 2 * 40 * 40
+    assert res["evidence"]["instance_filters"]["dropped_by_color"] == 2
+    assert "top-ranked box did not satisfy" in res["answer"]
+
+
+def test_no_matching_colour_keeps_top_candidate_and_says_so():
+    boxes = [{"xyxy": b, "score": 0.9, "label": "house"} for b in ColouredScene.DARK]
+    res = run_grounding_pipeline(ColouredScene.image(), "mask white houses",
+                                 grounding_adapter=MockGroundingDINOAdapter(boxes),
+                                 sam2_adapter=BoxMaskSAM2(), verifier=AlwaysVerifies())
+    assert res["evidence"]["instance_count"] == 1
+    assert res["answer"].startswith("No instance satisfied every condition")

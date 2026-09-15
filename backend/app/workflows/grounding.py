@@ -7,6 +7,8 @@ import numpy as np
 from PIL import Image
 
 from backend.app.workflows.grounding_reasoner import (
+    COLOR_KEYWORDS,
+    color_score,
     parse_v4_query,
     relation_score,
     run_v4_reasoning,
@@ -113,6 +115,24 @@ def _satisfies_relation(box: List[float], reference_boxes: List[List[float]], re
                 return True
         return False
     return relation_score(box, reference_boxes, relation) >= 1.0
+
+
+# Minimum color_score over an instance's own mask pixels for a colour-qualified request. color_score's
+# formulas are reused unchanged; only the pixels differ (mask, not box, so lawn and road do not dilute a roof).
+COLOR_MATCH_THRESHOLD: Dict[str, float] = {"white": 0.8, "bright": 0.8, "black": 0.3, "dark": 0.3}
+DEFAULT_COLOR_MATCH_THRESHOLD = 0.6
+
+
+def _mask_color_score(arr_rgb: np.ndarray, mask: np.ndarray, color: str) -> float:
+    pixels = arr_rgb[np.squeeze(mask) > 0]
+    if pixels.size == 0:
+        return 0.0
+    mean = np.median(pixels.reshape(-1, 3), axis=0).astype(np.uint8)  # median: shadow and roof edges skew a mean
+    return color_score([0, 0, 1, 1], mean.reshape(1, 1, 3), color)
+
+
+def _color_matches(score: float, color: str) -> bool:
+    return score >= COLOR_MATCH_THRESHOLD.get(color, DEFAULT_COLOR_MATCH_THRESHOLD)
 
 
 def run_grounding_pipeline(
@@ -480,51 +500,97 @@ def run_grounding_pipeline(
 
     # Step 9b: a category request ("mask trees", "segment all buildings") covers every instance, not only
     # the top-ranked one. Before Q-015 only selected_box reached SAM 2, so "mask trees" returned one tree.
-    instances = [{"xyxy": [round(float(v), 2) for v in selected_box], "detector_confidence": round(grounding_score, 4),
-                  "sam2_score": round(float(s_score), 4)}]
+    # Colour ("white houses") and the reference's colour ("cars near the red house") are checked on SAM 2 mask
+    # pixels for every instance, the top one included (Q-016).
     multi_instance = _wants_all_instances(norm_query, str(reasoning_res.get("strategy", "")), parsed)
+    target_color = parsed.get("color")
     reference_boxes = (reasoning_res.get("reference_evidence") or {}).get("reference_boxes") or []
     relation = parsed.get("relation") if reference_boxes else None
-    dropped_by_relation = 0
+    reference_color = next((t for t in str(parsed.get("reference_category") or "").split() if t in COLOR_KEYWORDS), None)
     top_pixel_count = int(np.sum(np.squeeze(segmentation_mask) > 0)) if segmentation_mask is not None else 0
+    instances = [{"xyxy": [round(float(v), 2) for v in selected_box], "detector_confidence": round(grounding_score, 4),
+                  "sam2_score": round(float(s_score), 4)}]
+    filters: Dict[str, Any] = {"target_color": target_color, "reference_color": reference_color, "relation": relation,
+                               "dropped_by_relation": 0, "dropped_by_color": 0, "references_dropped_by_color": 0,
+                               "top_instance_failed_filters": False}
+
+    def _segment(box: List[float]) -> Tuple[Optional[np.ndarray], float]:
+        try:
+            r = sam2.predict(image_or_context=pil_img, box=box, multimask_output=True)
+        except Exception as e:
+            record_step("call_sam2_instance", "error", tool="SAM2Adapter", details={"box": box, "error": str(e)})
+            return None, 0.0
+        m = r.get("mask") if isinstance(r, dict) else getattr(r, "mask", None)
+        sc = r.get("score") if isinstance(r, dict) else getattr(r, "score", 0.0)
+        return (np.squeeze(m) > 0 if m is not None else None), float(sc)
+
     if multi_instance and segmentation_mask is not None:
-        combined = (np.squeeze(segmentation_mask) > 0)
-        kept = [selected_box]
+        if reference_color and reference_boxes:
+            kept_refs = []
+            for rb in reference_boxes:
+                rmask, _ = _segment(rb)
+                if rmask is not None and _color_matches(_mask_color_score(arr_rgb, rmask, reference_color), reference_color):
+                    kept_refs.append(rb)
+            filters["references_dropped_by_color"] = len(reference_boxes) - len(kept_refs)
+            reference_boxes = kept_refs
+            relation = parsed.get("relation")
+
+        def _passes(box: List[float], mask: np.ndarray, inst: Dict[str, Any]) -> bool:
+            # No reference survived its colour check ("near white houses" with none white): nothing is near one.
+            if relation and (not reference_boxes or not _satisfies_relation(box, reference_boxes, relation, w, h)):
+                filters["dropped_by_relation"] += 1
+                return False
+            if target_color:
+                inst["color_score"] = round(_mask_color_score(arr_rgb, mask, target_color), 3)
+                if not _color_matches(inst["color_score"], target_color):
+                    filters["dropped_by_color"] += 1
+                    return False
+            return True
+
+        top_mask = np.squeeze(segmentation_mask) > 0
+        combined = np.zeros_like(top_mask)
+        kept_instances: List[Dict[str, Any]] = []
+        kept_boxes: List[List[float]] = []
+        if _passes(selected_box, top_mask, instances[0]):
+            combined |= top_mask
+            kept_instances.append(instances[0])
+        else:
+            filters["top_instance_failed_filters"] = True
+        kept_boxes.append(selected_box)  # also suppresses near-duplicates of the top box
         for cand in reasoning_res.get("candidates", []):
-            if len(kept) >= MAX_INSTANCES:
+            if len(kept_instances) >= MAX_INSTANCES:
                 break
             box = cand["xyxy"]
-            if any(_box_iou(box, k) > iou_nms_threshold for k in kept):
+            if any(_box_iou(box, k) > iou_nms_threshold for k in kept_boxes):
                 continue
             if any(_box_iou(box, r) > 0.5 for r in rejected):  # the verification agent contradicted it
                 continue
-            if relation and not _satisfies_relation(box, reference_boxes, relation, w, h):
-                dropped_by_relation += 1
+            if relation and not reference_boxes:
+                filters["dropped_by_relation"] += 1
                 continue
-            try:
-                inst = sam2.predict(image_or_context=pil_img, box=box, multimask_output=True)
-            except Exception as e:
-                record_step("call_sam2_instance", "error", tool="SAM2Adapter", details={"box": box, "error": str(e)})
+            inst_mask, inst_score = _segment(box)
+            if inst_mask is None or inst_mask.shape != combined.shape:
                 continue
-            inst_mask = inst.get("mask") if isinstance(inst, dict) else getattr(inst, "mask", None)
-            inst_score = inst.get("score") if isinstance(inst, dict) else getattr(inst, "score", 0.0)
-            if inst_mask is None or np.squeeze(inst_mask).shape != combined.shape:
+            kept_boxes.append(box)
+            inst = {"xyxy": [round(float(v), 2) for v in box],
+                    "detector_confidence": round(float(cand.get("score", 0.0)), 4),
+                    "sam2_score": round(inst_score, 4)}
+            if not _passes(box, inst_mask, inst):
                 continue
-            combined |= (np.squeeze(inst_mask) > 0)
-            kept.append(box)
-            instances.append({"xyxy": [round(float(v), 2) for v in box],
-                              "detector_confidence": round(float(cand.get("score", 0.0)), 4),
-                              "sam2_score": round(float(inst_score), 4)})
+            combined |= inst_mask
+            kept_instances.append(inst)
         record_step("segment_all_instances", "success", tool="SAM2Adapter", details={
-            "instances": len(instances), "cap": MAX_INSTANCES,
-            "relation": relation, "reference_boxes": len(reference_boxes), "dropped_by_relation": dropped_by_relation,
+            "instances": len(kept_instances), "cap": MAX_INSTANCES, "reference_boxes": len(reference_boxes), **filters,
             "note": "extra instances are ranked detector boxes; only the top one went through verification",
         })
-        if len(instances) > 1:
-            segmentation_mask = combined.astype(np.uint8)
-            s_score = float(np.mean([i["sam2_score"] for i in instances]))
-            sam2_res = {"mask": segmentation_mask, "score": s_score, "scores": s_scores,
-                        "pixel_count": int(segmentation_mask.sum())}
+        if kept_instances:
+            instances = kept_instances
+            if len(instances) > 1 or filters["top_instance_failed_filters"]:
+                segmentation_mask = combined.astype(np.uint8)
+                s_score = float(np.mean([i["sam2_score"] for i in instances]))
+                sam2_res = {"mask": segmentation_mask, "score": s_score, "scores": s_scores,
+                            "pixel_count": int(segmentation_mask.sum())}
+        # Nothing satisfied the colour/relation filters: keep the top-ranked result and say so in the answer.
     if aoi_mask is not None and segmentation_mask is not None and np.squeeze(segmentation_mask).shape == aoi_mask.shape:
         segmentation_mask = (np.squeeze(segmentation_mask) > 0).astype(np.uint8) & aoi_mask.astype(np.uint8)
         sam2_res = {"mask": segmentation_mask, "score": s_score, "scores": s_scores,
@@ -555,6 +621,7 @@ def run_grounding_pipeline(
         "reference_evidence": reasoning_res.get("reference_evidence", {}),
         "agent_deliberation": deliberation,
         "instance_count": len(instances),
+        "instance_filters": filters,
         "instances": instances,
         "all_candidates": [
             {
@@ -597,14 +664,23 @@ def run_grounding_pipeline(
         answer += f" Backtracked past {deliberation['backtracks']} candidate(s) the verification agent contradicted."
     if deliberation["re_evaluated"]:
         answer += " Re-evaluated with a relaxed detector threshold."
-    if len(instances) > 1:
+    if multi_instance and filters["top_instance_failed_filters"] and len(instances) == 1 and instances[0]["xyxy"] == [round(float(v), 2) for v in selected_box]:
+        wanted = " ".join(x for x in (target_color, target_category) if x)
+        answer = (f"No instance satisfied every condition of '{norm_query}' (colour {target_color or '-'}, reference colour "
+                  f"{reference_color or '-'}); showing the top-ranked {wanted} candidate instead. {answer}")
+    if multi_instance and filters["top_instance_failed_filters"] and instances[0]["xyxy"] != [round(float(v), 2) for v in selected_box]:
+        wanted = " ".join(x for x in (target_color, target_category) if x)
+        answer = (f"Segmented {len(instances)} instance(s) of {wanted} ({mask_pixel_count:,} px in total, mean SAM 2 score "
+                  f"{sam2_score:.3f}). The detector's top-ranked box did not satisfy the query's colour/relation "
+                  f"conditions and is excluded.")
+    elif len(instances) > 1:
         answer = (f"Segmented {len(instances)} instances of {target_category} ({mask_pixel_count:,} px in total, "
                   f"mean SAM 2 score {sam2_score:.3f}). Top-ranked instance: {answer}")
 
     return {
         "task": "grounding",
         "answer": answer,
-        "selected_box": [round(float(c), 2) for c in selected_box],
+        "selected_box": instances[0]["xyxy"],
         "segmentation_mask": segmentation_mask,
         "grounding_score": round(grounding_score, 4),
         "sam2_score": round(sam2_score, 4),

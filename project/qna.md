@@ -1428,3 +1428,82 @@ limit and the cache replay were four separate causes, each measured, each with a
 detector recall: Grounding DINO at our threshold didn't propose the grey houses, and the pipeline can only
 segment what the detector proposes. The table shows the raw counts — including the jetty it wrongly
 called a house, which the relational query then correctly dropped."
+
+---
+
+## Q-016 · Colour-qualified masking ("white houses", "cars near the red house"), and `demo_resources/`
+
+**Recorded** 2026-09-15, atop `prototype` `d4c2c2d`. **Extends [Q-015](#q-015--prototype-branch-repairing-the-15-sep-merge-and-mask-trees-returning-text-or-one-mask)**:
+Q-015's instance step filtered on relation only; its colour behaviour described there is superseded here.
+
+### 1. Mechanism
+
+Q-015's step 9b added every ranked candidate regardless of colour, and the reference object's colour
+(`reference_category = "red house"`) was never checked. Measured on `P0897_0048.png` before this change:
+`mask white houses` → **26** instances (every roof); on `P0725_0005.png`, `find cars near red house` → 4, one on
+a grey rooftop.
+
+Now, in multi-instance mode (`workflows/grounding.py`):
+- **Target colour** (`parsed["color"]`): each instance, *the top-ranked one included*, is scored with the
+  reasoner's unchanged `color_score` formulas applied to the **median RGB of its SAM 2 mask pixels**
+  (`_mask_color_score`), not the box mean. Kept if ≥ `COLOR_MATCH_THRESHOLD` (white/bright 0.8, black/dark 0.3,
+  others 0.6).
+- **Reference colour** (a colour word inside `reference_category`): each reference box is segmented and kept
+  only if its mask passes the same test. If none survive, no target is "near" one.
+- If nothing passes: the top-ranked candidate is returned with the answer prefixed
+  *"No instance satisfied every condition of '…'"*. If the top fails but others pass, it is excluded and the
+  answer says so; `selected_box` becomes the first kept instance.
+- `evidence.instance_filters` records `dropped_by_color`, `references_dropped_by_color`, `dropped_by_relation`,
+  `top_instance_failed_filters`.
+
+### 2. Rationale
+
+- **Median over mask, not mean over box.** With the filter disabled, per-house scores on `P0897_0048` using
+  the *mean* put the white house at [205,234,254,311] at 0.558 (shadow and lawn in the mask) — inseparable from
+  grey roofs (0.55–0.63). With the **median**, the five white roofs score 0.92–1.00 and the next is 0.698; dark
+  roofs 0.33–0.52. 0.8 sits in that gap.
+- **Filter the top instance too.** The detector ranks by "houses" confidence, not whiteness; the top box was a
+  dark roof in the mock test and can be in real scenes.
+- **Reuse `color_score`.** Ranking (and the VRSBench numbers behind Q-008) stays untouched.
+
+### 3. Blast radius
+
+- Thresholds were set on **one image** (`P0897_0048`), 26 houses. The orange-tile roof on `P0725_0005` scores
+  0.66 for `red` (threshold 0.6): close. Treat colours other than white/red as untested.
+- **White cars fail**: 0.47–0.58 on `P0897_0048` (tiny masks with shadow) → "no instance satisfied".
+- Colour only filters what the detector proposed: the two red cars beside the white house are not proposed for
+  `cars.`, so `mask cars near white houses` omits them.
+- Single-instance queries (`find the red car`) are unchanged: still the reasoner's ranking.
+
+### 4. Verification
+
+- `tests/unit/test_mask_all_instances.py` +2: a scene with two white and two dark boxes where the detector
+  ranks dark first → exactly the two white boxes, 3,200 px, `dropped_by_color == 2`; and all-dark → top kept
+  with the "No instance satisfied" answer. File: 27 passed.
+- `pytest -q tests` → **245 passed, 1 skipped**, server stopped.
+- Live HTTP on `prototype`:
+
+| image | prompt | before (Q-015) | after |
+|---|---|---|---|
+| P0897_0048 | mask white houses | 26 | **5** (the white roofs) |
+| P0897_0048 | mask cars near white houses | 15 | 5 |
+| P0897_0048 | mask red cars | 2 | 2 |
+| P0725_0005 | find cars near red house | 4 (1 on a rooftop) | 3 (street cars by the tile house; top box excluded) |
+| P0725_0005 | mask cars near white houses | 11 | 1 + "No instance satisfied every condition" |
+
+- Regression re-runs on `prototype`, same server: change detection LEVIR 100 → 118,997 px (= Q-014 native);
+  CDVQA question → `CDVQA_UNINFORMATIVE` adjudication; `real_pair` → 16,685 px; video `real_aerial_footage.mp4`
+  → events 14.88–18.72 s and 25.44–27.36 s (= Q-014); `derived_patrol.mp4` → 0; optical-SAR → honest
+  `NOT_CONFIGURED`. Sentinel-2 demo pair → **0 px** with AOI applied (7,588 px AOI) — model domain, not a code
+  path; recorded so nobody demos change detection on it.
+
+**`demo_resources/`** collects every input used above, 8 more "known weak" images with their failure
+modes (tennis courts → grass field; pools → roofs; dark parking lot → kerb; 2/8 storage tanks), and the
+overlays produced, with a README of prompts and measured results.
+
+### 5. Defence — "You tuned a threshold on one picture."
+
+"Yes, and the entry says so. The threshold sits in a measured gap on that image — white roofs at 0.92 and up,
+the next roof at 0.70 — and the check reuses the same colour formula the reasoner already used; what changed
+is which pixels feed it: the object's mask instead of its box. White cars fail, and we recorded that instead
+of lowering the bar until they passed."
