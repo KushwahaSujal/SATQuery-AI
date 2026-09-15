@@ -310,6 +310,10 @@ def run_optical_sar(state: AgentState) -> None:
     state.model_results.append(res)
     state.answer = res.answer
     state.confidence = res.confidence
+    if res.warnings:
+        for w in res.warnings:
+            if w not in state.warnings:
+                state.warnings.append(w)
     if "dofa" not in state.selected_models:
         state.selected_models.append("dofa")
     if "satquery_optical_sar_fusion" not in state.selected_models:

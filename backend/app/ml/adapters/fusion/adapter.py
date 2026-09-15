@@ -28,6 +28,7 @@ class OpticalSARFusionModel(BaseModelAdapter):
     """
     def __init__(self):
         super().__init__("satquery_optical_sar_fusion")
+        self.is_configured: bool = False
 
     def load_model(self) -> None:
         if self._loaded and self._model is not None:
@@ -59,6 +60,28 @@ class OpticalSARFusionModel(BaseModelAdapter):
 
     def predict(self, context: Dict[str, Any]) -> ModelResult:
         self.validate_inputs(context)
+
+        if not self.is_configured:
+            reason = (
+                "Optical-SAR fusion model is currently NOT_CONFIGURED on this deployment. "
+                "The fusion head weights are uncalibrated and no validated fusion method is configured."
+            )
+            return ModelResult(
+                model_name=self.name,
+                task="optical_sar_analysis",
+                status="NOT_CONFIGURED",
+                answer=f"Optical-SAR analysis NOT_CONFIGURED: {reason}",
+                confidence=None,
+                metadata={
+                    "status": "NOT_CONFIGURED",
+                    "reason": reason,
+                    "prediction": None,
+                    "model_class": "CrossAttentionFusionNet",
+                    "device": str(self.device),
+                },
+                warnings=["Optical-SAR fusion model is NOT_CONFIGURED."]
+            )
+
         self.load_model()
 
         try:
