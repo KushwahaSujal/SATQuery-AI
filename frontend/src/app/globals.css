@@ -19,9 +19,9 @@
   /* Text scale — optimized for dark theme contrast */
   --t0: #fafafa;          /* primary / headings — max contrast */
   --t1: #d4d4dc;          /* secondary body — strong readability */
-  --t2: #a1a1b5;          /* muted labels — good contrast on dark */
-  --t3: #71718a;          /* hints / tertiary — visible on dark bg */
-  --t4: #4a4a5e;          /* faint — still readable, not invisible */
+  --t2: #b0b0c4;          /* muted labels — good contrast on dark */
+  --t3: #8888a0;          /* hints / tertiary — visible on dark bg */
+  --t4: #6a6a82;          /* faint — readable on dark backgrounds */
 
   /* Brand accent — electric indigo-blue */
   --accent:       hsl(222, 88%, 62%);
