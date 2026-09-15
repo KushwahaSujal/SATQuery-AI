@@ -43,7 +43,7 @@
 - [ ] **Step 1: Write the failing test**
 
 ```python
-"""Q-020: API keys for the cloud backend."""
+"""Q-021: API keys for the cloud backend."""
 import pytest
 from fastapi.testclient import TestClient
 
@@ -100,7 +100,7 @@ Expected: FAIL — `test_missing_or_wrong_key_is_401_with_cors_header` gets 404 
 `backend/app/api/auth.py`:
 
 ```python
-"""API keys for the hosted backend (Q-020). No keys configured means auth is off, as for local runs."""
+"""API keys for the hosted backend (Q-021). No keys configured means auth is off, as for local runs."""
 import hmac
 import os
 from typing import Optional, Set
@@ -179,7 +179,7 @@ git commit -m "feat(api): API-key middleware and SATQUERY_CORS_ORIGINS for the h
 - [ ] **Step 1: Write the failing test**
 
 ```python
-"""Q-020: GET /api/video/{id} is served from result.json when the database has no record."""
+"""Q-021: GET /api/video/{id} is served from result.json when the database has no record."""
 import shutil
 
 import pytest
@@ -297,7 +297,7 @@ os.environ["SATQUERY_ANSWER_WRITER"] = "off"
 - [ ] **Step 2: Write the failing test**
 
 ```python
-"""Q-020: answers written from measured evidence, with a guard against invented numbers."""
+"""Q-021: answers written from measured evidence, with a guard against invented numbers."""
 import asyncio
 import json
 from types import SimpleNamespace
@@ -419,7 +419,7 @@ Expected: FAIL — `ModuleNotFoundError: No module named 'backend.app.answers'`.
 
 ```python
 """
-Final-answer writer (Q-020). The pipeline's template answer is built from measurements; an LLM rephrases it for the
+Final-answer writer (Q-021). The pipeline's template answer is built from measurements; an LLM rephrases it for the
 user's question from the evidence JSON only (never the image). Gemini first, NVIDIA NIM second, template last.
 Any number in the written answer that is not in the evidence rejects that answer.
 """
@@ -609,7 +609,7 @@ git commit -m "feat(answers): write final answers from evidence via Gemini then 
 - [ ] **Step 1: Write the failing test**
 
 ```python
-"""Q-020: the analyze response carries the written answer and the template facts."""
+"""Q-021: the analyze response carries the written answer and the template facts."""
 import io
 
 import pytest
@@ -655,7 +655,7 @@ Expected: FAIL — `AttributeError: module 'backend.app.agent.controller' has no
 `backend/app/schemas/responses.py`, in `AnalyzeResponse` after `answer: Optional[str] = None`:
 
 ```python
-    answer_source: str = "template"  # "<provider>:<model>" when written by the answer writer (Q-020)
+    answer_source: str = "template"  # "<provider>:<model>" when written by the answer writer (Q-021)
     answer_facts: Optional[str] = None  # the measured template answer the written answer was based on
 ```
 
@@ -767,7 +767,7 @@ Expected: FAIL — `ModuleNotFoundError: No module named 'scripts.eval_scene_vlm
 `scripts/eval_scene_vlm_vrsbench.py`:
 
 ```python
-"""Scene VLM on VRSBench val: VQA accuracy and caption ROUGE-L on a fixed random subset (Q-020)."""
+"""Scene VLM on VRSBench val: VQA accuracy and caption ROUGE-L on a fixed random subset (Q-021)."""
 import argparse
 import json
 import random
@@ -869,7 +869,7 @@ git add scripts/eval_scene_vlm_vrsbench.py tests/unit/test_eval_scene_vlm_metric
 git commit -m "test(eval): VRSBench VQA/caption scoring script; BLIP baseline measured"
 ```
 
-(`results/` is gitignored; the measured numbers go into the Q-020 entry in Task 9.)
+(`results/` is gitignored; the measured numbers go into the Q-021 entry in Task 9.)
 
 ---
 
@@ -897,7 +897,7 @@ git commit -m "test(eval): VRSBench VQA/caption scoring script; BLIP baseline me
 `scripts/prepare_scene_vlm.py`:
 
 ```python
-"""Download Qwen3-VL-4B-Instruct, quantize to 4-bit NF4 and save it pre-quantized (Q-020). Needs a CUDA GPU."""
+"""Download Qwen3-VL-4B-Instruct, quantize to 4-bit NF4 and save it pre-quantized (Q-021). Needs a CUDA GPU."""
 import argparse
 import subprocess
 from pathlib import Path
@@ -925,7 +925,7 @@ Expected: prints the saved folder size (spec estimate ~3 GB; record the measured
 - [ ] **Step 2: Write the failing test**
 
 ```python
-"""Q-020: VQA and captions use the Qwen scene model when available, BLIP otherwise."""
+"""Q-021: VQA and captions use the Qwen scene model when available, BLIP otherwise."""
 from PIL import Image
 
 from backend.app.agent.state import AgentState
@@ -989,7 +989,7 @@ Expected: FAIL — `test_vqa_prefers_scene_vlm` gets the BLIP answer.
 `backend/app/ml/adapters/scene_vlm.py`:
 
 ```python
-"""Qwen3-VL-4B-Instruct (4-bit NF4) scene model: VQA and captions in full sentences (Q-020)."""
+"""Qwen3-VL-4B-Instruct (4-bit NF4) scene model: VQA and captions in full sentences (Q-021)."""
 from typing import Any, Dict
 
 import torch
@@ -1153,9 +1153,9 @@ Expected: 3 passed.
 - [ ] **Step 6: Measure Qwen3-VL and decide**
 
 Run: `PYTHONPATH=. .venv/bin/python scripts/eval_scene_vlm_vrsbench.py --adapter scene_vlm --n 200`
-Decision rule (record both result files' numbers in Q-020):
+Decision rule (record both result files' numbers in Q-021):
 - If `scene_vlm` VQA accuracy ≥ BLIP's **and** caption ROUGE-L > BLIP's → keep `scene_vlm.enabled: true`.
-- Otherwise set `scene_vlm.enabled: false` in `configs/models.yaml` (BLIP stays) and say so in Q-020.
+- Otherwise set `scene_vlm.enabled: false` in `configs/models.yaml` (BLIP stays) and say so in Q-021.
 
 - [ ] **Step 7: Full suite and commit**
 
@@ -1185,7 +1185,7 @@ git commit -m "feat(models): Qwen3-VL-4B scene model for VQA and captions, BLIP 
 
 ```python
 """
-SatQuery AI on Modal (Q-021): the unchanged FastAPI backend on a cloud GPU.
+SatQuery AI on Modal (Q-022): the unchanged FastAPI backend on a cloud GPU.
   modal deploy deploy/modal_app.py              # deploy / update
   modal run deploy/modal_app.py::warm_hf_cache  # one-off: download HF models into the volume
 Env at deploy time: SATQUERY_MODAL_GPU (default T4), SATQUERY_MIN_CONTAINERS (default 0; 1 keeps it warm).
@@ -1204,7 +1204,7 @@ image = (
     modal.Image.debian_slim(python_version="3.11")
     .apt_install("libgl1", "libglib2.0-0", "ffmpeg")
     .env({"SAM2_BUILD_CUDA": "0"})
-    # cu128 wheels still target Turing (T4, sm_75); record the installed torch version in Q-021.
+    # cu128 wheels still target Turing (T4, sm_75); record the installed torch version in Q-022.
     .pip_install("torch", "torchvision", index_url="https://download.pytorch.org/whl/cu128")
     .pip_install_from_requirements(str(REPO / "backend" / "requirements.txt"))
     .env({"HF_HOME": "/models/hf", "SATQUERY_RESULTS_DIR": "/results", "PYTHONPATH": REMOTE,
@@ -1438,13 +1438,13 @@ git commit -m "feat(frontend): configurable backend URL and API key for the host
 
 **Files:**
 - Create: `scripts/cloud_smoke.py`
-- Modify: `project/qna.md` (append Q-020 answer writer + scene model; Q-021 cloud deployment)
+- Modify: `project/qna.md` (append Q-021 answer writer + scene model; Q-022 cloud deployment)
 - Modify: `deploy/README.md` (fill measured cold/warm times)
 
 - [ ] **Step 1: Write `scripts/cloud_smoke.py`**
 
 ```python
-"""Runs the demo prompts against a SatQuery backend and records latency and answer sources (Q-021)."""
+"""Runs the demo prompts against a SatQuery backend and records latency and answer sources (Q-022)."""
 import json
 import sys
 import time
@@ -1499,11 +1499,11 @@ Stop the local backend. `cd frontend && npx next start -p 3000`; in Playwright s
 
 - [ ] **Step 4: Record and push**
 
-Append Q-020 (writer + scene model: BLIP vs Qwen numbers, number-guard behaviour, provider attempts seen live) and Q-021 (Modal: volume size measured with `modal volume ls satquery-models /checkpoints`, cold/warm latency, GPU used, credit used from the Modal dashboard) to `project/qna.md`; fill measured values in `deploy/README.md`.
+Append Q-021 (writer + scene model: BLIP vs Qwen numbers, number-guard behaviour, provider attempts seen live) and Q-022 (Modal: volume size measured with `modal volume ls satquery-models /checkpoints`, cold/warm latency, GPU used, credit used from the Modal dashboard) to `project/qna.md`; fill measured values in `deploy/README.md`.
 
 ```bash
 .venv/bin/python -m pytest tests -q -p no:cacheprovider
 git add scripts/cloud_smoke.py project/qna.md deploy/README.md
-git commit -m "test(deploy): cloud smoke run; record Q-020 and Q-021"
+git commit -m "test(deploy): cloud smoke run; record Q-021 and Q-022"
 git push origin prototype
 ```

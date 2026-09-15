@@ -1678,3 +1678,68 @@ requested colour could not be checked — and detections existed only on coarse 
 "Watch it: the box follows one car through the clip and nothing covers it, so the paint you see is the answer. The
 swatch beside the label is the median colour of that car's own pixels on that frame, measured, not predicted — and
 where the median is fooled by a black window or glare, the record above says so."
+
+---
+
+## Q-020 · "mark the roads" masks 5 short segments, not the street grid — detector recall, not undertraining
+
+**Recorded** 2026-09-15, atop `prototype`, job `a181e7bd-d363-496f-966d-fd9624840860`, input
+`satquery_change_after.png` (1024×1024, a residential subdivision next to open rural land, not georeferenced).
+User's question: is this because "our model isn't trained enough, need more training?"
+
+### 1. Mechanism
+
+`grounding_dino` is **not a model we trained** — it's IDEA-Research's pretrained open-vocabulary box detector,
+used zero-shot. "Roads" is fundamentally a bad fit for that architecture: a box detector proposes a rectangle
+around one compact object; a street grid is a connected linear network with dozens of near-identical parallel
+and perpendicular segments, none individually "compact."
+
+Measured from `trace.json`:
+1. First pass, prompt `"roads."`, `box_threshold 0.25`: **1 raw detection**, score 0.259, box
+   `[409, 59, 1020, 1019]` — roughly the whole right half of the image. RemoteCLIP (the verification agent)
+   scored that crop 76.6% "roundabout", 16.0% "golffield", **0.44% "road"** → `contradicted`. The pipeline's own
+   backtrack logic (Q-008) correctly discarded it and lowered `box_threshold` to 0.15.
+2. Second pass at 0.15: **12 raw detections**, scores 0.157–0.259 — every one below what real objects scored in
+   earlier measurements (cars/houses/planes: 0.5–0.9, Q-015/Q-016). The top-ranked survivor, box
+   `[0, 10.6, 114, 162]` (the diagonal rural road, top-left), was accepted with detector confidence 0.237 —
+   but RemoteCLIP's own read of that same crop is 84.7% **"trees"**, 3.1% "building", and only **3.7% "road"**.
+   It was accepted only because it ranked 2nd among 11 weak candidates, not because either agent was confident
+   it is a road.
+3. `segment_all_instances` (Q-015) took the 11 candidates, dropped ones overlapping already-kept boxes
+   (NMS `iou > iou_nms_threshold`) or contradicted by the verifier, and segmented what was left: **5 disjoint
+   boxes**, 39,433 px, covering the rural diagonal road and one edge of the street grid. The other ~10+ visibly
+   paved streets in the grid never appeared as a candidate at *any* threshold tried (0.25 or 0.15) — this is a
+   detector recall gap, not a filter in our code discarding them.
+
+### 2. Why "more training" is the wrong frame
+
+We have never trained Grounding DINO; there is no checkpoint of ours to make "more trained." The three real
+options are architecturally different:
+- **Fine-tune Grounding DINO on a road-labelled dataset** (DeepGlobe Road Extraction, Massachusetts Roads,
+  SpaceNet Roads) — this is training, but it is *adding* a capability we don't have, not correcting
+  undertraining of an existing one.
+- **Swap to a semantic road-segmentation model** (e.g. a U-Net/D-LinkNet-style linear-network extractor) for
+  road-type queries — a better architectural fit than box-detect-then-mask for a connected network.
+- **Same-day mitigation, no training:** per-tile detection on large images, alternate prompts ("street",
+  "paved road", "asphalt"), and a lower default `box_threshold` specifically for linear-network categories
+  (roads, rivers, canals) — cheap to try, unlikely to close the gap fully.
+
+### 3. Blast radius
+
+- This is a **new, previously unmeasured** failure mode. Q-015/Q-016 measured compact objects (houses, cars,
+  trees, planes) and found detector misses/false positives there too, but never tested "roads" specifically.
+- Any query for a linear-network category (roads, rivers, paths, canals, pipelines) should be expected to
+  under-mask the same way until one of the §2 fixes lands.
+- Not a regression: no prior code change touched this; it's the first measurement of this category.
+
+### 4. Verification
+
+Read directly from `results/a181e7bd-d363-496f-966d-fd9624840860/{trace.json,result.json}` — every number above
+is from that file, not re-run.
+
+### 5. Defence — "Couldn't you just lower the threshold further?"
+
+"We already did, automatically — the pipeline's own backtrack step took it from 0.25 to 0.15 and still got only
+11 weak candidates for a grid with dozens of visible streets, and the verification agent independently rated the
+best of those only 3.7% confident it's a road. Lowering it further would mask trees and rooftops as roads, not
+find more of them — the fix is a road-shaped detector, not a lower bar."
