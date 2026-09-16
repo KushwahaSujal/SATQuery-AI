@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
+import { mediaUrl } from "@/lib/connection";
 import { cn } from "@/lib/utils";
 import { useSegmentPlayer } from "@/hooks/useSegmentPlayer";
 import TrackOverlay, { type ObjectTrack } from "@/components/video/TrackOverlay";
@@ -40,7 +41,7 @@ export default function VideoIntelligencePage() {
       end_sec: f.end_timestamp,
       label: f.label,
       score: f.event_score,
-      keyframe_url: f.keyframe_url,
+      keyframe_url: f.keyframe_url ? mediaUrl(f.keyframe_url) : undefined,
       track_id: undefined as string | undefined,
     })) ?? results.events ?? [];
 

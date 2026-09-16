@@ -233,7 +233,7 @@ export default function MapViewer({ rasters, video, jobId }: MapViewerProps) {
         {hasLegend && jobId && selectedBackendLayer && (
           <div className="absolute bottom-12 right-2 w-20 bg-[var(--s2)] border border-[var(--b1)] rounded p-1 opacity-80 hover:opacity-100 transition-opacity">
             <img
-              src={`${api.visualizationUrl(jobId, selectedBackendLayer)}/legend`}
+              src={api.legendUrl(jobId, selectedBackendLayer)}
               alt="Layer legend"
               className="w-full h-auto"
               onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}

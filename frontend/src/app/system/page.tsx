@@ -2,6 +2,7 @@
 
 import { useHealth, useModels } from "@/hooks/useSystem";
 import TerminalConsole from "@/components/terminal/TerminalConsole";
+import ConnectionPanel from "@/components/system/ConnectionPanel";
 
 function Row({ label, value, status }: { label: string; value: string; status?: "ok" | "warn" | "err" }) {
   const valueColor = status === "ok" ? "text-[#4ade80]" : status === "warn" ? "text-[#fbbf24]" : status === "err" ? "text-[#f87171]" : "text-[#737373]";
@@ -32,6 +33,8 @@ export default function SystemPage() {
 
   return (
     <div className="space-y-4 animate-fade-in">
+      <ConnectionPanel />
+
       {/* Interactive CLI Console */}
       <TerminalConsole title={`satquery-cli v${d.version || "1.0.0"}`} subtitle="satquery — active pipeline modules" />
 
