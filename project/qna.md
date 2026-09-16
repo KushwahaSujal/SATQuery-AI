@@ -1943,3 +1943,80 @@ airplanes" on the airport tile runs on Grounding DINO.
 "We spent a day finding out whether it helps, and we have numbers that say it doesn't on our imagery. The four
 bugs we fixed and the OOM fix it exposed are real gains, and one `git revert` restores the integration if a
 bigger GPU or a road use case changes the answer."
+
+## Q-024 · Hard-prompt sweep: change detection, small objects, video; two video bugs fixed
+
+**Recorded** 2026-09-16, atop `prototype` `a56eaeb`. Every case went through the live HTTP API on the RTX 3070.
+The inputs are `demo_resources/` plus `satquery_airplane.png` and `satquery_white_cars.mp4`. The README
+baselines are from 2026-09-15.
+
+### 1. Mechanism — what was run and what came back
+
+**Change detection (ChangeFormer, masks scored against the dataset ground truth):**
+
+| Pair | Prompt | Result | vs GT |
+|---|---|---|---|
+| levir_100 | detect building changes | 118,997 px, 11.35 %, same as baseline | P 0.894 · R 0.895 · F1 0.894 · IoU 0.809 |
+| levir_101 | detect building changes | 44,311 px, 4.23 % | P 0.816 · R 0.733 · F1 0.772 · IoU 0.629 |
+| levir_105 | detect building changes | 52,726 px, 5.03 % | P 0.885 · R 0.882 · F1 0.883 · IoU 0.791 |
+| real_pair | detect changes | 16,685 px, same as baseline | — |
+| levir_100 before twice | detect building changes | **0 px**, no false change | — |
+| sentinel2 | detect changes | 0 px, same as baseline | — |
+| levir_100 | has any new building been constructed? | "Yes", with CDVQA set aside | — |
+| levir_105 | were any buildings demolished? | reports 5.03 % change but **never answers yes or no** | — |
+| satquery before/after (= levir_100, same md5) | how many new houses were built and where? | reports 11.35 % and 181 regions; **no house count** | — |
+
+**Small objects (Grounding DINO + SAM 2):** `mask airplanes` gave 9 masks, same as baseline, covering all ~7
+planes, so a few planes are double-masked. `mask the airplane` on the airport-apron tile masked only the
+airliner; the plural prompt also picks up two jet bridges. `mask red cars` gave 2 and `mask white houses` 5, both
+the same as baseline. `find the red car parked next to the big white house` found the right car.
+`find cars near red house` gave 3, same as baseline. `mask the ships` on the tennis tile correctly returned
+nothing. `segment the largest airplane` picked the twin-engine plane, which is plausible, with verifier
+confidence 0.39. `how many airplanes are parked here?` was routed to the VQA model, which answered 7
+(plausible). **`mask tennis courts` failed:** it masked the grass field plus the whole court complex (51 % of
+the image). That is the README's known weakness, reproduced on a different tile.
+
+**Video:** `find all vehicles` gave the same 2 events as the baseline (14.88–18.72 s, 25.44–27.36 s). The
+patrol clip gave 0 events, and `find airplanes` gave 0. `when does a red car appear?` gave 1 event
+(15.36–18.72 s), verified in 3 of 3 frames, and it is the red car. `find the white car` gave 3 events.
+
+### 2. Two bugs found and fixed
+
+1. **The keyframe box and outline pointed at different cars.** SAM 2 video propagation tracks one anchor
+   object. `video_analysis.py` then attached that object's mask to every detection in any propagated frame. In
+   keyframe 198 the box was on the silver car and the outline on the red car, and the event score used the red
+   car's SAM score. Now a propagated mask is attached only when it lies inside the detection's box
+   (≥ 50 % of mask pixels inside and bounding-box IoU ≥ 0.3, `_mask_fits_box`). Any other detection is
+   segmented on its own box with SAM 2 image mode, which is the fallback already used for the anchor. A trace
+   step records how many detections this applied to.
+2. **Question words became the class.** `parse_v4_query` had no stop words for question or video phrasing, so
+   "when does a red car appear?" became the Grounding DINO prompt `red when does car appear.`, and that text was
+   drawn on the keyframe. Added: when, what, which, does, do, did, appear(s/ed/ing), shown, seen, time, moment,
+   video, clip, footage. The prompt is now `red car.`.
+
+### 3. Blast radius
+
+- Event timings are unchanged. Event scores shift slightly because they now use the correct object's mask
+  (real footage, first vehicles event: 0.6403 → 0.7524).
+- More SAM 2 image calls per video, one per unmatched detection. The white-cars clip still finishes in about
+  a minute.
+- The stop words also apply to image prompts. "time", "video" and "clip" can no longer be requested as object
+  classes.
+- **Still weak, not fixed:** tennis courts / large flat areas; count questions about change ("how many new
+  houses") answered as a percentage; demolition questions not answered yes/no, since ChangeFormer cannot tell
+  construction from demolition and CDVQA is set aside; plural "airplanes" picking up jet bridges.
+
+### 4. Verification
+
+- `tests/unit/test_video_mask_match_and_question_words.py`: 8 tests, including frame 198's geometry and four
+  query phrasings.
+- Full `tests/unit` plus the grounding-workflow and model-registry tests: 229 passed, 1 skipped. An earlier run
+  with the backend still holding the GPU failed two video tests; they pass once the GPU is free, as the README
+  warns.
+- Re-run on the fixed backend: the red-car event is labelled `red car`; keyframe 198 no longer outlines the red
+  car; real-footage events are unchanged.
+
+### 5. Defence — "Your video demo showed the wrong car outlined"
+
+"It did, and we traced why: one tracked mask was being reused for every event. Each event now gets a mask of its
+own object, checked against its box, and there's a test built from the exact frame that showed the bug."
