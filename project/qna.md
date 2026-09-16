@@ -1893,3 +1893,53 @@ Re-ran Grounding DINO then LocateAnything on the rural image: the log shows the 
 "We measured it. On roads it either returns one frame-sized box, which we reject, or a few neighbourhood-sized
 boxes that mask the lawns along with the streets. Grounding DINO under-detects the same roads. Neither is a road
 extractor. The fix is a segmentation model for linear features, not a larger box detector."
+
+## Q-023 · LocateAnything-3B removed; the working integration stays in history
+
+**Recorded** 2026-09-16, atop `prototype` `528662d` (the commit that holds the working integration).
+Decision: the user, deciding on Sandipan's behalf (he owns the integration and delegated the call).
+
+### 1. Mechanism
+
+Removed: the adapter, its registry entry and metadata, the grounding workflow's automatic fallback
+(`fallback_to_locate_anything`), the capability's optional-model entry, the validator allowlist entry, the
+`run_grounding` detector switch (`parameters.grounding_model` / `SATQUERY_GROUNDING_MODEL`, added and removed the
+same day), the `locate_anything` config block and its `ModelSpec` fields, the six packages it needed
+(`bitsandbytes`, `peft`, `accelerate`, `decord`, `lmdb`, `requests`), `third_party/locate_anything`,
+`scripts/setup_locate_anything.py`, its tests and model doc, and the VRS-Bench script's `--model locate_anything`.
+
+Kept, because they are independent of the model: the executor's OOM retry outside the `except` block, the
+`detector` key on grounding results (including the not-found path), the ChangeFormer reports in
+`docs/models/changeformer/`, the Grounding DINO test tiles in `tests/data/grounding/`, and Q-021/Q-022.
+The 7.2 GB weights in `checkpoints/locate_anything_3b/` are gitignored and left on disk; the packages are
+still installed in this machine's `.venv`.
+
+### 2. Rationale
+
+Q-021 and Q-022 measured it through the real API. It did no better than Grounding DINO on any prompt we
+compared: airport, jet bridges labelled airplanes; roads, a frame-sized box or neighbourhood-sized masks. It
+emits no confidence, so its errors cannot be filtered. Its costs were concrete: a 7.7 GB download per machine,
+six extra packages, patches to vendor code that break on transformers upgrades, and 3.3 GiB of an 8 GB GPU,
+which caused an OOM. "Keep it switched off" was rejected: git history keeps it just as well, and switched-off
+code still carries the packages, the patches and the confusion.
+
+### 3. Blast radius
+
+- Grounding requests where Grounding DINO finds nothing now end in "not found" directly. Before today the
+  fallback was always silently skipped (Q-021), so for anyone on an older checkout nothing changes.
+- `parameters.grounding_model` is no longer read. It never shipped, and the UI never sent it.
+- Machines that installed from the Q-021 requirements keep the six packages until the venv is rebuilt;
+  nothing imports them.
+
+### 4. Verification
+
+The full `tests/unit` suite plus `tests/models/test_grounding_workflow.py` pass after removal (counts are in the
+commit that adds this entry). `grep -rn locate_anything` over backend, configs, scripts, tests and frontend
+finds only the removal note in `scripts/evaluate_grounding_vrsbench.py`. The browser check of "mask the
+airplanes" on the airport tile runs on Grounding DINO.
+
+### 5. Defence — "You spent a day on it and then deleted it?"
+
+"We spent a day finding out whether it helps, and we have numbers that say it doesn't on our imagery. The four
+bugs we fixed and the OOM fix it exposed are real gains, and one `git revert` restores the integration if a
+bigger GPU or a road use case changes the answer."

@@ -7,6 +7,14 @@
 
 ---
 
+## Outcome — removed, 2026-09-16
+
+Bring-up succeeded, but measured through the real API LocateAnything was less accurate than
+Grounding DINO on our imagery (airport: jet bridges and vehicles labelled "airplane"; roads: one
+frame-sized box, or neighbourhood-sized masks) and it costs 3.3 GiB of GPU memory. It was removed
+after the working integration was committed (`528662d`), so `git revert` of the removal commit
+restores it. See `project/qna.md` Q-021, Q-022, Q-023. The sections below are the plan as written.
+
 ## Status — end of 2026-09-16
 
 | Phase | State |

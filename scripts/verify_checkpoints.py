@@ -32,8 +32,6 @@ EXPECTED_MB = {
     "general_rs_vlm": 1540,
     "grounding_dino": 694,
     "sam2": 184,
-    # Directory; scripts/setup_locate_anything.py --check verifies it by hash.
-    "locate_anything": 7662,
 }
 
 # These load from HuggingFace by model_id and need no local file.

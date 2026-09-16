@@ -63,43 +63,6 @@ models:
     config_path: "checkpoints/sam2/sam2_hiera_b+.yaml"
     device: "auto"
 
-  locate_anything:
-    name: "LocateAnything"
-    version: "3B"
-    task: "grounding"
-    supported_tasks:
-      - "single_image_grounding"
-    supported_modalities:
-      - "optical"
-      - "multispectral"
-      - "sar"
-    input_count: 1
-    input_relationship: "single"
-    enabled: true
-    checkpoint_path: "checkpoints/locate_anything_3b"
-    model_id: "nvidia/LocateAnything-3B"
-    device: "auto"
-    box_threshold: 0.35
-    text_threshold: 0.25
-    # none | 8bit | 4bit. Vision tower, connector and lm_head always stay bf16.
-    # Measured 2026-09-16 on the RTX 3070 (8 GB), greedy slow decoding, 12 runs on 512 px
-    # tiles vs a bf16 reference (partly CPU-offloaded; peak 6.03 GiB, 18.2 s on the airport tile):
-    #   4bit: recall 22/26, precision 22/22, peak 4.74 GiB, airport tile 2.1 s
-    #   8bit: recall 26/26, precision 26/26, peak 5.98 GiB, airport tile 6.8 s (bnb int8 is slow)
-    # 4bit is the default because 8bit's peak leaves no room for Grounding DINO / SAM 2 on this
-    # card. Use "none" on a GPU with >= 16 GB.
-    quantization: "4bit"
-    # Decoding. "slow" = pure autoregressive; "hybrid" (vendor default) runs away on our
-    # tiles (airport: ~15 real boxes, then boxes along the right edge until max_new_tokens).
-    # The vendor sampler samples iff temperature > 0 (it ignores do_sample), so 0.0 = greedy.
-    generation_mode: "slow"
-    temperature: 0.0
-    repetition_penalty: 1.0
-    # Dense queries on a 1024 px scene ("building", "road") hit the cap in every precision,
-    # bf16 included. At ~25 tok/s (4bit) 1024 tokens is ~40 s; 2048 would double that in
-    # the Grounding DINO fallback path. Truncation is reported in result metadata.
-    max_new_tokens: 1024
-
   changeformer:
     name: "ChangeFormer"
     version: "v6"

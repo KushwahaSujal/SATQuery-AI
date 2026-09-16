@@ -17,7 +17,6 @@ from backend.app.workflows.grounding_reasoner import (
 from backend.app.ml.registry import model_registry
 from backend.app.ml.adapters.grounding_dino import GroundingDINOAdapter
 from backend.app.ml.adapters.sam2 import SAM2Adapter
-from backend.app.ml.adapters.locate_anything import LocateAnythingAdapter
 from backend.app.agent.state import AgentState
 from backend.app.schemas.agent import JobStatus, TaskType, ExecutionStep
 from backend.app.schemas.responses import AnalyzeResponse
@@ -137,7 +136,6 @@ def _color_matches(score: float, color: str) -> bool:
 
 _DETECTOR_LABELS = {
     "grounding_dino": "Grounding DINO (proposes boxes, detector confidence)",
-    "locate_anything": "LocateAnything-3B (proposes boxes; no calibrated confidence, fixed 0.5)",
 }
 
 
@@ -217,16 +215,14 @@ def run_grounding_pipeline(
         "modifiers": {k: v for k, v in parsed.items() if v and k not in ("category", "target_category", "raw_query", "clean_prompt")}
     })
 
-    # Steps 4-6. The primary detector is Grounding DINO (or LocateAnything when requested); when it
-    # returns nothing and grounding_model is "auto", LocateAnything-3B is tried before giving up.
+    # Steps 4-6. Grounding DINO proposes boxes; "auto" is accepted as an alias for it.
     prompt = clean_prompt
     primary_model = grounding_model if grounding_model != "auto" else "grounding_dino"
-    fallback_model = "locate_anything"
     used_model = primary_model
     detector_adapters: Dict[str, Any] = {}
 
     def _run_detection(model_key: str, adapter: Optional[Any], threshold: float, attempt: str) -> Dict[str, Any]:
-        tool_name = "LocateAnythingAdapter" if model_key == "locate_anything" else "GroundingDINOAdapter"
+        tool_name = "GroundingDINOAdapter"
         step = f"call_{model_key}"
         ad = adapter or detector_adapters.get(model_key) or model_registry.get_adapter(model_key)
         detector_adapters[model_key] = ad
@@ -249,25 +245,10 @@ def run_grounding_pipeline(
         return res
 
     def detect_and_rank(threshold: float, attempt: str) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
-        """Steps 4-6: detector proposals (with LocateAnything fallback) -> full-frame/AOI filter -> V4 reasoner ranking."""
+        """Steps 4-6: detector proposals -> full-frame/AOI filter -> V4 reasoner ranking."""
         nonlocal used_model
         det_result = _run_detection(primary_model, grounding_adapter, threshold, attempt)
         used_model = primary_model
-        if not det_result.get("boxes") and grounding_model == "auto" and primary_model != fallback_model:
-            if model_registry.is_model_available(fallback_model):
-                logger.info(f"{primary_model} returned 0 detections; falling back to {fallback_model}.")
-                record_step("fallback_to_locate_anything", "started", details={"reason": "no_detections", "attempt": attempt})
-                try:
-                    det_result = _run_detection(fallback_model, None, threshold, attempt)
-                    used_model = fallback_model
-                    record_step("fallback_to_locate_anything", "success", details={
-                        "raw_detections": len(det_result.get("boxes", []))
-                    })
-                except InferenceError as e:
-                    logger.warning(f"Fallback to {fallback_model} failed: {e}. Returning empty detections.")
-                    record_step("fallback_to_locate_anything", "failed", details={"error": str(e)})
-            else:
-                record_step("fallback_to_locate_anything", "skipped", details={"reason": "model_not_available"})
 
         found = []
         outside_aoi: List[List[float]] = []

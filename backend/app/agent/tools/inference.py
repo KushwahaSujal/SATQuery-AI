@@ -79,31 +79,6 @@ def run_caption(state: AgentState) -> None:
         state.selected_models.append("general_rs_vlm")
 
 
-_GROUNDING_MODELS = ("auto", "grounding_dino", "locate_anything")
-
-
-def _resolve_grounding_model(state: AgentState) -> str:
-    """Detector for the grounding pipeline.
-
-    "auto" (default) runs Grounding DINO and falls back to LocateAnything when it finds nothing.
-    Overridable per request with parameters["grounding_model"], or server-wide with the
-    SATQUERY_GROUNDING_MODEL environment variable (the request wins).
-    """
-    import os
-
-    requested = (state.parameters or {}).get("grounding_model") or os.getenv("SATQUERY_GROUNDING_MODEL")
-    if requested:
-        requested = str(requested).strip().lower()
-        if requested not in _GROUNDING_MODELS:
-            raise ValueError(
-                f"grounding_model must be one of {', '.join(_GROUNDING_MODELS)}; got '{requested}'."
-            )
-        return requested
-    if "locate_anything" in state.selected_models:
-        return "locate_anything"
-    return "auto"
-
-
 @register_tool("run_grounding")
 def run_grounding(state: AgentState) -> None:
     """
@@ -114,11 +89,9 @@ def run_grounding(state: AgentState) -> None:
     from backend.app.schemas.models import ModelResult
 
     meta = state.metadata[0] if state.metadata else None
-    grounding_model = _resolve_grounding_model(state)
     pipeline_res = run_grounding_pipeline(
         image=state.image_paths[0],
         query=state.query,
-        grounding_model=grounding_model,
         aoi_mask=state.aoi.mask if state.aoi is not None else None
     )
 
@@ -136,10 +109,6 @@ def run_grounding(state: AgentState) -> None:
 
     # Append to model_results so controller doesn't overwrite confidence
     used_model = pipeline_res.get("detector", "grounding_dino")
-    # models_used comes from the capability's required models (grounding_dino, sam2); report the
-    # detector that actually ran when LocateAnything was selected or used as the fallback.
-    if used_model != "grounding_dino" and "grounding_dino" in state.selected_models:
-        state.selected_models = [used_model if m == "grounding_dino" else m for m in state.selected_models]
     state.model_results.append(ModelResult(
         model_name=used_model,
         task="grounding",
