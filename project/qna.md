@@ -1934,3 +1934,81 @@ step `source=template; writer error: <Type>`, and returns the template answer
 200 captions with the same seed, failures counted as wrong, and Qwen is only kept if it's at least as accurate on
 questions and strictly better on captions. Until that run happens the deployed system still answers with BLIP —
 Qwen only switches on when its weights are present, and those weights are only uploaded after it wins."
+
+---
+
+## Q-024 · Final-review fixes on `cloud-gpu`, and corrections to this branch's Q-021/Q-023
+
+**Recorded** 2026-09-16, branch `cloud-gpu`, commit `960bdb0` (on `f7320e5`). Source: final whole-branch review of
+`0c8b74d..f7320e5` ("ready to merge with fixes"), one fix wave, one scoped re-review ("all findings addressed").
+(This branch's Q-021 becomes Q-022 on merge — see Q-023.)
+
+### 1. Mechanism — what changed
+
+1. **Guard no longer counts the question as evidence** — `write_answer` (`backend/app/answers/writer.py:96–105`)
+   builds two texts: the prompt text (still contains the query) and `guard_text` (no `query`), which the number check
+   uses (`writer.py:130`). `guard_text` still contains the measured template answer.
+2. **Sign-insensitive matching** — `numbers_grounded` (`writer.py:64–79`) compares absolute values, so evidence
+   `-3.2` grounds "decreased by 3.2 %".
+3. **`confidence` is not guard evidence** — excluded from `guard_text` (`writer.py:99`), still sent to the model; so
+   `confidence: 0.85` no longer grounds "85 ships" through the ×100 rule. Real ratios (`change_ratio`) still work.
+4. **Non-ASCII API key → 401** — `auth.py:31` compares bytes; `hmac.compare_digest` on non-ASCII `str` raised
+   `TypeError` → 500 (measured by the reviewer: `?key=é` → 500 before, 401 after).
+5. **Old-schema video `result.json` → 404** — `video.py:207–211` catches pydantic `ValidationError`.
+6. **`scene_vlm` permitted by the plan validator** (`agent/validator.py:36`). Deliberately *not* added to the
+   capability registry's `required_models`: the planner copies that list into `selected_models`, and
+   `dependency_checker.py:65–73` returns 503 for any required model that is not on disk (only `general_rs_vlm` is
+   exempt), so every VQA/caption request would fail on a deployment missing either scene model, and `models_used`
+   would name a model that never ran. `_run_scene_model` already records the model it actually used.
+7. **`transformers>=4.57.0`** in `backend/requirements.txt` (Qwen3-VL and the `dtype=` keyword need it; 5.16.1 installed).
+8. **Strict VQA metric** — `scripts/eval_scene_vlm_vrsbench.py:26–40` adds `vqa_strict_correct` (normalised exact
+   match, or first token equals a one-word ground truth) and reports `vqa_accuracy_strict` next to the lenient
+   `vqa_accuracy`; the VQA loop appends " Answer with a single word or short phrase." to the question for **both**
+   adapters. The lenient metric gave credit for "There are 2 or 3 buildings" (gt "2") and "not yellow" (gt "yellow"),
+   which favours the model that writes sentences (Qwen) over the one-word model (BLIP). **The Qwen keep/drop decision
+   will be taken on `vqa_accuracy_strict`.**
+9. **Connection check** — `ConnectionPanel.tsx:67–90`: `GET /api/health` first (unreachable → "backend unreachable
+   at <url>"), then the protected probe: 401 → "API key rejected"; 404/400 → "Connected"; anything else →
+   "unexpected status <code>". Previously any non-401 (500, 502, Modal's 404 for a wrong subdomain) read as
+   "Connected".
+
+### 2. Corrections to earlier entries on this branch (they stay as written)
+
+- **Q-021 §3** cites the query weakness at `writer.py:111`; the query was added at `writer.py:89` (line 111 was the
+  reply-text line). The weakness itself is now fixed (item 1).
+- **Q-021 §5 defence** ("It only gets the measurements as JSON") overstated: the evidence also carries the scene
+  model's free-text answer (`scene_model_answer`), whose numbers are the VLM's words, not measurements, and they
+  **do** pass the guard. Still true after `960bdb0`.
+- **Q-023 §1.5** said "404 = reachable and authorised"; the code at `f7320e5` treated every non-401 as connected.
+  Fixed by item 9.
+
+### 3. Blast radius — what is still open (measured or confirmed, not fixed)
+
+- **Wrong direction passes the guard.** With absolute-value matching, "increased by 3.2 %" for evidence `-3.2`
+  passes, as does the correct "decreased". The guard checks that numbers are present, not what they mean. Before
+  `960bdb0` both sentences were rejected.
+- **`detections[].score` (≤1) can still ground a count via ×100**, like `confidence` did (`writer.py:152`).
+- **LocateAnything cloud fallback (R10)** — unchanged; must be decided before `modal deploy` (see Q-023 §3).
+- `test_orchestration_capabilities.py` fails to collect when run alone (circular import
+  `capability_registry → agent/__init__ → controller → planner → capability_registry`); reported by the fix agent as
+  reproducing on unmodified `f7320e5`; passes inside the full suite.
+
+### 4. Verification (as run, GPU hidden)
+
+- Touched test files + `test_answer_writer_wiring.py`, `test_agent.py`, `test_orchestration_capabilities.py`,
+  `test_routing_unsupported.py`: **56 passed** (fix agent); re-reviewer re-ran them independently: all pass
+  (`test_answer_writer.py` 13/13, `test_api_key_auth.py` 7/7, `test_video_result_fallback.py` 3/3,
+  `test_eval_scene_vlm_metrics.py` 7/7, orchestration/agent files 25/25).
+- RED evidence: items 4, 5, 8 by temporarily reverting each fix (fix agent); items 1–3 by the re-reviewer against a
+  copy of the pre-fix `writer.py` — "42 buildings" reply accepted, "decreased by 3.2 %" rejected, "85 ships" with
+  `confidence 0.85` accepted — all as the findings described.
+- Frontend: `tsc --noEmit` clean, eslint clean on the changed file, `next build --webpack` succeeds.
+- Full `tests/unit` last ran at `3ae4e41` (248 passed, 1 skipped); not re-run after `960bdb0`.
+
+### 5. Defence — "Your guard would let 'increased by 3.2 %' through when it actually decreased."
+
+"Yes — the guard is a check that every number the model writes was measured, not a check of the sentence's meaning;
+we say so in the record. What stops a wrong direction is the prompt, which gives the model the measured sentence
+('decreased by 3.2 %') to rephrase, and the response carries that measured sentence in `answer_facts` next to the
+written one, so anyone can compare them. Sign-aware checking is the next step; we chose to accept correct
+restatements of negative changes rather than throw all of them away."
