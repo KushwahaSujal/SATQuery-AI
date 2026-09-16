@@ -213,6 +213,8 @@ export interface AnalysisResult {
   workflow_reason: string;
   query?: string;
   answer?: string;
+  answer_source?: string;
+  answer_facts?: string;
   confidence?: number;
   models_used: string[];
   parameters: Record<string, unknown>;

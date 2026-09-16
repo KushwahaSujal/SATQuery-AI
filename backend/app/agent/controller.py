@@ -10,6 +10,7 @@ from backend.app.evidence.confidence import ConfidenceEvaluator
 from backend.app.evidence.consistency import ConsistencyChecker
 from backend.app.schemas.agent import JobStatus, TaskType
 from backend.app.schemas.responses import AnalyzeResponse
+from backend.app.answers.writer import apply_answer_writer
 from backend.app.artifacts.manager import artifact_manager
 from backend.app.exceptions import SatQueryException
 from backend.app.logging import logger
@@ -229,6 +230,10 @@ class AgentController:
                 "cache_hit": state.cache_hit
             }
 
+        answer_source, answer_facts = "template", state.answer
+        if state.status != JobStatus.FAILED:
+            answer_source, answer_facts = await apply_answer_writer(state)
+
         response = AnalyzeResponse(
             request_id=state.request_id,
             status=state.status,
@@ -237,6 +242,8 @@ class AgentController:
             workflow_reason=state.reason or "No workflow determined.",
             query=state.query,
             answer=state.answer,
+            answer_source=answer_source,
+            answer_facts=answer_facts,
             confidence=state.confidence,
             models_used=state.selected_models,
             parameters=state.parameters,

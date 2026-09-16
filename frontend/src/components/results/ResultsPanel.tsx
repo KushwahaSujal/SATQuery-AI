@@ -85,6 +85,11 @@ export default function ResultsPanel({ result: propsResult, isAnalyzing, jobId }
                     <p className="text-xs text-[var(--t1)] leading-relaxed m-0">
                       {result.answer}
                     </p>
+                    <p className="font-mono-data text-[10px] text-[var(--t4)] mt-2 mb-0" title={result.answer_facts}>
+                      {result.answer_source && result.answer_source !== "template"
+                        ? `Written by ${result.answer_source} from measured evidence`
+                        : "Measured answer"}
+                    </p>
                   </GlowCard>
                 )}
 

@@ -56,6 +56,8 @@ class AnalyzeResponse(BaseModel):
     workflow_reason: str
     query: Optional[str] = None
     answer: Optional[str] = None
+    answer_source: str = "template"  # "<provider>:<model>" when written by the answer writer (Q-021)
+    answer_facts: Optional[str] = None  # the measured template answer the written answer was based on
     confidence: Optional[float] = None  # None if model did not produce genuine score
     models_used: List[str] = Field(default_factory=list)
     parameters: Dict[str, Any] = Field(default_factory=dict)
