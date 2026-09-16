@@ -136,12 +136,30 @@ class ArtifactManager:
         return artifacts
 
 
+def _is_job_workspace(entry: Path) -> bool:
+    """
+    A job workspace is what ArtifactManager.save_result_json / init_job_workspace create:
+    a `result.json` file or an `input` subdirectory directly inside the job folder. Matching
+    `_JOB_ID` alone isn't enough — e.g. results/evaluations/ (scripts/eval_*.py) matches the
+    name pattern but is not a job folder and must never be swept up. Neither marker is
+    followed if it is itself a symlink.
+    """
+    result_json = entry / "result.json"
+    input_dir = entry / "input"
+    if not result_json.is_symlink() and result_json.is_file():
+        return True
+    if not input_dir.is_symlink() and input_dir.is_dir():
+        return True
+    return False
+
+
 def purge_old_results(results_dir: Path, days: float, now: Optional[float] = None) -> List[str]:
     """
-    Delete direct child directories of `results_dir` whose name matches `_JOB_ID`
-    and whose mtime is older than `now - days * 86400`. Symlinks and plain files
-    are skipped. A directory that fails to delete is logged and skipped, never raised.
-    Returns the sorted list of deleted directory names.
+    Delete direct child directories of `results_dir` that look like job workspaces (see
+    `_is_job_workspace`), whose name matches `_JOB_ID`, and whose mtime is older than
+    `now - days * 86400`. Symlinks and plain files are skipped. Never raises: an unreadable
+    `results_dir` or a directory that fails to delete/inspect is logged with `logger.warning`
+    and skipped. Returns the sorted list of deleted directory names.
     """
     if now is None:
         now = time.time()
@@ -151,7 +169,13 @@ def purge_old_results(results_dir: Path, days: float, now: Optional[float] = Non
     if not results_dir.is_dir():
         return removed
 
-    for entry in results_dir.iterdir():
+    try:
+        entries = list(results_dir.iterdir())
+    except OSError as exc:
+        logger.warning(f"Results retention: could not list '{results_dir}': {exc}")
+        return removed
+
+    for entry in entries:
         if entry.is_symlink():
             continue
         if not entry.is_dir():
@@ -159,6 +183,8 @@ def purge_old_results(results_dir: Path, days: float, now: Optional[float] = Non
         if not _JOB_ID.fullmatch(entry.name):
             continue
         try:
+            if not _is_job_workspace(entry):
+                continue
             if entry.stat().st_mtime >= cutoff:
                 continue
         except OSError as exc:

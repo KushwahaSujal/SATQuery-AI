@@ -22,6 +22,7 @@ def test_purge_removes_only_dirs_older_than_cutoff(tmp_path):
     old_job.mkdir()
     new_job.mkdir()
     (old_job / "result.json").write_text("{}")
+    (new_job / "input").mkdir()
     notes = tmp_path / "notes.txt"
     notes.write_text("hello")
 
@@ -35,6 +36,39 @@ def test_purge_removes_only_dirs_older_than_cutoff(tmp_path):
     assert not old_job.exists()
     assert new_job.exists()
     assert notes.exists()
+
+
+def test_purge_leaves_non_job_directories_alone(tmp_path):
+    # scripts/eval_*.py writes results/evaluations/ — it matches _JOB_ID by name but is not a
+    # job workspace (no result.json, no input/), so it must never be swept up.
+    evaluations = tmp_path / "evaluations"
+    evaluations.mkdir()
+    (evaluations / "run-42.json").write_text("{}")
+    _age(evaluations, 8)
+
+    removed = purge_old_results(tmp_path, 7)
+
+    assert removed == []
+    assert evaluations.exists()
+    assert (evaluations / "run-42.json").exists()
+
+
+def test_purge_unreadable_results_dir_returns_empty_list(tmp_path):
+    if os.geteuid() == 0:
+        pytest.skip("root ignores directory permission bits")
+
+    job = tmp_path / "old-job"
+    job.mkdir()
+    (job / "result.json").write_text("{}")
+    _age(job, 8)
+
+    tmp_path.chmod(0o000)
+    try:
+        removed = purge_old_results(tmp_path, 7)
+    finally:
+        tmp_path.chmod(0o755)
+
+    assert removed == []
 
 
 def test_purge_skips_symlinked_directories(tmp_path):
