@@ -17,6 +17,7 @@ from backend.app.api.auth import ApiKeyMiddleware
 from backend.app.exceptions import SatQueryException
 from backend.app.logging import logger
 from backend.app.db.session import init_db_engine, dispose_db_engine
+from backend.app.artifacts.manager import artifact_manager, purge_old_results, retention_days_from_env
 
 
 @asynccontextmanager
@@ -24,6 +25,10 @@ async def lifespan(app: FastAPI):
     # Application startup: initialize connection pool
     logger.info("Initializing SatQuery AI application lifecycle...")
     await init_db_engine()
+    days = retention_days_from_env()
+    if days is not None:
+        removed = purge_old_results(artifact_manager.base_dir, days)
+        logger.info(f"Results retention: removed {len(removed)} job folder(s) older than {days} day(s).")
     yield
     # Application shutdown: cleanly dispose connection pool
     logger.info("Shutting down SatQuery AI application lifecycle...")

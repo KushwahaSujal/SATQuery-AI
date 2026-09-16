@@ -2,6 +2,7 @@ import os
 import re
 import json
 import shutil
+import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 from backend.app.config import settings
@@ -133,6 +134,62 @@ class ArtifactManager:
             artifacts["data"].append("trace.json")
 
         return artifacts
+
+
+def purge_old_results(results_dir: Path, days: float, now: Optional[float] = None) -> List[str]:
+    """
+    Delete direct child directories of `results_dir` whose name matches `_JOB_ID`
+    and whose mtime is older than `now - days * 86400`. Symlinks and plain files
+    are skipped. A directory that fails to delete is logged and skipped, never raised.
+    Returns the sorted list of deleted directory names.
+    """
+    if now is None:
+        now = time.time()
+    cutoff = now - days * 86400
+    removed: List[str] = []
+
+    if not results_dir.is_dir():
+        return removed
+
+    for entry in results_dir.iterdir():
+        if entry.is_symlink():
+            continue
+        if not entry.is_dir():
+            continue
+        if not _JOB_ID.fullmatch(entry.name):
+            continue
+        try:
+            if entry.stat().st_mtime >= cutoff:
+                continue
+        except OSError as exc:
+            logger.warning(f"Results retention: could not stat '{entry}': {exc}")
+            continue
+        try:
+            shutil.rmtree(entry)
+            removed.append(entry.name)
+        except OSError as exc:
+            logger.warning(f"Results retention: failed to remove '{entry}': {exc}")
+
+    return sorted(removed)
+
+
+def retention_days_from_env() -> Optional[float]:
+    """
+    Reads SATQUERY_RESULTS_RETENTION_DAYS. Unset/empty -> None. Non-numeric or
+    <= 0 -> logs a warning and returns None.
+    """
+    raw = os.environ.get("SATQUERY_RESULTS_RETENTION_DAYS")
+    if raw is None or raw.strip() == "":
+        return None
+    try:
+        value = float(raw)
+    except ValueError:
+        logger.warning(f"Results retention: invalid SATQUERY_RESULTS_RETENTION_DAYS value '{raw}'.")
+        return None
+    if value <= 0:
+        logger.warning(f"Results retention: SATQUERY_RESULTS_RETENTION_DAYS must be > 0, got '{raw}'.")
+        return None
+    return value
 
 
 artifact_manager = ArtifactManager()
