@@ -1827,3 +1827,110 @@ and try the next provider, and if none pass we show the plain measured answer. T
 got: `answer_source` is `template` or the provider and model, and `answer_facts` carries the measured sentence
 it was written from. The one gap we know about: a number you type in your own question also counts as allowed,
 which we're closing next."
+
+---
+
+## Q-023 · Qwen3-VL scene model (unmeasured), VRSBench scorer, Modal deployment, results retention, frontend connection
+
+**Recorded** 2026-09-16, branch `cloud-gpu`, commits `35cbd93`, `644f553`, `912bb69`, `c85c2c8`, `3ae4e41`,
+`b17c4e9`, `21221a3`, `5664a74` (plus `77bd612`, see §0). Plan Tasks 5–8 and 6b. Not merged into `prototype`;
+nothing here has run on a GPU or on Modal yet.
+
+**Numbering note.** A parallel session wrote its own Q-021 (LocateAnything-3B) in the main checkout while this
+branch was open. On merge, this branch's "Q-021 · Hosted-backend groundwork" is renumbered **Q-022**; this entry
+was numbered Q-023 from the start to leave room for that.
+
+### 0. Correction to this branch's Q-021 (hosted-backend groundwork)
+
+That entry said writer failures "all degrade to the template answer; they cannot fail the job". That was **wrong
+when written**: only per-provider network errors were caught. An exception in `evidence_for_writer` or elsewhere in
+`write_answer` propagated out of `run_pipeline` and turned a completed analysis into a 500. Found by the Task 4
+review; fixed in `77bd612` — `apply_answer_writer` now catches any exception, logs it, records a `warning` trace
+step `source=template; writer error: <Type>`, and returns the template answer
+(test `test_apply_answer_writer_degrades_to_template_on_exception`). The Q-021 text stays as written.
+
+### 1. Mechanism
+
+1. **Scene model** — `backend/app/ml/adapters/scene_vlm.py`, registry key `scene_vlm`, adapter name `SceneVLM`
+   (the name `evidence_for_writer` looks for). `is_available()` (`scene_vlm.py:23`) is true only if enabled **and**
+   CUDA is present **and** `checkpoints/scene_vlm_qwen3vl4b_nf4` exists — it never downloads at request time.
+   `load_model` (`:30`) loads the pre-quantized NF4 weights in fp16 (no bf16: T4 has no native bf16). `predict`
+   (`:50`) thumbnails to ≤1024 px, prompts "answer only from what is visible … one to three sentences", greedy
+   decode, ≤200 new tokens. `run_vqa`/`run_caption` (`agent/tools/inference.py:58,66`) now share
+   `_run_scene_model` (`:39`), which takes `scene_vlm` if available, else `general_rs_vlm` (BLIP), else a
+   NOT_CONFIGURED answer. Side effect: `run_caption` now also copies the model's warnings into the job (it did not
+   before). `scripts/prepare_scene_vlm.py` downloads Qwen/Qwen3-VL-4B-Instruct and saves the NF4 copy — **not run yet**.
+2. **VRSBench scorer** — `scripts/eval_scene_vlm_vrsbench.py --adapter {general_rs_vlm,scene_vlm} --n 200 --seed 0`.
+   Same `random.Random(seed)` sample for both adapters (sampling does not depend on `--adapter`). VQA correct = the
+   normalised ground truth equals, or appears as a whole word in, the normalised prediction; captions scored by
+   ROUGE-L F1. A sample that throws is recorded with its error and scored wrong / 0.0 (`644f553`), and
+   `vqa_errors`/`caption_errors` are reported, so a crash cannot silently favour either model.
+3. **Results retention** — `purge_old_results` (`artifacts/manager.py:156`) runs from `lifespan` (`main.py:28–31`)
+   only when `SATQUERY_RESULTS_RETENTION_DAYS` is set (`retention_days_from_env`, `:202`; the Modal image sets 7).
+   It deletes a direct child of the results dir only if: name matches `_JOB_ID`, not a symlink, is a directory,
+   contains `result.json` or `input/` (`_is_job_workspace`, `:139`), and mtime is older than the cutoff. Listing
+   errors → warning, `[]`; per-folder errors → warning, skipped. Never raises.
+4. **Modal** — `deploy/modal_app.py`: debian-slim py3.11 + cu128 torch + `backend/requirements.txt`; `backend/` and
+   `configs/` copied in; `/root/isro/checkpoints` → volume `satquery-models`; `HF_HOME=/models/hf`; results on volume
+   `satquery-results`; secrets from `deploy/.env.modal` (gitignored; template `.env.modal.example`).
+   `gpu=T4` (env `SATQUERY_MODAL_GPU`), `scaledown_window=300`, `max_containers=1`, 4 concurrent inputs,
+   `min_containers` from `SATQUERY_MIN_CONTAINERS`. `warm_hf_cache` pre-downloads Grounding DINO base and SAM 2.1 small.
+5. **Frontend connection** — `frontend/src/lib/connection.ts`: base URL + key in `localStorage`; `http()` sends
+   `Authorization: Bearer`; `mediaUrl()` prefixes `/…` paths with the base and appends `?key=` to http(s) URLs only
+   (never `blob:`/`data:`, never twice). `useConnection()` (`:85`, `useSyncExternalStore`) makes every component that
+   renders a backend URL re-render once the stored values are known after hydration. `/system` has a
+   "Backend connection" panel: Save & test → `GET /api/results/connection-check` (404 = reachable and authorised,
+   401 = "API key rejected", network error = "backend unreachable at <url>", >3 s = "Waking GPU (~60 s)…"); a base
+   without `http://`/`https://` is refused.
+
+### 2. Rationale
+
+- **Qwen3-VL-4B NF4 over BLIP** — BLIP-VQA answers in one or two words ("Football field."), which the answer writer
+  cannot turn into a grounded sentence. Qwen3-VL-4B is Apache-2.0 and ~3 GB at 4-bit (estimate). GeoChat-7B was
+  rejected in the design (size, licence). **The switch is conditional**: keep `scene_vlm` only if, on the same 200+200
+  VRSBench samples, its VQA accuracy ≥ BLIP's and caption ROUGE-L > BLIP's. `enabled: true` is committed now only
+  because availability also requires the checkpoint, which does not exist yet — so today BLIP is still what runs.
+- **Retention markers over name-only matching** — the first version (`c85c2c8`) matched folder names only; the
+  review showed `results/evaluations/` matches and would be deleted, and that an unreadable volume would crash
+  startup. Fixed in `3ae4e41`. Cost: an old folder with neither marker (upload aborted before `input/` existed) is
+  kept forever — harmless.
+- **`useSyncExternalStore` over reading `localStorage` in render** — the first frontend version (`21221a3`) read the
+  key during render; the server-rendered HTML then carries `http://localhost:8000` with no key, and React 19 does not
+  repair mismatched `src`/`href` on hydration, so cloud images/video could stay broken. Fixed in `5664a74`.
+
+### 3. Blast radius
+
+- Scene model: with no checkpoint (today) behaviour equals BLIP's; if the Qwen path fails at load, `InferenceError`
+  surfaces for VQA/caption jobs — no fallback to BLIP after a failed Qwen load (not implemented).
+- `max_containers=1`: all teammates share one GPU container; concurrent heavy jobs queue (4 inputs at a time).
+- **Open risk (not changed here):** LocateAnything is the grounding fallback when DINO finds nothing
+  (`workflows/grounding.py:218`) and reports itself available whenever `transformers` imports. In the cloud image its
+  weights and gitignored vendored code are absent, so that fallback would try a 7.2 GB Hugging Face download mid-request.
+  Owned by the parallel LocateAnything work; decision pending with the user.
+- Retention deletes user results on the cloud volume after 7 days (user asked to confirm 7).
+- `?key=` in media URLs appears in browser history and server access logs — inherent to design D4.
+
+### 4. Verification (as run, GPU hidden)
+
+- `tests/unit/test_eval_scene_vlm_metrics.py` — RED import error → **2 passed**.
+- `tests/unit/test_scene_vlm_selection.py` — RED (VQA got the BLIP answer) → **3 passed**; related files
+  (`test_video_workflow`, `test_gpu_oom_recovery`, `test_agent`, `test_optical_sar_safety`) **17 passed** in 21 min 34 s
+  on CPU. `model_registry.get_adapter('scene_vlm')` → `SceneVLM False` (no CUDA, no checkpoint).
+- `tests/unit/test_results_retention.py` — first version 7 passed; fix round RED **2 failed / 7 passed**
+  (PermissionError propagated; `evaluations/` deleted) → GREEN **9 passed**; with `test_results_download.py` 27 passed.
+- Full `tests/unit` at `3ae4e41`, `CUDA_VISIBLE_DEVICES=""`: **248 passed, 1 skipped, 12 warnings, 946 s**.
+- `deploy/modal_app.py`: `py_compile` only (no `modal` package locally). Task reviewer checked every Modal call used
+  (`Secret.from_dotenv`, `@modal.concurrent`, `@modal.asgi_app`, `scaledown_window`, `min_containers`) against the
+  current Modal docs: current.
+- Frontend at `5664a74`: `tsc --noEmit` clean; eslint on changed files: 1 error + 6 warnings, all pre-existing
+  (`MapViewer.tsx:71` set-state-in-effect); `next build --webpack` succeeds (Turbopack refuses the worktree's
+  symlinked `node_modules` — environment, not code).
+- **Not yet verified:** any Qwen3-VL or BLIP score; checkpoint size; a real `modal deploy`; cold/warm latency;
+  the connection panel in a browser; hydration behaviour at runtime.
+
+### 5. Defence — "Why should we believe Qwen is better than BLIP?"
+
+"You shouldn't yet, and the code doesn't assume it. Both models get scored on the same 200 VRSBench questions and
+200 captions with the same seed, failures counted as wrong, and Qwen is only kept if it's at least as accurate on
+questions and strictly better on captions. Until that run happens the deployed system still answers with BLIP —
+Qwen only switches on when its weights are present, and those weights are only uploaded after it wins."
