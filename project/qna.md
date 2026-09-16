@@ -1743,3 +1743,87 @@ is from that file, not re-run.
 11 weak candidates for a grid with dozens of visible streets, and the verification agent independently rated the
 best of those only 3.7% confident it's a road. Lowering it further would mask trees and rooftops as roads, not
 find more of them — the fix is a road-shaped detector, not a lower bar."
+
+---
+
+## Q-021 · Hosted-backend groundwork: API keys, DB-less video results, and answers written from measured evidence
+
+**Recorded** 2026-09-16, branch `cloud-gpu` (worktree off `prototype` `0c8b74d`), commits `e8b402b`, `9688a48`,
+`a95c9b0`, `22c329a`. Plan: `docs/superpowers/plans/2026-09-15-cloud-gpu-and-answers.md` Tasks 1–4.
+15 files, +455/−1. Not yet merged into `prototype`; not yet exercised against a live LLM provider.
+
+### 1. Mechanism
+
+1. **API keys** — `backend/app/api/auth.py:26` `ApiKeyMiddleware.dispatch` reads `SATQUERY_API_KEYS` on every
+   request (comma list). Empty → request passes (local runs unchanged). Otherwise the key is taken from
+   `Authorization: Bearer`, `X-API-Key`, or `?key=` (`auth.py:17`) and compared with `hmac.compare_digest`.
+   `OPTIONS` and `OPEN_PATHS` (`auth.py:10`: `/api/health`, `/docs`, `/redoc`, `/openapi.json`) are always open.
+   Failure → 401 `{"error": {"code": "UNAUTHORIZED", ...}}`. Registered at `backend/app/main.py:43`, *before*
+   `CORSMiddleware`; Starlette wraps later-added middleware outside, so CORS is outermost and the 401 still carries
+   `access-control-allow-origin`. `SATQUERY_CORS_ORIGINS` overrides the origin list (`config.py:263`).
+2. **Video results without a DB row** — `GET /api/video/{id}` (`endpoints/video.py:266–282`) wraps the repository
+   lookup in try/except; on no row or DB error it loads `result.json` (`video.py:273`, written by
+   `POST /api/video/analyze`, Q-017) and returns it if it has `flags` and `video_metadata`; otherwise 404 as before.
+3. **Answer writer** — `backend/app/answers/writer.py`. After a non-FAILED pipeline, `controller.py:233–235` calls
+   `apply_answer_writer(state)` (`writer.py:148`). If `SATQUERY_ANSWER_WRITER` is not `on`, nothing happens.
+   Otherwise `evidence_for_writer` (`writer.py:130`) builds a JSON of task, models, confidence, area statistics,
+   detection labels+scores (≤50), whitelisted metadata (`instance_count`, `instance_filters`,
+   `agent_deliberation`, `aoi`, `change_inference`), the scene model's text answer, and warnings — **no image**.
+   `write_answer` (`writer.py:81`) posts it, off the event loop (`asyncio.to_thread`), to Gemini
+   (`gemini-2.5-flash`) then NVIDIA NIM (`meta/llama-3.3-70b-instruct`) via the OpenAI-compatible
+   `/chat/completions`, 8 s timeout, temperature 0.2, max 300 tokens. The first non-empty reply that passes
+   `numbers_grounded` (`writer.py:64`) becomes `state.answer`; missing key → provider skipped; HTTP error, empty
+   reply, or ungrounded number → next provider; all fail → template answer kept. A trace step
+   "Answer written from measured evidence" records `source` and every attempt's status.
+4. **Response + UI** — `AnalyzeResponse` gains `answer_source` (default `"template"`, else `"<provider>:<model>"`)
+   and `answer_facts` (the template answer the text was based on) (`schemas/responses.py:59–60`). The results
+   panel shows "Written by <source> from measured evidence" or "Measured answer", with the facts as hover text.
+
+### 2. Rationale
+
+- **App-level keys, not Modal proxy tokens** — `<video src>` and download links cannot send headers, so the key
+  must also work as `?key=`; one key per teammate can be revoked by editing one env var (design D4).
+- **Rephrase, don't generate** — the template answer is computed from measurements; the LLM only rewords it for
+  the question. Sending the image was rejected: Gemini's free tier may use inputs for training, and an LLM that
+  sees the image can "see" things the measurements do not support (D7).
+- **Number guard over trusting the model** — every number in the reply is parsed (`_NUMBER` regex, commas
+  stripped) and must match a number in the evidence text within ±0.05 absolute or ±0.5 % relative, or equal a
+  ≤1 ratio ×100 (so `0.1135` permits "11.35 %"/"11.4 %"). Measurable and explainable on stage (D8).
+- **Off by default** (D9) — `tests/conftest.py` forces `SATQUERY_ANSWER_WRITER=off`, so no test touches the network.
+
+### 3. Blast radius
+
+- Wrong middleware order → browser shows a CORS error instead of "API key rejected"; guarded by
+  `test_missing_or_wrong_key_is_401_with_cors_header`. The task reviewer also checked video Range/206 seeking still
+  works through `BaseHTTPMiddleware` (Starlette 1.6.0: `206`, `content-range: bytes 100-199/10000`).
+- With `SATQUERY_API_KEYS` unset, behaviour is identical to before — local runs and the existing suite unaffected.
+- Writer failure modes all degrade to the template answer; they cannot fail the job. **Known weakness (open):**
+  the user's own question is part of the evidence text (`writer.py:111`), so a number typed in the question
+  counts as grounded — "were 42 buildings built?" would let "42 buildings were built" through the guard.
+  Logged for the branch's final review; not yet fixed.
+- Guard tolerance literal is `0.051`, not `0.05` (float slack) — a 0.001 widening of D8.
+- An old-schema video `result.json` that fails `VideoAnalysisResponse(**saved)` gives a 500, not a 404.
+
+### 4. Verification (as run, GPU hidden, `CUDA_VISIBLE_DEVICES=""`)
+
+- `tests/unit/test_api_key_auth.py` — RED 1 failed / 5 passed (the 401 case returned 404); GREEN **6 passed**.
+- `tests/unit/test_video_result_fallback.py` — RED 1 failed / 1 passed; GREEN **2 passed**; `test_video_api.py` 3 passed.
+- `tests/unit/test_answer_writer.py` — **7 passed** (plan said 8: miscount, the file has 7 tests); HTTP is
+  `httpx.MockTransport`, asserting host, Bearer header, and that the body contains no `data:image`.
+- `tests/unit/test_answer_writer_wiring.py` — RED `AttributeError` (no `apply_answer_writer` in controller);
+  GREEN; combined with the writer tests **8 passed**. A real `POST /api/upload` + `POST /api/analyze`
+  ("compute NDVI for this scene" on a 64×64 PNG, COMPLETED via the unsupported-request path) returns
+  `answer_source` and a non-empty `answer_facts`.
+- Frontend: `npx tsc --noEmit` exit 0; eslint exit 0 (1 pre-existing unused-import warning in `ResultsPanel.tsx:3`).
+- Each test run printed 2 pre-existing warnings (`StarletteDeprecationWarning`: httpx with TestClient).
+- **Not yet verified:** a real Gemini/NVIDIA reply; the full `tests/` tier on this branch (≈30 min on CPU for
+  `tests/unit` alone; pending).
+
+### 5. Defence — "How do you know the LLM didn't make up the numbers?"
+
+"It isn't allowed to. It only gets the measurements as JSON, never the image, and every number in its reply is
+checked against that JSON — within rounding — before we show it. If one doesn't match, we throw the reply away
+and try the next provider, and if none pass we show the plain measured answer. The response says which one you
+got: `answer_source` is `template` or the provider and model, and `answer_facts` carries the measured sentence
+it was written from. The one gap we know about: a number you type in your own question also counts as allowed,
+which we're closing next."
