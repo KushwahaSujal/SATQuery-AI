@@ -64,13 +64,18 @@ def _numbers(text: str) -> List[float]:
 def numbers_grounded(answer: str, evidence_text: str) -> bool:
     allowed = set(_numbers(evidence_text))
     for n in _numbers(answer):
-        if n in allowed:
-            continue
-        if any(abs(n - a) <= max(0.051, abs(a) * 0.005) for a in allowed):
-            continue
-        if any(abs(a) <= 1 and abs(n - a * 100) <= 0.051 for a in allowed):
-            continue
-        return False
+        an = abs(n)
+        matched = False
+        for a in allowed:
+            aa = abs(a)
+            if an == aa or abs(an - aa) <= max(0.051, aa * 0.005):
+                matched = True
+                break
+            if aa <= 1 and abs(an - aa * 100) <= 0.051:
+                matched = True
+                break
+        if not matched:
+            return False
     return True
 
 
@@ -86,8 +91,14 @@ def write_answer(
     http: Optional[httpx.Client] = None,
     timeout: float = 8.0,
 ) -> WrittenAnswer:
-    evidence_text = json.dumps({"query": query, "measured_answer": template_answer, **evidence},
-                               default=str, ensure_ascii=False)
+    # The prompt sent to the model may include the query and the full evidence (confidence included).
+    prompt_evidence_text = json.dumps({"query": query, "measured_answer": template_answer, **evidence},
+                                       default=str, ensure_ascii=False)
+    # The grounding guard must not treat the user's question as evidence, and must not let `confidence`
+    # (typically a 0-1 float) satisfy the "ratio * 100" rule for unrelated counts.
+    guard_evidence = {k: v for k, v in evidence.items() if k != "confidence"}
+    guard_text = json.dumps({"measured_answer": template_answer, **guard_evidence},
+                             default=str, ensure_ascii=False)
     attempts: List[Dict[str, Any]] = []
     client = http or httpx.Client()
     try:
@@ -103,7 +114,7 @@ def write_answer(
                     headers={"Authorization": f"Bearer {key}"},
                     json={"model": model, "temperature": 0.2, "max_tokens": 300, "messages": [
                         {"role": "system", "content": SYSTEM_PROMPT},
-                        {"role": "user", "content": f"QUESTION: {query}\n\nEVIDENCE: {evidence_text}"},
+                        {"role": "user", "content": f"QUESTION: {query}\n\nEVIDENCE: {prompt_evidence_text}"},
                     ]},
                     timeout=timeout,
                 )
@@ -116,7 +127,7 @@ def write_answer(
             if not text:
                 attempts.append({"provider": p.name, "status": "empty"})
                 continue
-            if not numbers_grounded(text, evidence_text):
+            if not numbers_grounded(text, guard_text):
                 attempts.append({"provider": p.name, "status": "rejected_ungrounded_number"})
                 continue
             attempts.append({"provider": p.name, "status": "ok"})

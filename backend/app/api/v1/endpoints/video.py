@@ -81,7 +81,7 @@ from backend.app.visualization import (
 )
 from backend.app.visualization.composites import _apply_percentile_stretch
 from backend.app.db.repositories.visualization_repository import VisualizationRepository
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 from PIL import Image
 import numpy as np
 
@@ -272,7 +272,10 @@ async def get_video_analysis_result(
         # The hosted backend may run without the database; the analyze endpoint also writes result.json (Q-017).
         saved = artifact_manager.load_result_json(job_id)
         if saved and "flags" in saved and "video_metadata" in saved:
-            return VideoAnalysisResponse(**saved)
+            try:
+                return VideoAnalysisResponse(**saved)
+            except ValidationError as e:
+                logger.warning(f"Stored video result.json for '{job_id}' does not match the current schema: {e}")
         raise JobNotFoundError(
             job_id=job_id,
             message=f"Video analysis job '{job_id}' not found.",

@@ -23,6 +23,23 @@ def vqa_correct(pred: str, gt: str) -> bool:
     return bool(g) and (p == g or re.search(rf"\b{re.escape(g)}\b", p) is not None)
 
 
+def vqa_strict_correct(pred: str, gt: str) -> bool:
+    """Stricter than vqa_correct: the normalised strings must match exactly, or (for a one-word
+    ground truth) the prediction's first normalised token must match it. This does not give credit
+    to a verbose answer that merely contains the ground-truth word somewhere in a longer sentence."""
+    p, g = norm(pred), norm(gt)
+    if not g:
+        return False
+    if p == g:
+        return True
+    g_tokens = g.split()
+    if len(g_tokens) == 1:
+        p_tokens = p.split()
+        if p_tokens and p_tokens[0] == g_tokens[0]:
+            return True
+    return False
+
+
 def rouge_l(pred: str, ref: str) -> float:
     a, b = norm(pred).split(), norm(ref).split()
     if not a or not b:
@@ -57,17 +74,20 @@ def main():
     t0 = time.time()
     vqa, caps = [], []
     vqa_errors, caption_errors = 0, 0
+    # Applied to both adapters so the long-answer model isn't rewarded for verbosity under the strict metric.
+    SHORT_ANSWER_SUFFIX = " Answer with a single word or short phrase."
     for r in sample(ROOT / "VRSBench_EVAL_vqa.json", args.n, args.seed):
         try:
             img = Image.open(IMAGES / r["image_id"]).convert("RGB")
-            pred = adapter.predict({"image_pil": img, "query": r["question"]}).answer or ""
+            pred = adapter.predict({"image_pil": img, "query": r["question"] + SHORT_ANSWER_SUFFIX}).answer or ""
             vqa.append({"image": r["image_id"], "type": r["type"], "question": r["question"], "gt": r["ground_truth"],
-                        "pred": pred, "correct": vqa_correct(pred, r["ground_truth"])})
+                        "pred": pred, "correct": vqa_correct(pred, r["ground_truth"]),
+                        "strict_correct": vqa_strict_correct(pred, r["ground_truth"])})
         except Exception as e:
             vqa_errors += 1
             print(f"Warning: VQA sample {r['image_id']} failed: {type(e).__name__}: {e}")
             vqa.append({"image": r["image_id"], "type": r["type"], "question": r["question"], "gt": r["ground_truth"],
-                        "pred": "", "error": f"{type(e).__name__}: {e}", "correct": False})
+                        "pred": "", "error": f"{type(e).__name__}: {e}", "correct": False, "strict_correct": False})
     for r in sample(ROOT / "VRSBench_EVAL_Cap.json", args.n, args.seed):
         try:
             img = Image.open(IMAGES / r["image_id"]).convert("RGB")
@@ -81,6 +101,7 @@ def main():
     out = {
         "adapter": args.adapter, "n": args.n, "seed": args.seed, "measured_at": datetime.now(timezone.utc).isoformat(),
         "vqa_accuracy": sum(v["correct"] for v in vqa) / max(len(vqa), 1),
+        "vqa_accuracy_strict": sum(v["strict_correct"] for v in vqa) / max(len(vqa), 1),
         "caption_rouge_l": sum(c["rouge_l"] for c in caps) / max(len(caps), 1),
         "caption_mean_words": sum(len(c["pred"].split()) for c in caps) / max(len(caps), 1),
         "secs_per_sample": secs / max(len(vqa) + len(caps), 1),

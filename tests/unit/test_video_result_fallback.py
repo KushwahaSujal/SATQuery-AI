@@ -38,3 +38,22 @@ def test_video_job_without_db_record_is_served_from_result_json(client):
 
 def test_unknown_video_job_is_still_404(client):
     assert client.get("/api/video/q020-no-such-video").status_code == 404
+
+
+def test_old_schema_result_json_is_404_not_500(client):
+    # Has the two top-level keys the fallback checks for ("flags", "video_metadata") but an invalid
+    # shape underneath (old schema) — VideoAnalysisResponse(**saved) must raise a pydantic ValidationError
+    # that is caught and turned into the normal JobNotFoundError, not an unhandled 500.
+    job = "q020-video-old-schema"
+    artifact_manager.save_result_json(job, {
+        "job_id": job, "status": "COMPLETED", "task": "video_grounding",
+        "workflow_id": "workflow_video_analysis", "workflow_reason": "Detected and flagged 1 important moment(s).",
+        "video_metadata": {"filename": "x.mp4"},  # missing required fields (duration_sec, fps, width, ...)
+        "flags": [{"flag_id": "flag_1", "label": "red car"}],  # missing required fields (timestamps, frames, ...)
+        "models_used": ["grounding_dino", "sam2"], "execution_trace": [], "warnings": [], "errors": [], "artifacts": {},
+    })
+    try:
+        r = client.get(f"/api/video/{job}")
+        assert r.status_code == 404
+    finally:
+        shutil.rmtree(artifact_manager.get_job_dir(job), ignore_errors=True)

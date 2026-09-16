@@ -30,6 +30,7 @@ class PlanValidator:
 
     PERMITTED_MODELS: Set[str] = {
         "general_rs_vlm",
+        "scene_vlm",
         "grounding_dino",
         "locate_anything",
         "sam2",

@@ -70,6 +70,47 @@ def test_invented_numbers_fall_back_to_template(monkeypatch):
     assert [a["status"] for a in out.attempts] == ["rejected_ungrounded_number", "rejected_ungrounded_number"]
 
 
+def test_numbers_grounded_query_not_treated_as_evidence():
+    # The guard text (unlike the prompt text) must not include the query.
+    guard = json.dumps({"measured_answer": "17 buildings were detected.", "instance_count": 17})
+    assert not numbers_grounded("Yes, there are 42 buildings.", guard)
+
+
+def test_write_answer_rejects_number_only_present_in_query(monkeypatch):
+    _keys(monkeypatch)
+    evidence = {"instance_count": 17}
+    template = "17 buildings were detected."
+    out = write_answer("Were 42 buildings built?", evidence, template,
+                        http=httpx.Client(transport=httpx.MockTransport(
+                            lambda r: _reply("Yes, there are 42 buildings."))))
+    assert out.source == "template" and out.text == template
+    assert [a["status"] for a in out.attempts] == ["rejected_ungrounded_number", "rejected_ungrounded_number"]
+
+
+def test_numbers_grounded_is_sign_insensitive():
+    ev = json.dumps({"measured_answer": "", "statistics": {"change_pct": -3.2}})
+    assert numbers_grounded("The area decreased by 3.2%.", ev)
+
+
+def test_numbers_grounded_ratio_times_100_rule_still_applies():
+    # numbers_grounded itself is field-name agnostic; `write_answer` is what strips `confidence`
+    # out of the guard text before calling it (see test_write_answer_excludes_confidence_from_guard).
+    # The existing ratio-field ×100 rule must still pass here.
+    ev_ratio = json.dumps({"measured_answer": TEMPLATE, **EVIDENCE})
+    assert numbers_grounded("Roughly 11.35% of the area changed.", ev_ratio)
+
+
+def test_write_answer_excludes_confidence_from_guard(monkeypatch):
+    _keys(monkeypatch)
+    evidence = {"confidence": 0.85}
+    template = "Detection completed."
+    out = write_answer("how many ships", evidence, template,
+                        http=httpx.Client(transport=httpx.MockTransport(
+                            lambda r: _reply("There are 85 ships."))))
+    assert out.source == "template" and out.text == template
+    assert [a["status"] for a in out.attempts] == ["rejected_ungrounded_number", "rejected_ungrounded_number"]
+
+
 def test_no_keys_means_no_network_and_template(monkeypatch):
     _keys(monkeypatch, gemini=False, nvidia=False)
 

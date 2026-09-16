@@ -43,3 +43,10 @@ def test_missing_or_wrong_key_is_401_with_cors_header(client, monkeypatch):
 def test_health_stays_open_with_keys(client, monkeypatch):
     monkeypatch.setenv("SATQUERY_API_KEYS", "k-one")
     assert client.get("/api/health").status_code == 200
+
+
+def test_non_ascii_key_is_401_not_500(client, monkeypatch):
+    monkeypatch.setenv("SATQUERY_API_KEYS", "k-one")
+    r = client.get(f"{MISSING}?key=é")
+    assert r.status_code == 401
+    assert r.json()["error"]["code"] == "UNAUTHORIZED"

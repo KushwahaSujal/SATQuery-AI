@@ -28,7 +28,7 @@ class ApiKeyMiddleware(BaseHTTPMiddleware):
         if not keys or request.method == "OPTIONS" or request.url.path in OPEN_PATHS:
             return await call_next(request)
         presented = _presented_key(request)
-        if presented and any(hmac.compare_digest(presented, k) for k in keys):
+        if presented and any(hmac.compare_digest(presented.encode(), k.encode()) for k in keys):
             return await call_next(request)
         return JSONResponse(
             status_code=401,

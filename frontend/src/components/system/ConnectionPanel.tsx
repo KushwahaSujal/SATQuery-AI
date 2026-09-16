@@ -65,10 +65,24 @@ export default function ConnectionPanel() {
     const started = performance.now();
     const waking = setTimeout(() => setCheck({ state: "waking" }), 3000);
     try {
+      // /api/health is an open path (no auth required) — a network error or non-2xx here means
+      // the backend itself is unreachable, distinct from an API-key problem on the probe below.
+      const health = await fetch(`${getApiBase()}/api/health`);
+      if (!health.ok) {
+        setCheck({ state: "error", detail: `backend unreachable at ${getApiBase()}` });
+        return;
+      }
       const r = await fetch(`${getApiBase()}/api/results/connection-check`, { headers: authHeaders() });
       const secs = ((performance.now() - started) / 1000).toFixed(1);
-      if (r.status === 401) setCheck({ state: "error", detail: "API key rejected" });
-      else setCheck({ state: "ok", detail: `reachable in ${secs}s` });
+      if (r.status === 401) {
+        setCheck({ state: "error", detail: "API key rejected" });
+      } else if (r.status === 404 || r.status === 400) {
+        // The connection-check route itself returns 404/400 for a nonexistent probe id — that's
+        // expected and proves auth + routing both work, not a failure.
+        setCheck({ state: "ok", detail: `reachable in ${secs}s` });
+      } else {
+        setCheck({ state: "error", detail: `unexpected status ${r.status}` });
+      }
     } catch {
       setCheck({ state: "error", detail: `backend unreachable at ${getApiBase()}` });
     } finally {
