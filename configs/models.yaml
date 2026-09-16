@@ -24,6 +24,24 @@ models:
     device: "auto"
     precision: "float16"
 
+  scene_vlm:
+    name: "SceneVLM"
+    version: "qwen3-vl-4b-instruct-nf4"
+    task: "vqa"
+    supported_tasks:
+      - "single_image_vqa"
+      - "single_image_caption"
+    supported_modalities:
+      - "optical"
+      - "multispectral"
+    input_count: 1
+    input_relationship: "single"
+    enabled: true
+    checkpoint_path: "checkpoints/scene_vlm_qwen3vl4b_nf4"
+    model_id: "Qwen/Qwen3-VL-4B-Instruct"
+    device: "auto"
+    precision: "float16"
+
   grounding_dino:
     name: "GroundingDINO"
     version: "T-v1.0"

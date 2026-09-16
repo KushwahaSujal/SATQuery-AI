@@ -8,6 +8,7 @@ from backend.app.ml.adapters.cdvqa import CDVQAAdapter
 from backend.app.ml.adapters.dofa import DOFAAdapter
 from backend.app.ml.adapters.fusion import OpticalSARFusionModel
 from backend.app.ml.adapters.general_rs_vlm import GeneralRSVLMAdapter
+from backend.app.ml.adapters.scene_vlm import SceneVLMAdapter
 from backend.app.ml.adapters.remoteclip import RemoteCLIPAdapter
 from backend.app.ml.adapters.bigearthnet import BigEarthNetMultimodalAdapter
 from backend.app.ml.adapters.locate_anything import LocateAnythingAdapter
@@ -31,6 +32,7 @@ class ModelRegistry:
         "dofa": DOFAAdapter,
         "satquery_optical_sar_fusion": OpticalSARFusionModel,
         "general_rs_vlm": GeneralRSVLMAdapter,
+        "scene_vlm": SceneVLMAdapter,
         "remoteclip": RemoteCLIPAdapter,
         "bigearthnet": BigEarthNetMultimodalAdapter,
     }
@@ -107,6 +109,15 @@ class ModelRegistry:
             "input_requirements": {"image": "RGB (H, W, 3)", "query": "string"},
             "output_schema": {"answer": "string", "confidence": "float"},
             "device_requirements": {"min_vram_gb": 3.0, "preferred": "cuda"},
+        },
+        "scene_vlm": {
+            "family": "Qwen3-VL-4B-Instruct (4-bit NF4)",
+            "source": "checkpoints/scene_vlm_qwen3vl4b_nf4",
+            "license": "Apache-2.0",
+            "capabilities": ["single_image_vqa", "scene_understanding", "captioning"],
+            "input_requirements": {"image": "RGB (H, W, 3)", "query": "string"},
+            "output_schema": {"answer": "string"},
+            "device_requirements": {"min_vram_gb": 4.0, "preferred": "cuda"},
         },
         "remoteclip": {
             "family": "RemoteCLIP",

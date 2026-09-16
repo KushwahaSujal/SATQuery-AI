@@ -29,54 +29,45 @@ from backend.app.logging import logger
 from backend.app.agent.tools.base import register_tool
 
 
-@register_tool("run_vqa")
-def run_vqa(state: AgentState) -> None:
-    if not model_registry.is_model_available("general_rs_vlm"):
-        msg = (
-            "General Remote-Sensing VLM capability is currently NOT_CONFIGURED on this deployment. "
-            "For single-image analysis, Grounding DINO + V4 Reasoner + SAM 2 are active for open-vocabulary spatial detection and segmentation. "
-            "For bi-temporal analysis, ChangeFormer and CDVQA are active."
-        )
-        state.warnings.append("GENERAL_RS_VLM is not configured on this deployment.")
-        state.answer = msg
+def _scene_adapter():
+    for key in ("scene_vlm", "general_rs_vlm"):
+        if model_registry.is_model_available(key):
+            return key, model_registry.get_adapter(key)
+    return None, None
+
+
+def _run_scene_model(state: AgentState, question: str, unavailable_msg: str) -> None:
+    key, adapter = _scene_adapter()
+    if adapter is None:
+        state.warnings.append("No scene model (Qwen3-VL or BLIP) is configured on this deployment.")
+        state.answer = unavailable_msg
         state.confidence = None
         return
-
-    adapter = model_registry.get_adapter("general_rs_vlm")
     arr, _ = RasterInspector.read_as_array(state.image_paths[0])
-    img_pil = to_pil_rgb(arr)
-    res = adapter.predict({"image_pil": img_pil, "query": state.query})
+    res = adapter.predict({"image_pil": to_pil_rgb(arr), "query": question})
     state.model_results.append(res)
     state.answer = res.answer
     state.confidence = res.confidence
-    if "general_rs_vlm" not in state.selected_models:
-        state.selected_models.append("general_rs_vlm")
+    if key not in state.selected_models:
+        state.selected_models.append(key)
     if res.warnings:
         state.warnings.extend(res.warnings)
 
 
+@register_tool("run_vqa")
+def run_vqa(state: AgentState) -> None:
+    _run_scene_model(state, state.query, (
+        "Scene question answering is currently NOT_CONFIGURED on this deployment. "
+        "Grounding DINO + SAM 2 remain active for detection and segmentation; ChangeFormer and CDVQA for change."
+    ))
+
+
 @register_tool("run_caption")
 def run_caption(state: AgentState) -> None:
-    if not model_registry.is_model_available("general_rs_vlm"):
-        msg = (
-            "General Remote-Sensing VLM scene captioning is currently NOT_CONFIGURED on this deployment. "
-            "Active single-image models: Grounding DINO (open-vocabulary detection) and SAM 2 (high-precision segmentation). "
-            "Active bi-temporal models: ChangeFormer and CDVQA."
-        )
-        state.warnings.append("GENERAL_RS_VLM is not configured on this deployment.")
-        state.answer = msg
-        state.confidence = None
-        return
-
-    adapter = model_registry.get_adapter("general_rs_vlm")
-    arr, _ = RasterInspector.read_as_array(state.image_paths[0])
-    img_pil = to_pil_rgb(arr)
-    res = adapter.predict({"image_pil": img_pil, "query": "Provide a concise land-cover and scene caption."})
-    state.model_results.append(res)
-    state.answer = res.answer
-    state.confidence = res.confidence
-    if "general_rs_vlm" not in state.selected_models:
-        state.selected_models.append("general_rs_vlm")
+    _run_scene_model(state, "Describe this image: land cover, main objects and how they are laid out.", (
+        "Scene captioning is currently NOT_CONFIGURED on this deployment. "
+        "Grounding DINO + SAM 2 remain active for detection and segmentation; ChangeFormer and CDVQA for change."
+    ))
 
 
 @register_tool("run_grounding")
