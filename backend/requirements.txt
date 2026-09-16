@@ -29,6 +29,14 @@ safetensors>=0.4.0
 open-clip-torch>=2.20.0
 huggingface-hub>=0.20.0
 sam2>=1.1.0
+# LocateAnything-3B vendor code (checkpoints/locate_anything_3b; see third_party/locate_anything/UPSTREAM.md)
+bitsandbytes>=0.50.2
+peft>=0.21.0
+accelerate>=1.15.0
+decord>=0.6.0
+lmdb>=2.3.0
+requests>=2.34.2
+# flash_attn / magi_attention are optional for LocateAnything-3B (guarded imports, SDPA fallback)
 
 # Testing
 pytest>=7.4.0

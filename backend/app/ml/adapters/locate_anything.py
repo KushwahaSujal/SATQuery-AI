@@ -1,4 +1,5 @@
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
+import importlib.util
 from pathlib import Path
 import re
 import numpy as np
@@ -80,6 +81,94 @@ _COORD_SCALE = 1000.0
 # a candidate score is absent (rank_v4_candidates falls back to 0.5).
 _DEFAULT_CONFIDENCE = 0.5
 
+# End-of-turn token. Its absence from the decoded answer means the vendor generate
+# loop stopped on max_new_tokens rather than on its own.
+_IM_END = "<|im_end|>"
+
+# Load / decoding defaults. All are overridable from configs/models.yaml
+# (models.locate_anything.*) and, for decoding, per call via predict() kwargs.
+# See the comments in configs/models.yaml for the measurements behind them.
+_QUANTIZATION_CHOICES = ("none", "8bit", "4bit")
+_DEFAULT_QUANTIZATION = "4bit"
+_DEFAULT_GENERATION_MODE = "slow"
+_DEFAULT_TEMPERATURE = 0.0
+_DEFAULT_REPETITION_PENALTY = 1.0
+# Modules kept in bf16 when quantizing: the MoonViT vision tower, the vision->LLM
+# connector and the output head. Quantizing them costs accuracy for little memory.
+_QUANT_SKIP_MODULES = ["vision_model", "mlp1", "lm_head"]
+
+
+def is_truncated(answer_text: str) -> bool:
+    """True when the answer never reached <|im_end|> (generation hit max_new_tokens)."""
+    return _IM_END not in (answer_text or "")
+
+
+def parse_boxes(
+    answer_text: str,
+    width: int,
+    height: int,
+    label: str,
+    score: float = _DEFAULT_CONFIDENCE,
+) -> Tuple[List[Dict[str, Any]], Dict[str, int]]:
+    """Parses LocateAnything ``<box><x1><y1><x2><y2></box>`` tokens into candidate dicts.
+
+    Pure function (no model): coordinates are integers normalized to [0, 1000] in
+    x1, y1, x2, y2 order; they are scaled to pixel coordinates of the ORIGINAL
+    image and clipped to its bounds. The processor resizes each axis independently
+    to a patch multiple, which normalized coordinates are invariant to.
+
+    Dropped, and counted in the returned stats:
+      * degenerate boxes -- x2 <= x1 or y2 <= y1 after clipping. The model always
+        emits x1 < x2, y1 < y2, so a reversed or zero-area box is decoding noise,
+        not a box to be re-ordered.
+      * exact duplicates of an earlier box (same four normalized integers).
+
+    ``<box>None</box>`` and 2-coordinate points are not matched by the regex.
+
+    Returns ``(boxes, stats)`` with stats keys ``raw_box_count``,
+    ``dropped_degenerate`` and ``dropped_duplicate``.
+    """
+    w, h = float(width), float(height)
+    boxes: List[Dict[str, Any]] = []
+    seen = set()
+    raw = degenerate = duplicate = 0
+    for match in _BOX_RE.finditer(answer_text or ""):
+        raw += 1
+        norm = tuple(int(g) for g in match.groups())
+        x1n, y1n, x2n, y2n = norm
+
+        x1 = max(0.0, min(x1n / _COORD_SCALE * w, w))
+        y1 = max(0.0, min(y1n / _COORD_SCALE * h, h))
+        x2 = max(0.0, min(x2n / _COORD_SCALE * w, w))
+        y2 = max(0.0, min(y2n / _COORD_SCALE * h, h))
+        if x2 <= x1 or y2 <= y1:
+            degenerate += 1
+            continue
+        if norm in seen:
+            duplicate += 1
+            continue
+        seen.add(norm)
+
+        xyxy = [round(x1, 2), round(y1, 2), round(x2, 2), round(y2, 2)]
+        boxes.append({
+            "xyxy": xyxy,
+            "bbox": list(xyxy),
+            "box_2d": [
+                round(y1 / h, 4) if h else 0.0,
+                round(x1 / w, 4) if w else 0.0,
+                round(y2 / h, 4) if h else 1.0,
+                round(x2 / w, 4) if w else 1.0,
+            ],
+            "score": score,
+            "label": label,
+        })
+    stats = {
+        "raw_box_count": raw,
+        "dropped_degenerate": degenerate,
+        "dropped_duplicate": duplicate,
+    }
+    return boxes, stats
+
 
 class LocateAnythingAdapter(BaseModelAdapter):
     """
@@ -104,18 +193,63 @@ class LocateAnythingAdapter(BaseModelAdapter):
         # HF hub id used for metadata; loading prefers the local checkpoint repo.
         self.model_id = getattr(self.config, "model_id", None) or self.DEFAULT_MODEL_ID
 
-    def is_available(self) -> bool:
-        """True only if enabled AND the local checkpoint repo (or deps) are usable."""
+    # ------------------------------------------------------------------ config
+
+    def _cfg(self, field: str, default: Any) -> Any:
+        value = getattr(self.config, field, None) if self.config else None
+        return default if value is None else value
+
+    @property
+    def quantization(self) -> str:
+        q = str(self._cfg("quantization", _DEFAULT_QUANTIZATION)).strip().lower()
+        return "none" if q in ("", "null", "bf16", "bfloat16") else q
+
+    def _missing_dependencies(self) -> List[str]:
+        """Python packages the vendor remote code (or quantized loading) imports at load time."""
+        required = ["transformers", "accelerate", "peft", "decord", "lmdb"]
+        if self.quantization != "none":
+            required.append("bitsandbytes")
+        return [m for m in required if importlib.util.find_spec(m) is None]
+
+    def _unavailable_reason(self) -> Optional[str]:
         if not self.config or not self.config.enabled:
+            return "disabled in configs/models.yaml"
+        if self.quantization not in _QUANTIZATION_CHOICES:
+            return (
+                f"invalid quantization '{self.quantization}' "
+                f"(expected one of {', '.join(_QUANTIZATION_CHOICES)})"
+            )
+        missing = self._missing_dependencies()
+        if missing:
+            return f"missing Python packages: {', '.join(missing)}"
+        return None
+
+    def is_available(self) -> bool:
+        """True only if enabled, the required packages import, and weights are reachable.
+
+        Weights come from the local checkpoint repo, or the HF Hub id when that repo is
+        absent (transformers downloads it on first load).
+        """
+        reason = self._unavailable_reason()
+        if reason is not None:
+            if self.config and self.config.enabled:
+                logger.warning(f"LocateAnything unavailable: {reason}")
             return False
-        p = self.checkpoint_path
-        if p is not None and p.exists():
-            return True
-        try:
-            import transformers  # noqa: F401
-            return True
-        except ImportError:
-            return False
+        return True
+
+    def ensure_available(self) -> None:
+        reason = self._unavailable_reason()
+        if reason is not None:
+            raise ModelUnavailableError(
+                model_name=self.name,
+                message=f"Model '{self.name}' is unavailable: {reason}.",
+                details={
+                    "model_key": self.model_key,
+                    "reason": reason,
+                    "quantization": self.quantization,
+                    "expected_path": str(self.checkpoint_path) if self.checkpoint_path else None,
+                },
+            )
 
     def load(self) -> None:
         """Public lazy-load entry point (matches GroundingDINO / SAM2 naming)."""
@@ -152,28 +286,63 @@ class LocateAnythingAdapter(BaseModelAdapter):
             # architecture and would refuse to load it. This mirrors the model's own
             # reference worker.
             #
-            # 4-bit quantization config to fit in <4GB VRAM. Shrinks the 7.66 GB
-            # model down to ~2.5-3.5 GB. device_map="auto" places quantized layers
-            # on GPU and any overflow on CPU.
-            bnb_config = BitsAndBytesConfig(
-                load_in_4bit=True,
-                bnb_4bit_compute_dtype=torch.float16,
-                bnb_4bit_use_double_quant=True,
-                bnb_4bit_quant_type="nf4",
-            )
-
-            self._model = (
-                AutoModel.from_pretrained(
-                    source,
-                    quantization_config=bnb_config,
-                    device_map="auto",
-                    trust_remote_code=True,
+            # Weights are bf16 (7.66 GB), which does not fit an 8 GB card next to a
+            # desktop. `quantization` (configs/models.yaml) picks bitsandbytes 4-bit
+            # nf4 or 8-bit for the Qwen2 decoder; the vision tower, connector and
+            # lm_head always stay bf16. "none" loads bf16 and lets device_map="auto"
+            # offload what does not fit to CPU.
+            quantization = self.quantization
+            load_kwargs: Dict[str, Any] = {
+                "trust_remote_code": True,
+                "dtype": torch.bfloat16,
+                "device_map": "auto" if self.device.type == "cuda" else "cpu",
+            }
+            if quantization == "4bit":
+                load_kwargs["quantization_config"] = BitsAndBytesConfig(
+                    load_in_4bit=True,
+                    bnb_4bit_compute_dtype=torch.bfloat16,
+                    bnb_4bit_use_double_quant=True,
+                    bnb_4bit_quant_type="nf4",
+                    llm_int8_skip_modules=list(_QUANT_SKIP_MODULES),
                 )
-                .eval()
-            )
-            self._torch_dtype = next(self._model.parameters()).dtype
+            elif quantization == "8bit":
+                load_kwargs["quantization_config"] = BitsAndBytesConfig(
+                    load_in_8bit=True,
+                    llm_int8_skip_modules=list(_QUANT_SKIP_MODULES),
+                )
+
+            first_error: Optional[str] = None
+            try:
+                self._model = AutoModel.from_pretrained(source, **load_kwargs).eval()
+            except (torch.OutOfMemoryError, ValueError) as e:
+                # A bitsandbytes model refuses to load when device_map="auto" would have to
+                # put some layers on CPU (ValueError), and a full load can OOM outright. On an
+                # 8 GB card that happens when other models are resident: release them (they
+                # reload lazily) and retry once.
+                if self.device.type != "cuda":
+                    raise
+                first_error = str(e)
+            if first_error is not None:
+                # Retry outside the except block: the live exception's traceback still
+                # references the half-built first attempt, which would keep its VRAM pinned.
+                import gc
+                from backend.app.ml.registry import model_registry
+
+                self._model = None
+                released = model_registry.release_gpu_memory(exclude=("locate_anything",))
+                gc.collect()
+                torch.cuda.empty_cache()
+                logger.warning(
+                    f"LocateAnything load failed ({first_error[:120]}); released {released}, "
+                    f"{torch.cuda.memory_allocated() / 2**30:.2f} GiB still allocated; retrying."
+                )
+                self._model = AutoModel.from_pretrained(source, **load_kwargs).eval()
+            self._torch_dtype = torch.bfloat16
             self._loaded = True
-            logger.info("LocateAnything processor and model weights loaded successfully.")
+            logger.info(
+                f"LocateAnything processor and model weights loaded "
+                f"(quantization={quantization}, dtype=bfloat16)."
+            )
         except Exception as e:
             self._loaded = False
             self._model = None
@@ -267,8 +436,8 @@ class LocateAnythingAdapter(BaseModelAdapter):
         box_threshold: Optional[float] = None,
         text_threshold: Optional[float] = None,
         max_new_tokens: Optional[int] = None,
-        temperature: float = 0.7,
-        generation_mode: str = "hybrid",
+        temperature: Optional[float] = None,
+        generation_mode: Optional[str] = None,
         **kwargs: Any,
     ) -> LocateAnythingResult:
         """
@@ -285,6 +454,12 @@ class LocateAnythingAdapter(BaseModelAdapter):
              "box_2d": [ymin, xmin, ymax, xmax] (normalized 0..1),
              "score":  float,
              "label":  str}
+
+        Decoding defaults are deterministic (greedy, ``generation_mode="slow"``).
+        ``generation_mode``, ``temperature``, ``max_new_tokens`` and the kwargs
+        ``repetition_penalty``, ``top_p``, ``top_k`` override configs/models.yaml.
+        Note the vendor sampler samples iff ``temperature > 0``; ``do_sample`` is
+        ignored by it, so ``top_p``/``top_k`` are only forwarded when sampling.
         """
         # Support a context dictionary OR direct (image, text_query) arguments.
         if isinstance(image_or_context, dict):
@@ -313,6 +488,27 @@ class LocateAnythingAdapter(BaseModelAdapter):
         orig_w, orig_h = image_pil.size
         prompt = self._format_prompt(text_query)
 
+        generation_mode = str(generation_mode or self._cfg("generation_mode", _DEFAULT_GENERATION_MODE))
+        if generation_mode not in ("slow", "hybrid", "fast"):
+            raise InvalidInputError(
+                f"Unsupported LocateAnything generation_mode '{generation_mode}' (slow | hybrid | fast)."
+            )
+        temperature = float(
+            temperature if temperature is not None else self._cfg("temperature", _DEFAULT_TEMPERATURE)
+        )
+        repetition_penalty = float(
+            kwargs.get("repetition_penalty")
+            or self._cfg("repetition_penalty", _DEFAULT_REPETITION_PENALTY)
+        )
+        max_new_tokens = int(
+            max_new_tokens or self._cfg("max_new_tokens", self.DEFAULT_MAX_NEW_TOKENS)
+        )
+        sampling_kwargs: Dict[str, Any] = {"temperature": temperature}
+        if temperature > 0:
+            for key in ("top_p", "top_k"):
+                if kwargs.get(key) is not None:
+                    sampling_kwargs[key] = kwargs[key]
+
         try:
             # 1. Format inputs using LocateAnything's chat template / prompt template.
             messages = [
@@ -333,7 +529,8 @@ class LocateAnythingAdapter(BaseModelAdapter):
                 text=[text], images=images, videos=videos, return_tensors="pt"
             ).to(model_device)
 
-            pixel_values = inputs["pixel_values"].to(self._torch_dtype)
+            # Vision tower is never quantized and runs in bf16.
+            pixel_values = inputs["pixel_values"].to(torch.bfloat16)
             input_ids = inputs["input_ids"]
             attention_mask = inputs.get("attention_mask")
             image_grid_hws = inputs.get("image_grid_hws")
@@ -345,53 +542,27 @@ class LocateAnythingAdapter(BaseModelAdapter):
                 attention_mask=attention_mask,
                 image_grid_hws=image_grid_hws,
                 tokenizer=self._tokenizer,
-                max_new_tokens=max_new_tokens or self.DEFAULT_MAX_NEW_TOKENS,
+                max_new_tokens=max_new_tokens,
                 use_cache=True,
                 generation_mode=generation_mode,
-                do_sample=True,
-                temperature=temperature,
-                top_p=0.9,
-                repetition_penalty=1.1,
+                repetition_penalty=repetition_penalty,
                 verbose=False,
+                **sampling_kwargs,
             )
 
             answer_text = response[0] if isinstance(response, tuple) else response
             if not isinstance(answer_text, str):
                 answer_text = str(answer_text)
 
-            # 3. Parse structured <box><x1><y1><x2><y2></box> output tokens.
-            # 4. Convert normalized [0,1000] coords to [x1, y1, x2, y2] pixel coords
-            #    in the ORIGINAL image space (the image processor resizes
-            #    proportionally, so normalized coords map back to the source image).
-            boxes: List[Dict[str, Any]] = []
-            for match in _BOX_RE.finditer(answer_text):
-                x1n, y1n, x2n, y2n = (int(g) for g in match.groups())
-
-                x1 = x1n / _COORD_SCALE * orig_w
-                y1 = y1n / _COORD_SCALE * orig_h
-                x2 = x2n / _COORD_SCALE * orig_w
-                y2 = y2n / _COORD_SCALE * orig_h
-
-                # Sanitize ordering and clip to image bounds.
-                x1 = max(0.0, min(float(x1), float(orig_w)))
-                x2 = max(0.0, min(float(x2), float(orig_w)))
-                y1 = max(0.0, min(float(y1), float(orig_h)))
-                y2 = max(0.0, min(float(y2), float(orig_h)))
-                x_lo, x_hi = (x1, x2) if x1 <= x2 else (x2, x1)
-                y_lo, y_hi = (y1, y2) if y1 <= y2 else (y2, y1)
-
-                boxes.append({
-                    "xyxy": [round(x_lo, 2), round(y_lo, 2), round(x_hi, 2), round(y_hi, 2)],
-                    "bbox": [round(x_lo, 2), round(y_lo, 2), round(x_hi, 2), round(y_hi, 2)],
-                    "box_2d": [
-                        round(y_lo / orig_h, 4) if orig_h else 0.0,
-                        round(x_lo / orig_w, 4) if orig_w else 0.0,
-                        round(y_hi / orig_h, 4) if orig_h else 1.0,
-                        round(x_hi / orig_w, 4) if orig_w else 1.0,
-                    ],
-                    "score": _DEFAULT_CONFIDENCE,
-                    "label": text_query,
-                })
+            # 3. Parse <box><x1><y1><x2><y2></box> tokens into pixel boxes in the
+            #    ORIGINAL image space (see parse_boxes).
+            boxes, parse_stats = parse_boxes(answer_text, orig_w, orig_h, text_query)
+            truncated = is_truncated(answer_text)
+            if truncated:
+                logger.warning(
+                    f"LocateAnything hit max_new_tokens={max_new_tokens} without <|im_end|> "
+                    f"for '{text_query}' ({parse_stats['raw_box_count']} raw boxes)."
+                )
 
             avg_conf = float(np.mean([b["score"] for b in boxes])) if boxes else None
             if boxes:
@@ -412,8 +583,12 @@ class LocateAnythingAdapter(BaseModelAdapter):
                     "prompt": prompt,
                     "query": text_query,
                     "generation_mode": generation_mode,
-                    "max_new_tokens": max_new_tokens or self.DEFAULT_MAX_NEW_TOKENS,
+                    "max_new_tokens": max_new_tokens,
                     "temperature": temperature,
+                    "repetition_penalty": repetition_penalty,
+                    "quantization": self.quantization,
+                    "truncated": truncated,
+                    **parse_stats,
                     "image_dimensions": {"width": orig_w, "height": orig_h},
                     "coord_scale": int(_COORD_SCALE),
                     "candidate_count": len(boxes),

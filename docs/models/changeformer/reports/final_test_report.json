@@ -1,0 +1,108 @@
+{
+  "experiment": "changeformer_v6_levir_upstream_adamw20_seed42",
+  "evaluation_stage": "final_test_only",
+  "checkpoint": "C:\\SatQuery_CF\\ChangeFormer\\runs\\changeformer_v6_levir_upstream_adamw20_seed42\\checkpoints\\best.pt",
+  "checkpoint_epoch": 20,
+  "seed": 42,
+  "model": "ChangeFormerV6",
+  "embed_dim": 256,
+  "parameter_count": 41026674,
+  "expected_parameter_count": 41026674,
+  "parameter_count_match": true,
+  "image_size": 256,
+  "inference_output": "outputs[-1]",
+  "test_dataset_size": 2048,
+  "test_pixels": 134217728,
+  "test_changed_pixels": 6837335,
+  "test_change_prevalence": 0.05094211548566818,
+  "threshold": {
+    "source_file": "C:\\SatQuery_CF\\ChangeFormer\\runs\\changeformer_v6_levir_upstream_adamw20_seed42\\evaluation_final\\frozen_validation_threshold.json",
+    "selection_dataset": "validation",
+    "selection_metric": "f1",
+    "frozen_threshold": 0.4349999999999998,
+    "optimized_on_test": false
+  },
+  "test": {
+    "loss": 0.04043775318593745,
+    "roc_auc": 0.9927995288922629,
+    "pr_auc_average_precision": 0.9278146669458877,
+    "metrics_at_frozen_validation_threshold": {
+      "threshold": 0.4349999999999998,
+      "accuracy": 0.9848769381642342,
+      "precision": 0.8608288308086471,
+      "recall": 0.8387310260503544,
+      "specificity": 0.9927215407476409,
+      "balanced_accuracy": 0.9157262833989976,
+      "f1": 0.8496362697718887,
+      "iou": 0.7385805440887901,
+      "tp": 5734685,
+      "tn": 126453260,
+      "fp": 927133,
+      "fn": 1102650
+    },
+    "metrics_at_threshold_0.5": {
+      "threshold": 0.5,
+      "accuracy": 0.9850651621818542,
+      "precision": 0.8840931961957661,
+      "recall": 0.8134760107556526,
+      "specificity": 0.9942754690668917,
+      "balanced_accuracy": 0.9038757399112721,
+      "f1": 0.8473158012439467,
+      "iou": 0.7350806076446159,
+      "tp": 5562008,
+      "tn": 126651200,
+      "fp": 729193,
+      "fn": 1275327
+    }
+  },
+  "checkpoint_stored_validation_metrics": {
+    "loss": 0.03400871284649298,
+    "accuracy": 0.9879722744226456,
+    "precision": 0.8850977191516963,
+    "recall": 0.8198179996292954,
+    "f1": 0.851208107941207,
+    "iou": 0.7409593624618339,
+    "tp": 2308819,
+    "tn": 63992878,
+    "fp": 299728,
+    "fn": 507439,
+    "batches": 512
+  },
+  "validation_threshold_record": {
+    "experiment": "changeformer_v6_levir_upstream_adamw20_seed42",
+    "checkpoint": "C:\\SatQuery_CF\\ChangeFormer\\runs\\changeformer_v6_levir_upstream_adamw20_seed42\\checkpoints\\best.pt",
+    "checkpoint_epoch": 20,
+    "seed": 42,
+    "model": "ChangeFormerV6",
+    "embed_dim": 256,
+    "parameter_count": 41026674,
+    "image_size": 256,
+    "inference_output": "outputs[-1]",
+    "threshold_selection_dataset": "validation",
+    "selection_metric": "f1",
+    "selection_tie_breaker_1": "iou",
+    "selection_tie_breaker_2": "closest_to_0.5",
+    "threshold_grid": {
+      "start": 0.05,
+      "stop": 0.95,
+      "step": 0.005
+    },
+    "frozen_threshold": 0.4349999999999998,
+    "validation_metrics_at_frozen_threshold": {
+      "threshold": 0.4349999999999998,
+      "accuracy": 0.9877951890230179,
+      "precision": 0.8626584082816277,
+      "recall": 0.8434546834842547,
+      "f1": 0.8529484689190303,
+      "iou": 0.7436008285654092,
+      "tp": 2375386,
+      "tn": 63914427,
+      "fp": 378179,
+      "fn": 440872
+    }
+  },
+  "artifacts": {
+    "test_probabilities": "C:\\SatQuery_CF\\ChangeFormer\\runs\\changeformer_v6_levir_upstream_adamw20_seed42\\test_final\\test_probabilities.npy",
+    "test_targets": "C:\\SatQuery_CF\\ChangeFormer\\runs\\changeformer_v6_levir_upstream_adamw20_seed42\\test_final\\test_targets.npy"
+  }
+}

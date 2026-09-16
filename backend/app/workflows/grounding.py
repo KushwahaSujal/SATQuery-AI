@@ -135,6 +135,12 @@ def _color_matches(score: float, color: str) -> bool:
     return score >= COLOR_MATCH_THRESHOLD.get(color, DEFAULT_COLOR_MATCH_THRESHOLD)
 
 
+_DETECTOR_LABELS = {
+    "grounding_dino": "Grounding DINO (proposes boxes, detector confidence)",
+    "locate_anything": "LocateAnything-3B (proposes boxes; no calibrated confidence, fixed 0.5)",
+}
+
+
 def run_grounding_pipeline(
     image: Any,
     query: str,
@@ -320,7 +326,7 @@ def run_grounding_pipeline(
     use_verifier = verifier is not None and verifier.is_available()
     deliberation: Dict[str, Any] = {
         "agents": {
-            "detector": "Grounding DINO (proposes boxes, detector confidence)",
+            "detector": _DETECTOR_LABELS.get(used_model, used_model),
             "reasoner": "V4 reasoner (ranks by query attributes)",
             "verifier": "RemoteCLIP contrastive verification" if use_verifier else None,
         },
@@ -443,6 +449,7 @@ def run_grounding_pipeline(
             answer = f"No {target_category} detected in the satellite image matching '{norm_query}'."
         else:
             answer = f"Candidates detected but none satisfied the reasoning criteria for '{norm_query}'."
+        deliberation["agents"]["detector"] = _DETECTOR_LABELS.get(used_model, used_model)
         return {
             "task": "grounding",
             "answer": answer,
@@ -451,6 +458,7 @@ def run_grounding_pipeline(
             "grounding_score": None,
             "sam2_score": None,
             "strategy": "V4_RELATIONAL",
+            "detector": used_model,
             "evidence": {
                 "target_category": target_category,
                 "selected_box": None,
@@ -677,6 +685,7 @@ def run_grounding_pipeline(
         answer = (f"Segmented {len(instances)} instances of {target_category} ({mask_pixel_count:,} px in total, "
                   f"mean SAM 2 score {sam2_score:.3f}). Top-ranked instance: {answer}")
 
+    deliberation["agents"]["detector"] = _DETECTOR_LABELS.get(used_model, used_model)
     return {
         "task": "grounding",
         "answer": answer,

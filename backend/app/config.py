@@ -170,6 +170,12 @@ class ModelSpec(BaseModel):
     input_size: Optional[int] = None
     max_native_side: Optional[int] = None
     model_id: Optional[str] = None
+    # Generative detectors (LocateAnything): load-time quantization and decoding defaults.
+    quantization: Optional[str] = None  # none | 8bit | 4bit
+    generation_mode: Optional[str] = None
+    temperature: Optional[float] = None
+    repetition_penalty: Optional[float] = None
+    max_new_tokens: Optional[int] = None
 
 
 class Config:

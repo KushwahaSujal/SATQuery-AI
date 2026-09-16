@@ -1743,3 +1743,153 @@ is from that file, not re-run.
 11 weak candidates for a grid with dozens of visible streets, and the verification agent independently rated the
 best of those only 3.7% confident it's a road. Lowering it further would mask trees and rooftops as roads, not
 find more of them — the fix is a road-shaped detector, not a lower bar."
+
+## Q-021 · LocateAnything-3B actually runs: four silent bugs, a vendored patch set, 4-bit by measurement
+
+**Recorded** 2026-09-16, atop `prototype` `0c8b74d`, working tree not yet committed. Weights:
+`nvidia/LocateAnything-3B` @ `c32291ca5e99`, sha256 of both shards verified against the Hub etags.
+Hardware: RTX 3070 8 GB, transformers 5.16.1, torch 2.14.0+cu130.
+
+### 1. Mechanism
+
+The adapter (`backend/app/ml/adapters/locate_anything.py`, merged in `c2d62ab`) had never produced a
+detection on any machine. Four independent faults sat in the load → decode path; each alone was enough:
+
+1. **Missing packages.** The only load path needed `bitsandbytes`; the vendor code also hard-imports
+   `peft`, `decord`, `lmdb`, `requests`. None were installed. `load_model()` raised, the error became
+   `ModelUnavailableError`, and `workflows/grounding.py` recorded
+   `fallback_to_locate_anything → skipped (model_not_available)` and carried on. No crash, no visible failure.
+2. **RoPE tables zero / NaN.** transformers 5.x builds models on the meta device; the vendor
+   `Qwen2RotaryEmbedding` computes `inv_freq`, `cos_cached`, `sin_cached` as non-persistent buffers in
+   `__init__`, which are never recomputed. After load, cos/sin were 0 and `inv_freq` NaN in all 36 layers,
+   so q·cos + rot(q)·sin = 0: uniform attention. Output was `<|im_end|>` instantly (hybrid) or endless
+   `<null>` (slow, 2.5 min). Fixed by building the tables lazily as plain attributes.
+3. **Wrong RoPE base.** Sandipan's compat patch read `getattr(config, "rope_theta", 10000.0)`; 5.x moved
+   the value to `config.rope_parameters`, so the model ran with 1e4 instead of the trained 1e6. Fixed to
+   read `rope_parameters`, raise if absent.
+4. **Never deterministic.** NVIDIA's `sample_tokens` ignores `do_sample` and samples iff
+   `temperature > 0`; the adapter passed 0.7. Now `temperature=0.0`.
+
+Also: the vendor `hybrid` (multi-token) decoder runs away on our tiles — after ~15 real boxes it keeps
+emitting boxes along the right image edge until `max_new_tokens` (airport tile: 341 boxes / 2050 tokens,
+identical at 4-bit and 8-bit, with and without repetition penalty). The block's top token really is
+`<box>` (p 0.82–0.90), so it is model behaviour in our stack, not the stop check. Default is now
+`generation_mode="slow"`.
+
+Sandipan's seven compat hunks plus fixes 2–3 now live in `third_party/locate_anything/patches/` and are
+applied/verified by `scripts/setup_locate_anything.py` (git blob hashes; `modeling_qwen2.py` patched blob
+`5a95084c`). Previously they existed only inside the gitignored `checkpoints/` directory of one machine.
+
+### 2. Rationale
+
+- **Slow over hybrid:** hybrid is a speed optimisation; on 512 px tiles slow takes 0.5–2.1 s at 4-bit,
+  and terminated on all 12 small-tile runs; hybrid was only exercised on the airport tile, where it ran away.
+- **4-bit over 8-bit, measured** (12 greedy runs on 512 px tiles vs a bf16 reference partly offloaded to
+  CPU; box match = IoU ≥ 0.5): 4-bit recall 22/26, precision 22/22, peak 4.74 GiB; 8-bit 26/26, 26/26,
+  peak 5.98 GiB but 2–10× slower per call (bnb int8). Plain 4-bit with the vision tower also quantized (the old
+  adapter config): 19/26, 19/22. 8-bit is exact but leaves no VRAM for Grounding DINO + SAM 2 on 8 GB.
+- **Vendored patches over a fork/re-upload:** the licence is NVIDIA non-commercial research; we fetch the
+  canonical weights and keep only our diffs.
+
+### 3. Blast radius
+
+- Any bf16 load of this model under transformers ≥ 5 without fix 2 produces garbage with no error.
+- If `transformers` changes again, `scripts/setup_locate_anything.py --check` catches file drift but not
+  new API breakage — re-run `tests/models/test_locate_anything.py`.
+- **Dense 1024 px queries are weak in every precision, bf16 included**: `building` hit the token cap
+  everywhere (4-bit: 97 boxes/1024 tokens/41 s); `road` gave 4 boxes at 4-bit (ended, 3.7 s) and 7 at bf16
+  (hit the 384-token cap). This does **not** close Q-020's road gap; no claim of that should be made.
+  `max_new_tokens` is now 1024 (~40 s worst case in the fallback path) and truncation is flagged in
+  result metadata (`truncated`).
+- Scores are still a constant 0.5; V4 ranking of LocateAnything candidates carries no model confidence.
+
+### 4. Verification
+
+- `scripts/setup_locate_anything.py --check --hash-weights` → exit 0; fresh `--skip-weights` install into an
+  empty dir → patches apply, hashes match; rerun is a no-op; a tampered file is restored.
+- Pristine upstream + both patches → `git hash-object` identical to the working checkpoint files.
+- `tests/unit/test_locate_anything_parsing.py` 17 passed; `tests/unit/test_grounding_locate_anything_fallback.py`
+  3 passed (fallback fires / is skipped when unavailable / not used when a detector is named);
+  `tests/models/test_locate_anything.py` 2 passed on the 3070 in 14 s (airport tile: ≥3 in-bounds boxes,
+  one with IoU ≥ 0.5 to the airliner, two calls byte-identical; tennis-court tile: `<box>None</box>`).
+- Through the real registry: load 6.7 s, 3.31 GiB allocated, 2.2 s then 1.5 s per call, identical outputs.
+
+### 5. Defence — "Was this model ever part of your pipeline before today?"
+
+"Wired in, yes; running, no. Until 2026-09-16 every call ended in `model_not_available` and the pipeline
+logged the fallback as skipped. Even once it loaded, its position encoding was zeroed by a library upgrade,
+so its first outputs were empty. Every number we quote for it was measured after those fixes, against a
+full-precision reference, and we quote its weakness on dense scenes alongside its strength on small tiles."
+
+### Correction, same day, before commit — the airport result was misread
+
+The claims above that the airport tile shows "an airliner plus gate aircraft" (in the session) and the model test's
+`>= 3 boxes` requirement were wrong: the tile has **one** aircraft; the long white shapes are jet bridges. The
+"recall/precision vs bf16" numbers in §2 measure agreement between precisions, not correctness. Measured through the
+real API path afterwards, with a new opt-in switch (`parameters.grounding_model` / `SATQUERY_GROUNDING_MODEL`):
+
+| Detector | Prompt | Proposed | Masked | Top-ranked |
+|---|---|---|---|---|
+| Grounding DINO | "mask the airplanes" | 4 | 3 | airliner, confidence 0.732 |
+| LocateAnything | "mask the airplanes" | 16 | 16 | jet bridge (fixed 0.5 score) |
+| LocateAnything | "mask the airplane" | 5 | 5 | jet bridge |
+| auto (default) | "mask the airplanes" | Grounding DINO ran | 3 | airliner |
+
+**LocateAnything is worse than Grounding DINO on this tile.** It stays fallback-only, and the default is unchanged.
+The model test now asserts only that the airliner is found and that the output is deterministic. Two reporting
+bugs found in the same run are fixed: `models_used` said `grounding_dino` when LocateAnything ran, and the
+deliberation's detector label was hard-coded to Grounding DINO.
+
+## Q-022 · "mark all roads": LocateAnything is not better than Grounding DINO; OOM retry freed nothing
+
+**Recorded** 2026-09-16, atop `prototype` `0c8b74d`, same uncommitted working tree as Q-021. Inputs:
+`satquery_change_before.png` (rural) and `satquery_change_after.png` (rural + suburb), both 1024×1024.
+User's question: a 3B model "is supposed to be more powerful" — shouldn't it beat Grounding DINO on roads?
+
+### 1. Mechanism
+
+Both images were sent through `POST /api/analyze` with `parameters.grounding_model` set per run:
+
+| Image | Detector | Proposed | Kept after filters | Result |
+|---|---|---|---|---|
+| rural | Grounding DINO | 2, then 5 relaxed | — | "No roads found": verifier contradicted all (helicopter, roundabout, storage tank) |
+| rural | LocateAnything | 1, then 1 relaxed | 0 | "No roads detected": its one box covered nearly the whole frame and was dropped by the full-frame filter |
+| suburb | Grounding DINO | 1, then 12 relaxed | 5 masked, 39,433 px | rural track + one street + two non-road patches (as in Q-020) |
+| suburb | LocateAnything | 6 | 4 masked, 317,021 px | rural track + the street grid, but each grid box is SAM-segmented as a block, so lawns between streets are masked too (~30 % of the image) |
+
+LocateAnything proposes the street grid, which Grounding DINO never did. But it proposes it as a few very large
+boxes, and box → SAM 2 turns each one into a neighbourhood-sized blob.
+
+### 2. Rationale — why a 3B generalist does not win here
+
+- **Output format.** Both detectors return axis-aligned boxes. A road is a thin connected line, and its box is a
+  large area. On the rural image the road's box was the whole frame, so it was rejected. Parameter count cannot
+  fix that; roads need a pixel-level (segmentation) model, as Q-020 §2 already concluded.
+- **Training data.** LocateAnything's published strengths are natural images, GUI, documents and pointing. Nothing
+  in its card targets overhead imagery, and on our airport tile it labelled jet bridges as airplanes (Q-021
+  correction). Its 3B parameters are mostly a language decoder, not overhead-image recognition.
+- **No confidence.** Every box scores 0.5, so neither the threshold nor the V4 reasoner can separate good boxes
+  from bad ones.
+
+### 3. Blast radius — the OOM retry bug
+
+The LocateAnything run on the rural image first **failed**. MoonViT attention on a 1024 px input requests
+822 MiB. That ran out of memory because Grounding DINO and RemoteCLIP were still loaded from the previous
+request. `SafeToolExecutor` then released every model and retried **inside the `except` block**. The live
+traceback still referenced the failed call's frames and the model, so 3.94 GiB stayed allocated and the reload
+was refused. This affected every tool that hits OOM, not just LocateAnything. The retry now runs after the
+`except` block, with `gc.collect()` and `torch.cuda.empty_cache()`. The same pattern was fixed in the
+LocateAnything adapter's own load retry. A related bug: the not-found result had no `detector` key, so
+`models_used` still said `grounding_dino`.
+
+### 4. Verification
+
+Re-ran Grounding DINO then LocateAnything on the rural image: the log shows the OOM, the release, and a
+**completed** retry. `tests/unit/test_gpu_oom_recovery.py` still passes (7 with `test_agent.py`). Jobs
+`f047ea6f…`, `231d4875…`, `99631e54…`, `5261dbe7…` hold the traces and overlays behind the table.
+
+### 5. Defence — "Why not just use the bigger model?"
+
+"We measured it. On roads it either returns one frame-sized box, which we reject, or a few neighbourhood-sized
+boxes that mask the lawns along with the streets. Grounding DINO under-detects the same roads. Neither is a road
+extractor. The fix is a segmentation model for linear features, not a larger box detector."
