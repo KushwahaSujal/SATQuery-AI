@@ -37,6 +37,12 @@ with only an integrated GPU. Written for branch `prototype`. Plan:
 Not uploaded: BLIP (1.5 GB, replaced by Qwen3-VL) and `satquery_changeformer_best.pt` (470 MB, unused copy).
 Of the local 3.6 GB `checkpoints/`, 1.1 GB is required and 0.65 GB optional.
 
+### Results retention
+
+Job results older than 7 days are deleted from the `satquery-results` volume automatically, at each
+container start (`SATQUERY_RESULTS_RETENTION_DAYS=7`, set in `deploy/modal_app.py`'s image). Locally
+this variable is unset, so results are kept forever.
+
 ---
 
 ## 1. Accounts and keys (once)
@@ -96,6 +102,13 @@ Fill in:
 ```
 
 After retraining a model, re-run only its `volume put` line with `--force`, then redeploy (step 5).
+
+If the Qwen3-VL measurement (step 2) does not beat BLIP, `scene_vlm` is disabled and VQA/captions fall
+back to BLIP — in that case BLIP must ALSO be uploaded:
+
+```bash
+.venv/bin/modal volume put satquery-models checkpoints/general_rs_vlm /checkpoints/general_rs_vlm
+```
 
 ## 5. Deploy
 
