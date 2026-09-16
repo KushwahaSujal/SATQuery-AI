@@ -1,17 +1,66 @@
 "use client";
 
-import { useState } from "react";
-import { authHeaders, getApiBase, getApiKey, setConnection } from "@/lib/connection";
+import { useRef, useState } from "react";
+import { authHeaders, getApiBase, setConnection, useConnection } from "@/lib/connection";
 
 type Check = { state: "idle" | "checking" | "waking" | "ok" | "error"; detail?: string };
 
+const SCHEME = /^https?:\/\//i;
+
+/**
+ * Uncontrolled inputs, remounted (via the `key` the caller passes) whenever the stored
+ * base/key changes from outside this render — e.g. right after hydration, when the real
+ * localStorage values replace the server-rendered defaults, or when another tab saves a
+ * different connection. Remounting resets `defaultValue`; it does not touch ConnectionPanel's
+ * own `check` state, so an in-flight "Save & test" (which itself triggers this same resync,
+ * with the values it just saved) never loses its status mid-flight.
+ */
+function ConnectionInputs({
+  base,
+  apiKey,
+  baseRef,
+  keyRef,
+}: {
+  base: string;
+  apiKey: string;
+  baseRef: React.RefObject<HTMLInputElement | null>;
+  keyRef: React.RefObject<HTMLInputElement | null>;
+}) {
+  return (
+    <>
+      <input
+        ref={baseRef}
+        className="w-full bg-transparent border border-[#262626] rounded px-2 py-1 font-mono-data text-[11px] text-[#d4d4d4]"
+        defaultValue={base}
+        placeholder="https://…modal.run or http://localhost:8000"
+      />
+      <input
+        ref={keyRef}
+        className="w-full bg-transparent border border-[#262626] rounded px-2 py-1 font-mono-data text-[11px] text-[#d4d4d4]"
+        defaultValue={apiKey}
+        type="password"
+        placeholder="API key (empty for local)"
+      />
+    </>
+  );
+}
+
 export default function ConnectionPanel() {
-  const [base, setBase] = useState(() => getApiBase());
-  const [key, setKey] = useState(() => getApiKey() ?? "");
+  const { base, key } = useConnection();
   const [check, setCheck] = useState<Check>({ state: "idle" });
+  const baseRef = useRef<HTMLInputElement>(null);
+  const keyRef = useRef<HTMLInputElement>(null);
 
   const save = async () => {
-    setConnection(base, key);
+    const nextBase = (baseRef.current?.value ?? "").trim();
+    const nextKey = (keyRef.current?.value ?? "").trim();
+
+    if (!SCHEME.test(nextBase)) {
+      setCheck({ state: "error", detail: "URL must start with http:// or https://" });
+      return;
+    }
+
+    setConnection(nextBase, nextKey);
     setCheck({ state: "checking" });
     const started = performance.now();
     const waking = setTimeout(() => setCheck({ state: "waking" }), 3000);
@@ -37,10 +86,7 @@ export default function ConnectionPanel() {
   return (
     <div className="border border-[#1a1a1a] rounded p-4 space-y-2" data-testid="connection-panel">
       <p className="font-mono-data text-[11px] text-[#737373] m-0">Backend connection</p>
-      <input className="w-full bg-transparent border border-[#262626] rounded px-2 py-1 font-mono-data text-[11px] text-[#d4d4d4]"
-             value={base} onChange={(e) => setBase(e.target.value)} placeholder="https://…modal.run or http://localhost:8000" />
-      <input className="w-full bg-transparent border border-[#262626] rounded px-2 py-1 font-mono-data text-[11px] text-[#d4d4d4]"
-             value={key} onChange={(e) => setKey(e.target.value)} type="password" placeholder="API key (empty for local)" />
+      <ConnectionInputs key={`${base}::${key ?? ""}`} base={base} apiKey={key ?? ""} baseRef={baseRef} keyRef={keyRef} />
       <div className="flex items-center gap-3">
         <button type="button" onClick={save}
                 className="font-mono-data text-[11px] border border-[#262626] rounded px-2.5 py-1 text-[#d4d4d4] hover:border-[#404040]">

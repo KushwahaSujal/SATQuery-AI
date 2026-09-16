@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
-import { mediaUrl } from "@/lib/connection";
+import { mediaUrl, useConnection } from "@/lib/connection";
 import { cn } from "@/lib/utils";
 import { useSegmentPlayer } from "@/hooks/useSegmentPlayer";
 import TrackOverlay, { type ObjectTrack } from "@/components/video/TrackOverlay";
@@ -18,6 +18,9 @@ const fmt = (s: number) => {
 
 export default function VideoIntelligencePage() {
   const { jobId } = useParams<{ jobId: string }>();
+  // Re-renders once real localStorage connection settings replace the SSR defaults, so
+  // videoStreamUrl/keyframe_url/downloadUrl below pick up the key instead of staying stale.
+  useConnection();
 
   const { data: videoJob, isLoading } = useQuery({
     queryKey: ["video-job", jobId],
