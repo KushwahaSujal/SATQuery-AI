@@ -149,7 +149,16 @@ async def apply_answer_writer(state: Any) -> Tuple[str, Optional[str]]:
     facts = state.answer
     if not state.answer or not answer_writer_enabled():
         return "template", facts
-    written = await asyncio.to_thread(write_answer, state.query, evidence_for_writer(state), state.answer)
+    try:
+        written = await asyncio.to_thread(write_answer, state.query, evidence_for_writer(state), state.answer)
+    except Exception as e:
+        logger.warning(f"Answer writer failed: {type(e).__name__}")
+        state.add_trace(
+            "Answer written from measured evidence",
+            status="warning",
+            details=f"source=template; writer error: {type(e).__name__}",
+        )
+        return "template", facts
     state.add_trace(
         "Answer written from measured evidence",
         status="success" if written.source != "template" else "warning",

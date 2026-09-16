@@ -105,3 +105,18 @@ def test_apply_answer_writer_replaces_answer_and_keeps_facts(monkeypatch):
     assert asyncio.run(writer.apply_answer_writer(state)) == ("gemini:x", TEMPLATE)
     assert state.answer == "Written answer."
     assert state.traces[0][0] == "Answer written from measured evidence"
+
+
+def test_apply_answer_writer_degrades_to_template_on_exception(monkeypatch):
+    monkeypatch.setenv("SATQUERY_ANSWER_WRITER", "on")
+
+    def boom(q, ev, t):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(writer, "write_answer", boom)
+    state = _state()
+    assert asyncio.run(writer.apply_answer_writer(state)) == ("template", TEMPLATE)
+    assert state.answer == TEMPLATE
+    assert len(state.traces) == 1
+    assert state.traces[0][0] == "Answer written from measured evidence"
+    assert state.traces[0][1] == "warning"
