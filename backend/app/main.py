@@ -13,6 +13,7 @@ from fastapi.responses import JSONResponse
 
 from backend.app.config import settings
 from backend.app.api.routes import router
+from backend.app.api.auth import ApiKeyMiddleware
 from backend.app.exceptions import SatQueryException
 from backend.app.logging import logger
 from backend.app.db.session import init_db_engine, dispose_db_engine
@@ -37,6 +38,9 @@ app = FastAPI(
     docs_url="/docs",
     redoc_url="/redoc"
 )
+
+# API key authentication middleware (added earlier sits inside CORS, so 401 responses still carry CORS headers)
+app.add_middleware(ApiKeyMiddleware)
 
 # CORS configuration
 app.add_middleware(

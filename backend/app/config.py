@@ -260,6 +260,8 @@ class Config:
             self.device.preferred = os.getenv("SATQUERY_DEVICE")
         if os.getenv("SATQUERY_RESULTS_DIR"):
             self.storage.results_dir = os.getenv("SATQUERY_RESULTS_DIR")
+        if os.getenv("SATQUERY_CORS_ORIGINS"):
+            self.app.cors_origins = [o.strip() for o in os.getenv("SATQUERY_CORS_ORIGINS").split(",") if o.strip()]
         if os.getenv("SATQUERY_MAX_UPLOAD_MB"):
             self.storage.max_upload_size_mb = int(os.getenv("SATQUERY_MAX_UPLOAD_MB"))
 
