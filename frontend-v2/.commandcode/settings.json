@@ -24,7 +24,10 @@
       "Shell(cd D:\\SATQuery-AI\\SATQuery-AI-backend\\frontend-v2 && type dev_output.log 2>nul & type .next\\dev\\logs\\next-development.log 2>nul)",
       "Shell(curl -s http://localhost:3001 2>&1 | findstr /i \"error turbopack\" 2>nul)",
       "Shell(curl -s -o nul -w \"%{http_code}\" http://localhost:3001 2>&1)",
-      "Shell(kill:*)"
+      "Shell(kill:*)",
+      "Shell(findstr:*)",
+      "Shell(copy \"D:\\SATQuery-AI\\SATQuery-AI-backend\\frontend-v2\\src\\app\\analysis\\[jobId]\\page.tsx\" \"%TEMP%\\jobpage.tsx\" >nul && echo copied)",
+      "Shell(copy \"%TEMP%\\jobpage.tsx\" \"D:\\SATQuery-AI\\SATQuery-AI-backend\\frontend-v2\\src\\app\\analysis\\[jobId]\\page.tsx\" /Y >nul && echo done)"
     ],
     "deny": [],
     "defaultMode": "default"

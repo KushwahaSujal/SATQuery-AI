@@ -108,15 +108,17 @@ export default function CommandPalette() {
       className="fixed inset-0 z-50 flex items-start justify-center pt-[18vh]"
       onClick={() => setIsOpen(false)}
     >
-      <div className="absolute inset-0 bg-black/60" />
+      <div className="absolute inset-0" style={{ background: "var(--scrim)" }} />
 
       <div
-        className="relative w-full max-w-120 rounded-xl border border-[var(--b2)] bg-[var(--s3)] shadow-2xl animate-slide-down overflow-hidden"
+        className="relative w-full max-w-120 rounded-xl animate-slide-down overflow-hidden"
+        style={{ border: "1px solid var(--border-strong)", background: "var(--surface-2)", boxShadow: "var(--shadow-lg)" }}
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center gap-2.5 px-4 border-b border-[var(--b1)]">
+        <div className="flex items-center gap-2.5 px-4" style={{ borderBottom: "1px solid var(--border)" }}>
           <svg
-            className="w-3.5 h-3.5 text-[var(--t4)] shrink-0"
+            className="w-3.5 h-3.5 shrink-0"
+            style={{ color: "var(--text-3)" }}
             fill="none"
             viewBox="0 0 24 24"
             strokeWidth={2}
@@ -136,24 +138,27 @@ export default function CommandPalette() {
               setActiveIdx(0);
             }}
             placeholder="Search workspace..."
-            className="w-full bg-transparent py-3 font-mono-data text-[13px] text-[var(--t0)] placeholder:text-[var(--t3)] outline-none"
+            className="w-full bg-transparent py-3 font-mono-data text-[13px] outline-none"
+            style={{ color: "var(--heading)" }}
           />
-          <kbd className="shrink-0 bg-[var(--s2)] border border-[var(--b2)] rounded px-1.5 py-0.5 font-mono-data text-[10px] text-[var(--t4)]">
-            ESC
-          </kbd>
+          <kbd
+            className="shrink-0 rounded px-1.5 py-0.5 font-mono-data text-[10px]"
+            style={{ background: "var(--surface-3)", border: "1px solid var(--border)", color: "var(--text-3)" }}
+          >ESC</kbd>
         </div>
 
         <div className="py-1.5 max-h-72 overflow-y-auto">
           {filtered.length === 0 ? (
-            <p className="px-4 py-6 text-center font-mono-data text-[12px] text-[var(--t3)]">
+            <p className="px-4 py-6 text-center font-mono-data text-[12px]" style={{ color: "var(--text-3)" }}>
               No results for &ldquo;{query}&rdquo;
             </p>
           ) : (
             Object.entries(groups).map(([group, items]) => (
               <div key={group}>
-                <div className="px-4 pt-2.5 pb-1 font-mono-data text-[10px] font-medium tracking-[0.08em] uppercase text-[var(--t3)]">
-                  {group}
-                </div>
+                <div
+                  className="px-4 pt-2.5 pb-1 font-mono-data text-[10px] font-medium tracking-[0.08em] uppercase"
+                  style={{ color: "var(--text-3)" }}
+                >{group}</div>
                 {items.map((item) => {
                   const globalIdx = filtered.indexOf(item);
                   return (
@@ -163,23 +168,20 @@ export default function CommandPalette() {
                       onClick={item.action}
                       className={cn(
                         "w-full flex items-center justify-between gap-3 px-4 py-2 text-left transition-none",
-                        activeIdx === globalIdx ? "bg-[var(--s2)]" : "",
                       )}
+                      style={activeIdx === globalIdx ? { background: "var(--surface-3)" } : undefined}
                     >
                       <div>
-                        <div className="text-[13px] text-[var(--t1)]">
-                          {item.label}
-                        </div>
+                        <div className="text-[13px]" style={{ color: "var(--text)" }}>{item.label}</div>
                         {item.description && (
-                          <div className="font-mono-data text-[11px] text-[var(--t4)] mt-0.5">
-                            {item.description}
-                          </div>
+                          <div className="font-mono-data text-[11px] mt-0.5" style={{ color: "var(--text-3)" }}>{item.description}</div>
                         )}
                       </div>
                       {item.shortcut && (
-                        <kbd className="shrink-0 bg-[var(--s2)] border border-[var(--b1)] rounded px-1.5 py-0.5 font-mono-data text-[10px] text-[var(--t4)]">
-                          {item.shortcut}
-                        </kbd>
+                        <kbd
+                          className="shrink-0 rounded px-1.5 py-0.5 font-mono-data text-[10px]"
+                          style={{ background: "var(--surface-3)", border: "1px solid var(--border)", color: "var(--text-3)" }}
+                        >{item.shortcut}</kbd>
                       )}
                     </button>
                   );
@@ -189,16 +191,13 @@ export default function CommandPalette() {
           )}
         </div>
 
-        <div className="flex items-center gap-4 px-4 py-2 border-t border-[var(--b1)] font-mono-data text-[10px] text-[var(--t4)]">
-          <span>
-            <kbd className="text-[var(--t3)]">↑↓</kbd> navigate
-          </span>
-          <span>
-            <kbd className="text-[var(--t3)]">↵</kbd> open
-          </span>
-          <span>
-            <kbd className="text-[var(--t3)]">ESC</kbd> close
-          </span>
+        <div
+          className="flex items-center gap-4 px-4 py-2 font-mono-data text-[10px]"
+          style={{ borderTop: "1px solid var(--border)", color: "var(--text-3)" }}
+        >
+          <span><kbd style={{ color: "var(--text-2)" }}>&#8593;&#8595;</kbd> navigate</span>
+          <span><kbd style={{ color: "var(--text-2)" }}>&#8629;</kbd> open</span>
+          <span><kbd style={{ color: "var(--text-2)" }}>ESC</kbd> close</span>
         </div>
       </div>
     </div>

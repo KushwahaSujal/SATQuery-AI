@@ -14,10 +14,10 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" suppressHydrationWarning className={`${GeistSans.variable} ${GeistMono.variable}`}>
-      <body suppressHydrationWarning className="bg-[#050911] text-slate-200 font-sans min-h-screen antialiased flex overflow-x-hidden selection:bg-teal-500 selection:text-black">
+      <body suppressHydrationWarning className="font-sans min-h-screen antialiased flex overflow-x-hidden" style={{ background: "var(--canvas)", color: "var(--text)" }}>
         <Providers>
           <Sidebar />
-          <main className="flex-1 flex flex-col min-w-0 bg-[#050911] relative">
+          <main className="flex-1 flex flex-col min-w-0 relative" style={{ background: "var(--workspace)" }}>
             <TopBar />
             <div className="flex-1 overflow-y-auto">
               {children}

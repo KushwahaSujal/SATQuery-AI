@@ -7,17 +7,20 @@ interface StatusBadgeProps {
 
 export function StatusBadge({ status, className }: StatusBadgeProps) {
   const config = {
-    completed: { bg: "bg-emerald-950/60", text: "text-emerald-400", border: "border-emerald-800/40", dot: "bg-emerald-400", label: "Completed" },
-    processing: { bg: "bg-amber-950/60", text: "text-amber-400", border: "border-amber-800/40", dot: "bg-amber-400 animate-pulse", label: "Processing" },
-    failed: { bg: "bg-rose-950/60", text: "text-rose-400", border: "border-rose-800/40", dot: "bg-rose-500", label: "Failed" },
-    queued: { bg: "bg-slate-800/60", text: "text-slate-400", border: "border-slate-700/40", dot: "bg-slate-400", label: "Queued" },
+    completed: { bg: "var(--status-completed-bg)", text: "var(--status-completed-text)", dot: "var(--status-completed-dot)", label: "Completed" },
+    processing: { bg: "var(--status-processing-bg)", text: "var(--status-processing-text)", dot: "var(--status-processing-dot)", label: "Processing" },
+    failed: { bg: "var(--status-failed-bg)", text: "var(--status-failed-text)", dot: "var(--status-failed-dot)", label: "Failed" },
+    queued: { bg: "var(--surface-3)", text: "var(--text-2)", dot: "var(--text-3)", label: "Queued" },
   };
 
   const c = config[status];
 
   return (
-    <span className={cn(`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-medium ${c.bg} ${c.text} border ${c.border}`, className)}>
-      <span className={`w-1.5 h-1.5 rounded-full ${c.dot}`} />
+    <span
+      className={cn("inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-medium border border-transparent", className)}
+      style={{ background: c.bg, color: c.text }}
+    >
+      <span className="w-1.5 h-1.5 rounded-full" style={{ background: c.dot }} />
       {c.label}
     </span>
   );

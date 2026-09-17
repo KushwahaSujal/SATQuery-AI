@@ -26,38 +26,51 @@ const QUICK_LINKS = [
 
 export default function DocumentationPage() {
   return (
-    <div className="flex-1 overflow-y-auto px-6 py-5">
+    <div className="flex-1 overflow-y-auto px-6 py-5" style={{ background: "var(--canvas)" }}>
       <div className="grid grid-cols-12 gap-5 max-w-[1440px] mx-auto">
         {/* Main content */}
         <main className="col-span-12 xl:col-span-9 space-y-5">
           {/* Hero */}
-          <section className="relative rounded-2xl border border-[#142b47] bg-gradient-to-r from-[#071324] via-[#091a32] to-[#07152b] overflow-hidden p-6 lg:p-8 shadow-xl">
+          <section
+            className="relative rounded-2xl overflow-hidden p-6 lg:p-8"
+            style={{ border: "1px solid var(--border-strong)", background: "var(--surface-2)", boxShadow: "var(--shadow-lg)" }}
+          >
             <div className="absolute inset-0 pointer-events-none overflow-hidden">
-              <div className="absolute -right-24 -bottom-48 w-[460px] h-[460px] rounded-full border border-cyan-400/30 bg-gradient-to-t from-cyan-600/20 via-blue-700/10 to-transparent blur-sm" />
-              <div className="absolute right-0 top-0 bottom-0 w-1/2 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-cyan-500/20 via-sky-600/5 to-transparent" />
+              <div className="absolute -right-24 -bottom-48 w-[460px] h-[460px] rounded-full" style={{ border: "1px solid var(--cyan-glow)", background: "radial-gradient(var(--cyan-glow), transparent 60%)" }} />
             </div>
             <div className="relative z-10 max-w-xl">
-              <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-cyan-950/60 border border-cyan-500/40 text-cyan-300 text-[11px] font-semibold tracking-wider uppercase mb-3 shadow-[0_0_10px_rgba(0,229,255,0.15)]">
-                <svg className="w-3.5 h-3.5 text-cyan-400" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" strokeLinecap="round" strokeLinejoin="round" /></svg>
+              <div
+                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold tracking-wider uppercase mb-3"
+                style={{ background: "var(--cyan-glow)", border: "1px solid var(--cyan)", color: "var(--cyan)" }}
+              >
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" strokeLinecap="round" strokeLinejoin="round" /></svg>
                 Documentation
               </div>
-              <h1 className="text-2xl lg:text-3xl font-bold text-white tracking-tight leading-snug">SatQuery AI Documentation</h1>
-              <p className="text-xs lg:text-sm text-slate-300 mt-2 leading-relaxed">Everything you need to build, analyze and get insights from satellite data.</p>
+              <h1 className="text-2xl lg:text-3xl font-bold tracking-tight leading-snug" style={{ color: "var(--heading)" }}>SatQuery AI Documentation</h1>
+              <p className="text-xs lg:text-sm mt-2 leading-relaxed" style={{ color: "var(--text)" }}>Everything you need to build, analyze and get insights from satellite data.</p>
             </div>
 
             {/* Quick cards */}
-            <div className="relative z-10 grid grid-cols-2 sm:grid-cols-4 gap-3 mt-6 pt-5 border-t border-[#132d4e]/80">
+            <div className="relative z-10 grid grid-cols-2 sm:grid-cols-4 gap-3 mt-6 pt-5" style={{ borderTop: "1px solid var(--border)" }}>
               {[
-                { icon: "🚀", title: "Quick Start", desc: "Get up and running in minutes" },
-                { icon: "💻", title: "API Reference", desc: "Explore all endpoints" },
-                { icon: "▶️", title: "Tutorials", desc: "Step-by-step guides" },
-                { icon: "✅", title: "Examples", desc: "Real use cases & workflows" },
+                { icon: "\ud83d\ude80", title: "Quick Start", desc: "Get up and running in minutes" },
+                { icon: "\ud83d\udcbb", title: "API Reference", desc: "Explore all endpoints" },
+                { icon: "\u25b6\ufe0f", title: "Tutorials", desc: "Step-by-step guides" },
+                { icon: "\u2705", title: "Examples", desc: "Real use cases & workflows" },
               ].map((item) => (
-                <Link key={item.title} href="#" className="p-3 rounded-xl bg-[#09182d]/80 border border-[#163359] hover:border-cyan-500/50 hover:bg-[#0d213d] transition flex items-start gap-2.5 group">
-                  <div className="p-1.5 rounded-lg bg-cyan-950/70 border border-cyan-500/30 text-cyan-400 shrink-0 text-sm">{item.icon}</div>
+                <Link
+                  key={item.title}
+                  href="#"
+                  className="p-3 rounded-xl transition flex items-start gap-2.5 group"
+                  style={{ background: "var(--surface-2)", border: "1px solid var(--border)" }}
+                >
+                  <div
+                    className="p-1.5 rounded-lg shrink-0 text-sm"
+                    style={{ background: "var(--cyan-glow)", border: "1px solid var(--cyan)", color: "var(--cyan)" }}
+                  >{item.icon}</div>
                   <div>
-                    <h3 className="text-xs font-semibold text-white group-hover:text-cyan-300">{item.title}</h3>
-                    <p className="text-[10px] text-slate-400 mt-0.5">{item.desc}</p>
+                    <h3 className="text-xs font-semibold" style={{ color: "var(--heading)" }}>{item.title}</h3>
+                    <p className="text-[10px] mt-0.5" style={{ color: "var(--text-2)" }}>{item.desc}</p>
                   </div>
                 </Link>
               ))}
@@ -67,20 +80,24 @@ export default function DocumentationPage() {
           {/* Getting Started */}
           <section className="space-y-3">
             <div className="flex items-center gap-2.5">
-              <div className="p-1.5 rounded-lg bg-cyan-950/60 border border-cyan-500/30 text-cyan-400">🚀</div>
+              <div className="p-1.5 rounded-lg" style={{ background: "var(--cyan-glow)", border: "1px solid var(--cyan)", color: "var(--cyan)" }}>\ud83d\ude80</div>
               <div>
-                <h2 className="text-sm font-bold text-white tracking-tight">1. Getting Started</h2>
-                <p className="text-[11px] text-slate-400">Learn the basics and get your first analysis running.</p>
+                <h2 className="text-sm font-bold tracking-tight" style={{ color: "var(--heading)" }}>1. Getting Started</h2>
+                <p className="text-[11px]" style={{ color: "var(--text-2)" }}>Learn the basics and get your first analysis running.</p>
               </div>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
               {QUICK_START.map((item) => (
-                <div key={item.title} className="p-4 rounded-xl bg-[#081426] border border-[#142c4c] hover:border-cyan-500/40 transition group">
-                  <h3 className="text-xs font-semibold text-white group-hover:text-cyan-300">{item.title}</h3>
-                  <p className="text-[11px] text-slate-400 mt-1 leading-relaxed">{item.desc}</p>
-                  <div className="flex items-center justify-between mt-3 pt-2 border-t border-[#10233c]">
-                    <span className="text-[10px] text-slate-400">{item.time}</span>
-                    <span className="text-[11px] font-semibold text-cyan-400">Read →</span>
+                <div
+                  key={item.title}
+                  className="p-4 rounded-xl transition group"
+                  style={{ background: "var(--surface-2)", border: "1px solid var(--border)" }}
+                >
+                  <h3 className="text-xs font-semibold" style={{ color: "var(--heading)" }}>{item.title}</h3>
+                  <p className="text-[11px] mt-1 leading-relaxed" style={{ color: "var(--text-2)" }}>{item.desc}</p>
+                  <div className="flex items-center justify-between mt-3 pt-2" style={{ borderTop: "1px solid var(--border)" }}>
+                    <span className="text-[10px]" style={{ color: "var(--text-2)" }}>{item.time}</span>
+                    <span className="text-[11px] font-semibold" style={{ color: "var(--cyan)" }}>Read &rarr;</span>
                   </div>
                 </div>
               ))}
@@ -90,22 +107,26 @@ export default function DocumentationPage() {
           {/* Core Guides */}
           <section className="space-y-3">
             <div className="flex items-center gap-2.5">
-              <div className="p-1.5 rounded-lg bg-cyan-950/60 border border-cyan-500/30 text-cyan-400">🧭</div>
+              <div className="p-1.5 rounded-lg" style={{ background: "var(--cyan-glow)", border: "1px solid var(--cyan)", color: "var(--cyan)" }}>\ud83e\udded</div>
               <div>
-                <h2 className="text-sm font-bold text-white tracking-tight">2. Core Guides</h2>
-                <p className="text-[11px] text-slate-400">In-depth guides to help you master SatQuery AI.</p>
+                <h2 className="text-sm font-bold tracking-tight" style={{ color: "var(--heading)" }}>2. Core Guides</h2>
+                <p className="text-[11px]" style={{ color: "var(--text-2)" }}>In-depth guides to help you master SatQuery AI.</p>
               </div>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
               {CORE_GUIDES.map((item) => (
-                <div key={item.title} className="p-3.5 rounded-xl bg-[#081426] border border-[#142c4c] hover:border-cyan-500/40 transition flex flex-col justify-between group">
+                <div
+                  key={item.title}
+                  className="p-3.5 rounded-xl transition flex flex-col justify-between group"
+                  style={{ background: "var(--surface-2)", border: "1px solid var(--border)" }}
+                >
                   <div>
-                    <h3 className="text-xs font-semibold text-white group-hover:text-cyan-300">{item.title}</h3>
-                    <p className="text-[10px] text-slate-400 mt-1 leading-relaxed">{item.desc}</p>
+                    <h3 className="text-xs font-semibold" style={{ color: "var(--heading)" }}>{item.title}</h3>
+                    <p className="text-[10px] mt-1 leading-relaxed" style={{ color: "var(--text-2)" }}>{item.desc}</p>
                   </div>
-                  <div className="flex items-center justify-between mt-3 pt-2 border-t border-[#10233c] text-[10px] text-slate-400">
+                  <div className="flex items-center justify-between mt-3 pt-2 text-[10px]" style={{ borderTop: "1px solid var(--border)", color: "var(--text-2)" }}>
                     <span>{item.time}</span>
-                    <span className="text-cyan-400">→</span>
+                    <span style={{ color: "var(--cyan)" }}>&rarr;</span>
                   </div>
                 </div>
               ))}
@@ -116,43 +137,50 @@ export default function DocumentationPage() {
         {/* Right sidebar */}
         <aside className="col-span-12 xl:col-span-3 space-y-4">
           {/* Quick Links */}
-          <div className="rounded-xl border border-[#132a47] bg-[#07111f] p-4 shadow-md">
-            <h3 className="text-xs font-bold text-white tracking-wide mb-3">Quick Links</h3>
+          <div
+            className="rounded-xl p-4"
+            style={{ border: "1px solid var(--border)", background: "var(--surface)", boxShadow: "var(--shadow-md)" }}
+          >
+            <h3 className="text-xs font-bold tracking-wide mb-3" style={{ color: "var(--heading)" }}>Quick Links</h3>
             <div className="space-y-1 text-xs">
               {QUICK_LINKS.map((link) => (
-                <Link key={link.label} href="#" className="flex items-center justify-between p-2 rounded-lg hover:bg-[#0c1e34] transition group">
+                <Link key={link.label} href="#" className="flex items-center justify-between p-2 rounded-lg transition group" style={{ color: "var(--text)" }}>
                   <div>
-                    <div className="text-[11px] font-semibold text-slate-200 group-hover:text-cyan-300">{link.label}</div>
-                    <div className="text-[9px] text-slate-400">{link.desc}</div>
+                    <div className="text-[11px] font-semibold" style={{ color: "var(--text)" }}>{link.label}</div>
+                    <div className="text-[9px]" style={{ color: "var(--text-2)" }}>{link.desc}</div>
                   </div>
-                  <svg className="w-3.5 h-3.5 text-slate-500 group-hover:text-cyan-400" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                  <svg className="w-3.5 h-3.5" style={{ color: "var(--text-3)" }} fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6" strokeLinecap="round" strokeLinejoin="round" /></svg>
                 </Link>
               ))}
             </div>
           </div>
 
           {/* System Status */}
-          <div className="rounded-xl border border-[#132a47] bg-[#07111f] p-4 shadow-md">
+          <div
+            className="rounded-xl p-4"
+            style={{ border: "1px solid var(--border)", background: "var(--surface)", boxShadow: "var(--shadow-md)" }}
+          >
             <div className="flex items-center justify-between mb-3">
-              <h3 className="text-xs font-bold text-white tracking-wide">System Status</h3>
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-950/60 border border-emerald-500/40 text-[9px] font-semibold text-emerald-400">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+              <h3 className="text-xs font-bold tracking-wide" style={{ color: "var(--heading)" }}>System Status</h3>
+              <span
+                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-semibold"
+                style={{ background: "var(--status-completed-bg)", color: "var(--status-completed-text)", border: "1px solid var(--green)" }}
+              >
+                <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: "var(--green)" }} />
                 All Systems Operational
               </span>
             </div>
             <div className="grid grid-cols-3 gap-2">
-              <div className="bg-[#0b1b30] border border-[#142c4b] rounded-lg p-2 text-center">
-                <div className="text-[9px] text-slate-400 font-medium">API Uptime</div>
-                <div className="text-xs font-bold text-cyan-300 mt-1">99.9%</div>
-              </div>
-              <div className="bg-[#0b1b30] border border-[#142c4b] rounded-lg p-2 text-center">
-                <div className="text-[9px] text-slate-400 font-medium">Queue</div>
-                <div className="text-xs font-bold text-cyan-300 mt-1">2 jobs</div>
-              </div>
-              <div className="bg-[#0b1b30] border border-[#142c4b] rounded-lg p-2 text-center">
-                <div className="text-[9px] text-slate-400 font-medium">Users</div>
-                <div className="text-xs font-bold text-cyan-300 mt-1">12.4K</div>
-              </div>
+              {[
+                { label: "API Uptime", value: "99.9%" },
+                { label: "Queue", value: "2 jobs" },
+                { label: "Users", value: "12.4K" },
+              ].map((stat) => (
+                <div key={stat.label} className="rounded-lg p-2 text-center" style={{ background: "var(--surface-3)", border: "1px solid var(--border)" }}>
+                  <div className="text-[9px] font-medium" style={{ color: "var(--text-2)" }}>{stat.label}</div>
+                  <div className="text-xs font-bold mt-1" style={{ color: "var(--cyan)" }}>{stat.value}</div>
+                </div>
+              ))}
             </div>
           </div>
         </aside>
