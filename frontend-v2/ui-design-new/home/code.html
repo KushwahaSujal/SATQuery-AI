@@ -1,0 +1,538 @@
+<!DOCTYPE html>
+
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>SatQuery AI - Remote Sensing Intelligence Dashboard</title>
+<!-- Tailwind CSS v3 CDN with forms & container queries plugins -->
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              dark: '#050911',
+              card: '#0c1322',
+              cardBorder: '#1c283f',
+              cyan: '#00d5be',
+              neonCyan: '#06f0d4',
+              tealGlow: '#00f2fe',
+              emerald: '#10b981',
+              darkBlue: '#0a101d'
+            }
+          },
+          fontFamily: {
+            sans: ['Inter', 'system-ui', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'sans-serif'],
+          }
+        }
+      }
+    }
+  </script>
+<!-- Lucide Icons CDN -->
+<script src="https://unpkg.com/lucide@latest"></script>
+<!-- Google Fonts -->
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&amp;display=swap" rel="stylesheet"/>
+<style data-purpose="custom-scrollbars-and-glow">
+    /* Custom subtle dark scrollbar */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #060b13;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #1b263b;
+      border-radius: 4px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #2a3c5a;
+    }
+
+    /* Glow utilities */
+    .glow-cyan-text {
+      text-shadow: 0 0 20px rgba(6, 240, 212, 0.45);
+    }
+    .hero-glow-overlay {
+      background: radial-gradient(circle at 80% 25%, rgba(0, 213, 190, 0.12) 0%, rgba(10, 17, 31, 0) 65%);
+    }
+  </style>
+</head>
+<body class="bg-[#050911] text-slate-200 font-sans min-h-screen antialiased flex overflow-x-hidden selection:bg-teal-500 selection:text-black">
+<!-- BEGIN: LeftSidebarNavigation -->
+<aside class="w-64 min-w-[16rem] max-w-[16rem] bg-[#070c17]/95 border-r border-[#162033] flex flex-col justify-between p-4 sticky top-0 h-screen overflow-y-auto shrink-0 z-40" data-purpose="sidebar">
+<div>
+<!-- Brand Logo Header -->
+<div class="flex items-center gap-3 px-2 py-3 mb-4">
+<div class="w-9 h-9 rounded-xl bg-gradient-to-tr from-[#00d5be] to-[#0077b6] flex items-center justify-center shadow-lg shadow-teal-500/20 text-slate-950 font-bold">
+<i class="w-5 h-5 text-slate-950 stroke-[2.5]" data-lucide="crosshair"></i>
+</div>
+<div>
+<div class="flex items-center gap-1.5 leading-none">
+<span class="text-lg font-bold text-white tracking-tight">SatQuery</span>
+<span class="text-xs font-bold px-1.5 py-0.5 rounded bg-teal-500/20 text-[#00d5be] border border-teal-500/30">AI</span>
+</div>
+<p class="text-[10px] text-slate-400 font-medium tracking-wide mt-1">Remote Sensing · Vision · Intelligence</p>
+</div>
+</div>
+<!-- Top Primary Navigation Menu -->
+<nav class="space-y-1 text-sm font-medium">
+<a class="flex items-center gap-3 px-3 py-2.5 rounded-lg bg-[#0d222b] text-[#00d5be] border border-teal-500/30 transition-all font-semibold" href="#">
+<i class="w-4 h-4 text-[#00d5be]" data-lucide="home"></i>
+<span>Home</span>
+</a>
+<a class="flex items-center gap-3 px-3 py-2 text-slate-300 hover:text-white hover:bg-slate-800/40 rounded-lg transition-all" href="#">
+<i class="w-4 h-4 text-slate-400" data-lucide="plus-circle"></i>
+<span>New Analysis</span>
+</a>
+<a class="flex items-center gap-3 px-3 py-2 text-slate-300 hover:text-white hover:bg-slate-800/40 rounded-lg transition-all" href="#">
+<i class="w-4 h-4 text-slate-400" data-lucide="clock"></i>
+<span>History</span>
+</a>
+<a class="flex items-center gap-3 px-3 py-2 text-slate-300 hover:text-white hover:bg-slate-800/40 rounded-lg transition-all" href="#">
+<i class="w-4 h-4 text-slate-400" data-lucide="database"></i>
+<span>Datasets</span>
+</a>
+<a class="flex items-center gap-3 px-3 py-2 text-slate-300 hover:text-white hover:bg-slate-800/40 rounded-lg transition-all" href="#">
+<i class="w-4 h-4 text-slate-400" data-lucide="file-text"></i>
+<span>Reports</span>
+</a>
+</nav>
+<!-- Analysis Tools Section -->
+<div class="mt-7">
+<p class="px-3 text-[11px] font-semibold text-slate-400 tracking-wider uppercase mb-2">Analysis Tools</p>
+<nav class="space-y-1 text-sm font-medium">
+<a class="flex items-center gap-3 px-3 py-2 text-slate-300 hover:text-white hover:bg-slate-800/40 rounded-lg transition-all" href="#">
+<i class="w-4 h-4 text-slate-400" data-lucide="message-square"></i>
+<span>AI Assistant</span>
+</a>
+<a class="flex items-center gap-3 px-3 py-2 text-slate-300 hover:text-white hover:bg-slate-800/40 rounded-lg transition-all" href="#">
+<i class="w-4 h-4 text-slate-400" data-lucide="eye"></i>
+<span>VQA</span>
+</a>
+<a class="flex items-center gap-3 px-3 py-2 text-slate-300 hover:text-white hover:bg-slate-800/40 rounded-lg transition-all" href="#">
+<i class="w-4 h-4 text-slate-400" data-lucide="target"></i>
+<span>Grounding</span>
+</a>
+<a class="flex items-center gap-3 px-3 py-2 text-slate-300 hover:text-white hover:bg-slate-800/40 rounded-lg transition-all" href="#">
+<i class="w-4 h-4 text-slate-400" data-lucide="arrow-left-right"></i>
+<span>Change Analysis</span>
+</a>
+<a class="flex items-center gap-3 px-3 py-2 text-slate-300 hover:text-white hover:bg-slate-800/40 rounded-lg transition-all" href="#">
+<i class="w-4 h-4 text-slate-400" data-lucide="layers"></i>
+<span>Optical + SAR Fusion</span>
+</a>
+</nav>
+</div>
+<!-- Resources Section -->
+<div class="mt-7">
+<p class="px-3 text-[11px] font-semibold text-slate-400 tracking-wider uppercase mb-2">Resources</p>
+<nav class="space-y-1 text-sm font-medium">
+<a class="flex items-center gap-3 px-3 py-2 text-slate-300 hover:text-white hover:bg-slate-800/40 rounded-lg transition-all" href="#">
+<i class="w-4 h-4 text-slate-400" data-lucide="book-open"></i>
+<span>Documentation</span>
+</a>
+<a class="flex items-center gap-3 px-3 py-2 text-slate-300 hover:text-white hover:bg-slate-800/40 rounded-lg transition-all" href="#">
+<i class="w-4 h-4 text-slate-400" data-lucide="help-circle"></i>
+<span>Help &amp; Support</span>
+</a>
+</nav>
+</div>
+</div>
+<!-- Sidebar Bottom Card: Sustainability/Impact -->
+<div class="mt-6 p-3.5 rounded-xl bg-gradient-to-b from-[#09181c] to-[#0b1b22] border border-teal-500/20 relative overflow-hidden group">
+<!-- Topographic line background effect -->
+<div class="absolute inset-0 opacity-15 bg-[radial-gradient(#00d5be_1px,transparent_1px)] [background-size:12px_12px] pointer-events-none"></div>
+<div class="relative z-10 flex items-start gap-2.5">
+<div class="w-7 h-7 rounded-lg bg-teal-500/20 border border-teal-400/30 flex items-center justify-center shrink-0 mt-0.5">
+<i class="w-4 h-4 text-[#00d5be]" data-lucide="leaf"></i>
+</div>
+<div>
+<p class="text-xs font-semibold text-white leading-snug">Better insights <br/><span class="text-slate-300 font-normal">for a healthier planet</span></p>
+<p class="text-[10px] text-slate-400 leading-tight mt-1">AI-powered remote sensing for a sustainable future.</p>
+</div>
+</div>
+</div>
+</aside>
+<!-- END: LeftSidebarNavigation -->
+<!-- BEGIN: MainContentArea -->
+<main class="flex-1 flex flex-col min-w-0 bg-[#050911] relative">
+<!-- BEGIN: TopBar -->
+<header class="h-16 border-b border-[#162033] bg-[#070d18]/80 backdrop-blur-md px-6 flex items-center justify-between sticky top-0 z-30">
+<!-- Central/Left Search Input -->
+<div class="relative w-full max-w-xl">
+<div class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
+<i class="w-4 h-4" data-lucide="search"></i>
+</div>
+<input class="w-full pl-10 pr-12 py-2 bg-[#0c1424] border border-[#1d2a44] rounded-lg text-sm text-slate-200 placeholder-slate-400 focus:outline-none focus:border-teal-500/60 focus:ring-1 focus:ring-teal-500/40 transition-all" placeholder='Search anything... (e.g. "urban expansion in Delhi")' type="text"/>
+<div class="absolute inset-y-0 right-0 pr-2.5 flex items-center">
+<kbd class="px-2 py-0.5 text-[10px] font-mono text-slate-400 bg-[#142036] border border-[#233352] rounded shadow-sm flex items-center gap-0.5">
+<span>⌘</span><span>K</span>
+</kbd>
+</div>
+</div>
+<!-- Right Controls: Theme Toggle, Notifications, User Profile -->
+<div class="flex items-center gap-4 ml-4 shrink-0">
+<!-- Sun / Moon Toggle -->
+<div class="flex items-center bg-[#0c1424] border border-[#1d2a44] rounded-full p-1 text-slate-400">
+<button class="p-1 rounded-full text-slate-400 hover:text-white transition-colors" title="Light theme" type="button">
+<i class="w-4 h-4" data-lucide="sun"></i>
+</button>
+<button class="p-1 rounded-full bg-[#1b273d] text-teal-300 shadow-sm" title="Dark theme active" type="button">
+<i class="w-4 h-4" data-lucide="moon"></i>
+</button>
+</div>
+<!-- Notification Bell with Counter -->
+<button class="relative p-2 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-[#0e172a] transition-all" type="button">
+<i class="w-4 h-4" data-lucide="bell"></i>
+<span class="absolute top-1 right-1 w-4 h-4 bg-red-500 text-white rounded-full text-[9px] font-bold flex items-center justify-center border-2 border-[#070d18]">1</span>
+</button>
+<!-- Profile / Account Menu -->
+<div class="flex items-center gap-2.5 pl-2 border-l border-[#1b263b] cursor-pointer group">
+<div class="w-8 h-8 rounded-full bg-gradient-to-tr from-slate-700 to-slate-600 border border-slate-500 flex items-center justify-center text-xs font-semibold text-white">
+            SM
+          </div>
+<span class="text-sm font-medium text-slate-200 group-hover:text-teal-300 transition-colors hidden sm:inline-block">Sandipan Majumder</span>
+<i class="w-3.5 h-3.5 text-slate-400 group-hover:text-white transition-colors" data-lucide="chevron-down"></i>
+</div>
+</div>
+</header>
+<!-- END: TopBar -->
+<!-- BEGIN: HeroSection -->
+<section class="relative px-8 pt-8 pb-10 border-b border-[#141e30] overflow-hidden">
+<!-- Background Ambient Glow & Planet Graphic -->
+<div class="absolute inset-0 hero-glow-overlay pointer-events-none"></div>
+<!-- Semi-transparent background Earth satellite artwork from snapshot reference -->
+<div class="absolute right-0 top-0 w-3/5 h-full opacity-35 pointer-events-none select-none overflow-hidden mix-blend-screen hidden lg:block">
+<img alt="Satellite earth backdrop" class="w-full h-full object-cover object-right scale-110 blur-[1px]" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBiSm38CjZwA9aZcIl0dpx0SygZnM98iDrTy5AfRejRWjqJGG_AIbAKBxM5dJ44TH1nLSdHLZhZ3zXw-JlXlP5SAm_fi1m4t5WZ51bXqI_BfSmpDIHYXPXQWfnDPeFahqC1-uLnEEex4AhzD4j4A1cOW68ODyn7hZpg1YXeVlva6EpssfkzGGHCbvkAWrl-wDlzrTJnz8uu53TGwfomQwkV7Gg9WRiYdEs01h7kH7TjduJknv-Tc2pvIq4PoXcitRpB"/>
+<div class="absolute inset-0 bg-gradient-to-r from-[#050911] via-[#050911]/80 to-transparent"></div>
+</div>
+<div class="relative z-10 max-w-7xl mx-auto flex flex-col lg:flex-row gap-8 items-start justify-between">
+<!-- Left Hero Text & Search Box -->
+<div class="max-w-2xl">
+<!-- Tagline -->
+<div class="inline-flex items-center gap-2 text-xs font-semibold tracking-wider text-[#00d5be] uppercase mb-4">
+<span class="w-4 h-0.5 bg-[#00d5be] rounded-full"></span>
+<span>AI COPILOT FOR REMOTE-SENSING ANALYSIS</span>
+</div>
+<!-- Main Heading -->
+<h1 class="text-4xl sm:text-5xl font-extrabold text-white tracking-tight leading-[1.15] mb-4">
+            Analyze Earth imagery <br/>
+            with <span class="text-transparent bg-clip-text bg-gradient-to-r from-[#00d5be] to-[#00f2fe] glow-cyan-text">natural language.</span>
+</h1>
+<!-- Hero Subtitle -->
+<p class="text-slate-400 text-sm sm:text-base leading-relaxed mb-6 font-normal">
+            Ask questions. Compare imagery. Discover change.<br/>
+            Understand what's there — with the power of AI.
+          </p>
+<!-- Central Upload & Query Card -->
+<div class="bg-[#091120]/90 backdrop-blur-xl border border-[#1b2b48] rounded-2xl p-5 shadow-2xl shadow-cyan-950/20">
+<!-- Top Dropzone & Browse Row -->
+<div class="flex flex-col sm:flex-row items-center gap-4 pb-4 border-b border-[#162238]">
+<!-- Drag & Drop Zone -->
+<div class="flex-1 w-full border border-dashed border-[#243555] rounded-xl py-4 px-5 text-center hover:border-teal-500/50 hover:bg-teal-500/5 transition-all cursor-pointer group">
+<div class="flex items-center justify-center gap-2 text-slate-200 text-sm font-medium group-hover:text-teal-300">
+<i class="w-4 h-4 text-teal-400" data-lucide="cloud-upload"></i>
+<span>Drop your satellite images here</span>
+</div>
+<p class="text-[11px] text-slate-400 mt-1">Supports GeoTIFF, TIFF, PNG, JPEG (for benchmarks)</p>
+</div>
+<!-- Divider -->
+<div class="text-xs text-slate-400 font-medium uppercase px-1 hidden sm:block">or</div>
+<!-- Browse Files Button -->
+<button class="w-full sm:w-auto px-5 py-3.5 rounded-xl bg-[#101b30] border border-[#233554] hover:border-teal-400/40 text-slate-200 hover:text-white flex items-center justify-center gap-2 text-sm font-medium transition-all shadow-sm" type="button">
+<i class="w-4 h-4 text-slate-400" data-lucide="folder"></i>
+<span>Browse Files</span>
+</button>
+</div>
+<!-- Natural Language Query Bar -->
+<div class="mt-4 flex items-center gap-2 bg-[#060c18] border border-[#1b2c4c] rounded-xl px-4 py-2.5 focus-within:border-teal-500/80 focus-within:ring-1 focus-within:ring-teal-500/30 transition-all">
+<i class="w-4 h-4 text-teal-400 shrink-0" data-lucide="sparkles"></i>
+<input class="bg-transparent border-none text-slate-200 placeholder-slate-400 text-sm w-full focus:outline-none focus:ring-0 p-0" placeholder="Ask a question about your imagery..." type="text"/>
+<button class="p-2 rounded-lg bg-[#00d5be] text-slate-950 hover:bg-[#00f2fe] transition-all font-semibold shrink-0 shadow-md shadow-teal-500/20" title="Submit query" type="button">
+<i class="w-4 h-4" data-lucide="send"></i>
+</button>
+</div>
+</div>
+<!-- "Try asking:" Quick Prompts Row -->
+<div class="flex flex-wrap items-center gap-2 mt-4 text-xs">
+<span class="text-slate-400 font-medium mr-1">Try asking:</span>
+<button class="px-3 py-1 rounded-full bg-[#0d172a] border border-[#1b2b48] text-slate-300 hover:border-teal-400/50 hover:text-teal-300 transition-colors" type="button">Describe this scene</button>
+<button class="px-3 py-1 rounded-full bg-[#0d172a] border border-[#1b2b48] text-slate-300 hover:border-teal-400/50 hover:text-teal-300 transition-colors" type="button">Highlight the water body</button>
+<button class="px-3 py-1 rounded-full bg-[#0d172a] border border-[#1b2b48] text-slate-300 hover:border-teal-400/50 hover:text-teal-300 transition-colors" type="button">What changed between these dates?</button>
+<button class="px-3 py-1 rounded-full bg-[#0d172a] border border-[#1b2b48] text-slate-300 hover:border-teal-400/50 hover:text-teal-300 transition-colors" type="button">Use optical and SAR together</button>
+</div>
+</div>
+<!-- Right Hero Floating Satellite Analytics UI Preview -->
+<div class="relative w-full lg:w-[480px] shrink-0 hidden md:block">
+<!-- Optical + SAR Comparison Pill Floating Container -->
+<div class="bg-[#0b1424]/90 border border-[#1e2f4f] backdrop-blur-md rounded-2xl p-3.5 shadow-xl mb-4">
+<div class="flex items-center gap-3 justify-center">
+<!-- Optical Preview Box -->
+<div class="relative w-36 h-24 rounded-lg overflow-hidden border border-teal-500/40 bg-slate-900 group">
+<img alt="Optical satellite imagery" class="w-full h-full object-cover scale-[2.2] object-top contrast-125" src="https://lh3.googleusercontent.com/aida-public/AB6AXuD1hS1hH89YqsbwG0KdMrp51ez_5hcxUhWTae6DNhBmfj4ffLgOvc4S7xIpljGic3ROODyWCpo7YLQzj5rFKrc5TfIhHTeJJkOEqjGQGV8sKvbGZpQMjvG_EHmZ-5eDYxZqPCqyPISHEtzaVpVt09G79IWPnvarfmHlK-wNzETxlGRAbGNPQJuZKUYwrkHw6EI-31SkPESHuTU8hrRPItTLmCVT4CfHJ0-UX4rk_ltrIc1SNTHt-Lg2KVIJ_ko3JKyr"/>
+<span class="absolute bottom-1.5 left-2 px-1.5 py-0.5 rounded bg-black/70 backdrop-blur-sm text-[10px] font-semibold text-slate-200">Optical</span>
+</div>
+<!-- Plus icon separator -->
+<div class="text-slate-400 font-bold text-lg">+</div>
+<!-- SAR Preview Box -->
+<div class="relative w-36 h-24 rounded-lg overflow-hidden border border-slate-700 bg-slate-900 group">
+<img alt="SAR radar imagery" class="w-full h-full object-cover grayscale contrast-200 scale-[2.2] object-right" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAyXwBIkCAFP5wB6DbnmxWjG7ZrADP3kztslmRY1KkfBHUPpGWFSHcgYJ6_-3aE3cRsykFRn6B0cJ6wuWwwcZs9T16B8WOHE_SyegEK6eqtluBJJe0vOf42OU8wTaljsKD7ZRfqe47TByWsSMWlwJwqXeel_3YnVm8o-seY6njTnyG_WkJJ3NrzVdEJRuOOIbHvtWHe8o-35GPzzzZDDER7vuvsckfjCvt0DYUYan1XyNrYTYjNSh48j0nbNA1LCEwT"/>
+<span class="absolute bottom-1.5 left-2 px-1.5 py-0.5 rounded bg-black/70 backdrop-blur-sm text-[10px] font-semibold text-slate-200">SAR</span>
+</div>
+</div>
+</div>
+<!-- Detection Bounding Target & Layer Tags Container -->
+<div class="relative flex items-start justify-between gap-4">
+<!-- Dotted bounding box over Earth landscape -->
+<div class="relative w-44 h-36 border-2 border-dashed border-teal-400/80 rounded-xl bg-teal-500/5 backdrop-blur-[1px] p-2 flex flex-col justify-between">
+<span class="self-start text-[9px] font-bold px-1.5 py-0.5 rounded bg-teal-500 text-slate-950 uppercase tracking-wider">ROI Target</span>
+<div class="flex items-center gap-1.5 self-end px-2 py-1 rounded bg-[#091322]/90 border border-teal-400/50 text-[10px] text-teal-300 font-medium shadow-lg">
+<i class="w-3 h-3 text-teal-400" data-lucide="scan"></i>
+<span>AI detects changes</span>
+</div>
+</div>
+<!-- Vertical Classification Pills -->
+<div class="flex flex-col gap-2 shrink-0">
+<div class="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[#0b1526]/90 border border-[#1b2b48] text-xs font-medium text-slate-200 shadow-sm">
+<i class="w-3.5 h-3.5 text-emerald-400" data-lucide="leaf"></i>
+<span>Land Cover</span>
+</div>
+<div class="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[#0b1526]/90 border border-[#1b2b48] text-xs font-medium text-slate-200 shadow-sm">
+<i class="w-3.5 h-3.5 text-sky-400" data-lucide="droplets"></i>
+<span>Water Bodies</span>
+</div>
+<div class="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[#0b1526]/90 border border-[#1b2b48] text-xs font-medium text-slate-200 shadow-sm">
+<i class="w-3.5 h-3.5 text-amber-400" data-lucide="building-2"></i>
+<span>Built-up Areas</span>
+</div>
+<div class="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[#0b1526]/90 border border-[#1b2b48] text-xs font-medium text-slate-200 shadow-sm">
+<i class="w-3.5 h-3.5 text-rose-400" data-lucide="activity"></i>
+<span>Change Detection</span>
+</div>
+</div>
+</div>
+</div>
+</div>
+</section>
+<!-- END: HeroSection -->
+<!-- BEGIN: FeaturesGridSection -->
+<section class="px-8 py-8 border-b border-[#141e30]" data-purpose="features-showcase">
+<div class="max-w-7xl mx-auto">
+<!-- Section Title & Link -->
+<div class="flex items-center justify-between mb-5">
+<h2 class="text-xl font-bold text-white tracking-tight">What can you do with SatQuery AI?</h2>
+<a class="text-xs font-medium text-[#00d5be] hover:text-[#00f2fe] flex items-center gap-1 transition-colors" href="#">
+<span>Explore all features</span>
+<i class="w-3.5 h-3.5" data-lucide="arrow-right"></i>
+</a>
+</div>
+<!-- 4 Grid Feature Cards -->
+<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+<!-- Card 1: Single Image Analysis -->
+<div class="bg-[#091120] border border-[#192742] hover:border-teal-500/40 rounded-xl p-3.5 flex flex-col justify-between transition-all hover:-translate-y-0.5 group">
+<div>
+<!-- Thumbnail Preview -->
+<div class="h-28 w-full rounded-lg overflow-hidden mb-3.5 relative bg-slate-900">
+<img alt="Single Image Analysis preview" class="w-full h-full object-cover scale-[2.5] object-center group-hover:scale-[2.6] transition-transform duration-300" src="https://lh3.googleusercontent.com/aida-public/AB6AXuA484pOnfeDELf_4y67ntdWCmOkfQ29rzml1fWDKyJco_2R2kYQY0IZV0uTckNun1QdfEht8Y_40sxpvr_CPZHjIRUobqxjNScT5oD0o6164IPV8DNlAkDYWrvFPQPKt6WpvfpM28hZE0k6MqTg1NIbvuqNd8bywOIrlKvvGmwLNAwMD7MCAbhvw5z5GI4aDUeEt0UPwxpyTfLo8jmxvQVCgTED7EUwBqPuNdtske7P6zKQnxRKs0rorfcOgOtr_zAa"/>
+<div class="absolute inset-0 bg-gradient-to-t from-[#091120] via-transparent to-transparent opacity-60"></div>
+</div>
+<!-- Title & Header Icon -->
+<div class="flex items-center justify-between gap-2 mb-1.5">
+<div class="flex items-center gap-2">
+<i class="w-4 h-4 text-teal-400 shrink-0" data-lucide="maximize-2"></i>
+<h3 class="text-sm font-semibold text-white">Single Image Analysis</h3>
+</div>
+<div class="w-6 h-6 rounded-full bg-slate-800/80 flex items-center justify-center text-slate-400 group-hover:text-teal-300 group-hover:bg-slate-700/80 transition-colors">
+<i class="w-3.5 h-3.5" data-lucide="chevron-right"></i>
+</div>
+</div>
+<p class="text-xs text-slate-400 line-clamp-2 mb-4 leading-relaxed">Ask questions, get descriptions, find regions and more.</p>
+</div>
+<!-- Tags -->
+<div class="flex flex-wrap gap-1.5 pt-2 border-t border-[#141f33]">
+<span class="px-2 py-0.5 rounded bg-[#101b30] text-[10px] font-medium text-slate-400">VQA</span>
+<span class="px-2 py-0.5 rounded bg-[#101b30] text-[10px] font-medium text-slate-400">Captioning</span>
+<span class="px-2 py-0.5 rounded bg-[#101b30] text-[10px] font-medium text-slate-400">Grounding</span>
+</div>
+</div>
+<!-- Card 2: Optical + SAR Fusion -->
+<div class="bg-[#091120] border border-[#192742] hover:border-teal-500/40 rounded-xl p-3.5 flex flex-col justify-between transition-all hover:-translate-y-0.5 group">
+<div>
+<!-- Thumbnail Preview -->
+<div class="h-28 w-full rounded-lg overflow-hidden mb-3.5 relative bg-slate-900">
+<img alt="Optical SAR Fusion preview" class="w-full h-full object-cover scale-[2.7] object-top group-hover:scale-[2.8] transition-transform duration-300" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCHe-JINOUV1q-IZzPzi0fKnUItljYiA17FLkcnUwweMOqDyFrwDzrzDzxzCr32H8FCjw11nbbTphiiUxwjp8I0fexgznu3ngVHgmSEKu4rnCQIrei5CE4fDlthxoxuRgEIANHG4QAxGx80XFjWoIGq0VIlzBTSrqTkOLgEqJeQsfsgWNf_p6-AnjVb0E568F2xcW6cscpsM-SWgWJKvwgisVUmExsiK5iiZdtos7xHhz0mNSeYbwFfKlQQHOFhGBDW"/>
+<div class="absolute inset-0 bg-gradient-to-t from-[#091120] via-transparent to-transparent opacity-60"></div>
+</div>
+<!-- Title & Header Icon -->
+<div class="flex items-center justify-between gap-2 mb-1.5">
+<div class="flex items-center gap-2">
+<i class="w-4 h-4 text-teal-400 shrink-0" data-lucide="layers"></i>
+<h3 class="text-sm font-semibold text-white">Optical + SAR Fusion</h3>
+</div>
+<div class="w-6 h-6 rounded-full bg-slate-800/80 flex items-center justify-center text-slate-400 group-hover:text-teal-300 group-hover:bg-slate-700/80 transition-colors">
+<i class="w-3.5 h-3.5" data-lucide="chevron-right"></i>
+</div>
+</div>
+<p class="text-xs text-slate-400 line-clamp-2 mb-4 leading-relaxed">Combine multi-sensor data for richer, more reliable insights.</p>
+</div>
+<!-- Tags -->
+<div class="flex flex-wrap gap-1.5 pt-2 border-t border-[#141f33]">
+<span class="px-2 py-0.5 rounded bg-[#101b30] text-[10px] font-medium text-slate-400">Cross-Modal</span>
+<span class="px-2 py-0.5 rounded bg-[#101b30] text-[10px] font-medium text-slate-400">Information Extraction</span>
+</div>
+</div>
+<!-- Card 3: Bi-temporal Change Analysis -->
+<div class="bg-[#091120] border border-[#192742] hover:border-teal-500/40 rounded-xl p-3.5 flex flex-col justify-between transition-all hover:-translate-y-0.5 group">
+<div>
+<!-- Thumbnail Preview (Comparison Red Mask) -->
+<div class="h-28 w-full rounded-lg overflow-hidden mb-3.5 relative bg-slate-900">
+<img alt="Bi-temporal Change Analysis" class="w-full h-full object-cover scale-[2.9] object-center group-hover:scale-[3.0] transition-transform duration-300" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCHJvu4nRtRtapN9lJTOQiCnBQ0jQu_C8wxtFAqXqH9O8m2FbfD0-K1eJ3nzNPlVLhvHDOT2YiWkuPoCyTlYZ5KV1f_ajmPTdOMJ9bK2CxwNdc1svtMOmUWRkk_mmmrMme7cHmcAGF0mIsZpxEmXLdHGMcraoHFYmSAxz3lZPgqs4re9fpzI1TonRyOg5V-yn2TKI9cmsHV55sVyEx0B2AN0PljLFRlIA6sI6dBD4is90JIOCsR5TTes7lua8RlvVwF"/>
+<div class="absolute inset-0 bg-gradient-to-t from-[#091120] via-transparent to-transparent opacity-60"></div>
+</div>
+<!-- Title & Header Icon -->
+<div class="flex items-center justify-between gap-2 mb-1.5">
+<div class="flex items-center gap-2">
+<i class="w-4 h-4 text-teal-400 shrink-0" data-lucide="git-compare"></i>
+<h3 class="text-sm font-semibold text-white">Bi-temporal Change Analysis</h3>
+</div>
+<div class="w-6 h-6 rounded-full bg-slate-800/80 flex items-center justify-center text-slate-400 group-hover:text-teal-300 group-hover:bg-slate-700/80 transition-colors">
+<i class="w-3.5 h-3.5" data-lucide="chevron-right"></i>
+</div>
+</div>
+<p class="text-xs text-slate-400 line-clamp-2 mb-4 leading-relaxed">Detect and understand changes over time.</p>
+</div>
+<!-- Tags -->
+<div class="flex flex-wrap gap-1.5 pt-2 border-t border-[#141f33]">
+<span class="px-2 py-0.5 rounded bg-[#101b30] text-[10px] font-medium text-slate-400">Change Detection</span>
+<span class="px-2 py-0.5 rounded bg-[#101b30] text-[10px] font-medium text-slate-400">Change VQA</span>
+</div>
+</div>
+<!-- Card 4: Agentic Model Orchestration -->
+<div class="bg-[#091120] border border-[#192742] hover:border-teal-500/40 rounded-xl p-3.5 flex flex-col justify-between transition-all hover:-translate-y-0.5 group">
+<div>
+<!-- Thumbnail Preview (Neural / Constellation Graphic) -->
+<div class="h-28 w-full rounded-lg overflow-hidden mb-3.5 relative bg-gradient-to-tr from-cyan-950 via-slate-900 to-blue-950 flex items-center justify-center">
+<div class="w-12 h-12 rounded-full bg-teal-500/20 border border-teal-400/50 flex items-center justify-center animate-pulse">
+<i class="w-6 h-6 text-teal-300" data-lucide="cpu"></i>
+</div>
+<div class="absolute inset-0 bg-[radial-gradient(#00d5be_1px,transparent_1px)] [background-size:10px_10px] opacity-25"></div>
+</div>
+<!-- Title & Header Icon -->
+<div class="flex items-center justify-between gap-2 mb-1.5">
+<div class="flex items-center gap-2">
+<i class="w-4 h-4 text-teal-400 shrink-0" data-lucide="network"></i>
+<h3 class="text-sm font-semibold text-white">Agentic Model Orchestration</h3>
+</div>
+<div class="w-6 h-6 rounded-full bg-slate-800/80 flex items-center justify-center text-slate-400 group-hover:text-teal-300 group-hover:bg-slate-700/80 transition-colors">
+<i class="w-3.5 h-3.5" data-lucide="chevron-right"></i>
+</div>
+</div>
+<p class="text-xs text-slate-400 line-clamp-2 mb-4 leading-relaxed">Automatically selects the right models, validates inputs and returns evidence.</p>
+</div>
+<!-- Tags -->
+<div class="flex flex-wrap gap-1.5 pt-2 border-t border-[#141f33]">
+<span class="px-2 py-0.5 rounded bg-[#101b30] text-[10px] font-medium text-slate-400">Smart Routing</span>
+<span class="px-2 py-0.5 rounded bg-[#101b30] text-[10px] font-medium text-slate-400">Execution Trace</span>
+</div>
+</div>
+</div>
+</div>
+</section>
+<!-- END: FeaturesGridSection -->
+<!-- BEGIN: RecentAnalysesSection -->
+<section class="px-8 py-8" data-purpose="recent-activities">
+<div class="max-w-7xl mx-auto">
+<!-- Header -->
+<div class="flex items-center justify-between mb-4">
+<div class="flex items-center gap-2">
+<i class="w-4 h-4 text-teal-400" data-lucide="clock"></i>
+<h2 class="text-base font-bold text-white tracking-tight">Recent Analyses</h2>
+</div>
+<a class="text-xs font-medium text-[#00d5be] hover:text-[#00f2fe] flex items-center gap-1 transition-colors" href="#">
+<span>View all</span>
+<i class="w-3.5 h-3.5" data-lucide="arrow-right"></i>
+</a>
+</div>
+<!-- 4 Recent Analysis Strip Cards -->
+<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+<!-- Analysis Item 1 -->
+<div class="bg-[#091120] border border-[#17253d] hover:border-teal-500/30 rounded-xl p-3 flex items-center gap-3 transition-all hover:bg-[#0c1527] cursor-pointer">
+<div class="w-12 h-12 rounded-lg overflow-hidden shrink-0 bg-slate-900">
+<img alt="Urban Expansion Analysis" class="w-full h-full object-cover scale-[3.5] object-bottom" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCnr6Hf5AuFazIFhbmD_t7DQlPxM22OCoNCt1mN08gu8mFDignS-myqLVvAXG9PnIqPvw5UPeE5f78_Oz2Hx9T-CcAooTv01AViQBnIEx_RaelKpo45Xec6QnieWMlENui7lVuROBx67IAf2RN57OOb5rPhhLrWogIBGds7CM6tRoeeN6DJn-8S3zIufUbRI6KMBHQqOXPG8sDQRkP3bj7UtAQ96MayjiAwFhalyUOVGXmV8ehtb2WM_MTnbmwq7ZyW"/>
+</div>
+<div class="min-w-0 flex-1">
+<p class="text-xs font-semibold text-white truncate">Urban Expansion Analysis</p>
+<div class="flex items-center gap-1.5 mt-0.5">
+<span class="px-1.5 py-0.2 rounded bg-teal-500/10 text-[9px] font-medium text-teal-300 border border-teal-500/20">Change Analysis</span>
+</div>
+<p class="text-[10px] text-slate-400 mt-1 truncate">2 images • 12 Oct 2025, 11:42 AM</p>
+</div>
+<button class="text-slate-400 hover:text-white p-1" title="Options" type="button">
+<i class="w-4 h-4" data-lucide="more-vertical"></i>
+</button>
+</div>
+<!-- Analysis Item 2 -->
+<div class="bg-[#091120] border border-[#17253d] hover:border-teal-500/30 rounded-xl p-3 flex items-center gap-3 transition-all hover:bg-[#0c1527] cursor-pointer">
+<div class="w-12 h-12 rounded-lg overflow-hidden shrink-0 bg-slate-900">
+<img alt="River Detection" class="w-full h-full object-cover scale-[3.2] object-left" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBY-SSY1JxU3dcTxAnqXUCNPGHbUGv7pigKTBrNsKF7GWoRN-iLqDkPgXrFQhxnA9wvWfNuBEvrbw3sfrf08NLbsp7swyQKCIjIf7UROj-_znX2UV43EUf16tuAmDnVfjHXN9dNY1Tc23iInMWNLc2QjX72z9GFuElSGzDA9jQj5kyUw5VzPDqWWx-7Ja1UQVPdGU0lGInCSb1mfIwQswnqzzDmM2Wp8GlA9QoJX-CrndfWVMRYtoh1e5z9kvHKTI3p"/>
+</div>
+<div class="min-w-0 flex-1">
+<p class="text-xs font-semibold text-white truncate">River Detection</p>
+<div class="flex items-center gap-1.5 mt-0.5">
+<span class="px-1.5 py-0.2 rounded bg-teal-500/10 text-[9px] font-medium text-teal-300 border border-teal-500/20">VQA</span>
+</div>
+<p class="text-[10px] text-slate-400 mt-1 truncate">1 image • 11 Oct 2025, 04:21 PM</p>
+</div>
+<button class="text-slate-400 hover:text-white p-1" title="Options" type="button">
+<i class="w-4 h-4" data-lucide="more-vertical"></i>
+</button>
+</div>
+<!-- Analysis Item 3 -->
+<div class="bg-[#091120] border border-[#17253d] hover:border-teal-500/30 rounded-xl p-3 flex items-center gap-3 transition-all hover:bg-[#0c1527] cursor-pointer">
+<div class="w-12 h-12 rounded-lg overflow-hidden shrink-0 bg-slate-900">
+<img alt="Optical + SAR Fusion" class="w-full h-full object-cover scale-[2.8] object-center" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAN0v0RhlwoMFsAuso5rJgyMSAci3SzBCDNIH0tT6A2wQ8UhglSVSA34j_TTfsPkI0K4HNYiSaWUErQ29QgBcdMjRx4VTyBq-ZWMkhVX9mCNYDGlJG8JSS_v4bnQSMrA_43NxtiLFqwtlGNOTTT59vilh86HNfE-T-hLd9Wy5nWgQg4wTMcMEvEzL_7ifpiCy5hCyaH5GpZ_FwhMCmKqsjUtvIoUm4K4du-FMBJF6VjNK9Lu2Xdn5-8oeJsG55rDI0X"/>
+</div>
+<div class="min-w-0 flex-1">
+<p class="text-xs font-semibold text-white truncate">Optical + SAR Fusion</p>
+<div class="flex items-center gap-1.5 mt-0.5">
+<span class="px-1.5 py-0.2 rounded bg-teal-500/10 text-[9px] font-medium text-teal-300 border border-teal-500/20">Cross-Modal</span>
+</div>
+<p class="text-[10px] text-slate-400 mt-1 truncate">2 images • 10 Oct 2025, 09:16 AM</p>
+</div>
+<button class="text-slate-400 hover:text-white p-1" title="Options" type="button">
+<i class="w-4 h-4" data-lucide="more-vertical"></i>
+</button>
+</div>
+<!-- Analysis Item 4 -->
+<div class="bg-[#091120] border border-[#17253d] hover:border-teal-500/30 rounded-xl p-3 flex items-center gap-3 transition-all hover:bg-[#0c1527] cursor-pointer">
+<div class="w-12 h-12 rounded-lg overflow-hidden shrink-0 bg-slate-900">
+<img alt="Forest Monitoring" class="w-full h-full object-cover scale-[3.4] object-right" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAGbD0Frbs3Qt7sz6ESmQlFEsyCNM_f_gro_vHkQYKjiIL3dsbb6-gjgsly7Dn_krZneXIEZj8F0SWMkiP7_4kRg0nxMa8mZCaodUhb7JA_4yaKmYbPATUnGyehZstaPCGoPJnLsPMidpDc-lKo4gr6_Pmz9h8WJ9pL57hTY7YFW7LOgF14nKhuQg1uxPW3MsfwCjGcjbE9SQbSRvMXqGA60Pk2l5xrnF-6zdEhiCVMmua_6_AplANmWWZIuOxA555E"/>
+</div>
+<div class="min-w-0 flex-1">
+<p class="text-xs font-semibold text-white truncate">Forest Monitoring</p>
+<div class="flex items-center gap-1.5 mt-0.5">
+<span class="px-1.5 py-0.2 rounded bg-teal-500/10 text-[9px] font-medium text-teal-300 border border-teal-500/20">VQA</span>
+</div>
+<p class="text-[10px] text-slate-400 mt-1 truncate">1 image • 09 Oct 2025, 02:33 PM</p>
+</div>
+<button class="text-slate-400 hover:text-white p-1" title="Options" type="button">
+<i class="w-4 h-4" data-lucide="more-vertical"></i>
+</button>
+</div>
+</div>
+</div>
+</section>
+<!-- END: RecentAnalysesSection -->
+</main>
+<!-- END: MainContentArea -->
+<!-- Icon Initialization Script -->
+<script data-purpose="icon-initialization">
+    document.addEventListener('DOMContentLoaded', () => {
+      lucide.createIcons();
+    });
+  </script>
+</body></html>

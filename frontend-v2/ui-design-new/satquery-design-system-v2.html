@@ -1,0 +1,1677 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SatQuery AI — Design System v2.0</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+/* ============================================================
+   SATQUERY AI · DESIGN TOKENS
+   Dark is the product default. Light is a supported alternate.
+   ============================================================ */
+:root{
+  /* surfaces */
+  --canvas:#0A0D12; --surface:#11151C; --raised:#161C25; --inset:#0D1117;
+  --hover:#1B222C; --active:#212A36; --scrim:rgba(5,7,10,.72);
+  /* borders */
+  --bd-subtle:#1E252F; --bd:#2A3340; --bd-strong:#3B4757;
+  /* text */
+  --tx:#E9EEF5; --tx2:#9AA8B9; --tx3:#64748B; --tx-inv:#06110F;
+  /* accent */
+  --accent:#2DD4BF; --accent-hi:#5EEAD4; --accent-lo:#14B8A6; --accent-soft:#11302E;
+  --ring:rgba(45,212,191,.22);
+  /* sensor semantics */
+  --optical:#38BDF8; --optical-soft:#0C2738;
+  --sar:#A78BFA; --sar-soft:#1E1B33;
+  /* change semantics */
+  --gain:#34D399; --loss:#FB7185; --stable:#64748B;
+  /* status */
+  --ok:#22C55E; --warn:#F59E0B; --err:#EF4444; --info:#60A5FA;
+  --ok-soft:#0F2A1C; --warn-soft:#2A2011; --err-soft:#2B1416; --info-soft:#101E33;
+  --ok-bd:#17462F; --warn-bd:#4A3A12; --err-bd:#4C1D25; --info-bd:#1E3A5F;
+  /* shape */
+  --r-xs:4px; --r-sm:6px; --r-md:10px; --r-lg:14px; --r-xl:20px; --r-full:999px;
+  /* elevation */
+  --e1:0 1px 2px rgba(0,0,0,.45);
+  --e2:0 8px 24px -8px rgba(0,0,0,.65);
+  --e3:0 24px 64px -16px rgba(0,0,0,.8);
+  --e-glow:0 0 24px -6px var(--accent);
+  /* type */
+  --sans:'Inter',system-ui,-apple-system,'Segoe UI',sans-serif;
+  --mono:'Geist Mono','IBM Plex Mono',ui-monospace,'SF Mono',monospace;
+  /* motion */
+  --d-fast:120ms; --d-base:180ms; --d-slow:280ms; --d-scene:420ms;
+  --ease:cubic-bezier(.2,.8,.2,1);
+  --ease-in:cubic-bezier(.4,0,1,1);
+  --ease-spring:cubic-bezier(.34,1.3,.64,1);
+}
+:root[data-theme="light"]{
+  --canvas:#F2F5F9; --surface:#FFFFFF; --raised:#FFFFFF; --inset:#EEF2F7;
+  --hover:#E9EEF5; --active:#DDE5EF; --scrim:rgba(15,23,42,.4);
+  --bd-subtle:#E3E9F0; --bd:#CFD8E3; --bd-strong:#A9B6C7;
+  --tx:#0B1220; --tx2:#4A5768; --tx3:#7B8797; --tx-inv:#FFFFFF;
+  --accent:#0D9488; --accent-hi:#0F766E; --accent-lo:#115E59; --accent-soft:#D6F5F0;
+  --ring:rgba(13,148,136,.2);
+  --optical:#0284C7; --optical-soft:#DCF0FC;
+  --sar:#7C3AED; --sar-soft:#EDE6FE;
+  --gain:#059669; --loss:#E11D48; --stable:#94A3B8;
+  --ok:#16A34A; --warn:#D97706; --err:#DC2626; --info:#2563EB;
+  --ok-soft:#DCFCE7; --warn-soft:#FEF3C7; --err-soft:#FEE2E2; --info-soft:#DBEAFE;
+  --ok-bd:#A7E7C0; --warn-bd:#F3D48A; --err-bd:#F5B5B5; --info-bd:#AECBF5;
+  --e1:0 1px 2px rgba(15,23,42,.08);
+  --e2:0 8px 24px -8px rgba(15,23,42,.16);
+  --e3:0 24px 64px -16px rgba(15,23,42,.22);
+}
+@media (prefers-color-scheme:light){
+  :root:not([data-theme="dark"]):not([data-theme="light"]){color-scheme:light}
+}
+
+*{box-sizing:border-box}
+html{scroll-behavior:smooth;scroll-padding-top:70px}
+body{
+  margin:0;background:var(--canvas);color:var(--tx);
+  font-family:var(--sans);font-size:15px;line-height:1.62;
+  -webkit-font-smoothing:antialiased;
+  transition:background var(--d-base) var(--ease),color var(--d-base) var(--ease);
+}
+h1,h2,h3,h4,h5{margin:0;line-height:1.24;letter-spacing:-.015em;font-weight:600}
+h1{font-size:38px;letter-spacing:-.025em}
+h2{font-size:26px}
+h3{font-size:18px}
+h4{font-size:15px}
+h5{font-size:13px;letter-spacing:0}
+p{margin:0 0 1em}
+code,kbd{font-family:var(--mono);font-size:.85em}
+a{color:var(--accent);text-decoration:none}
+a:hover{text-decoration:underline}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:3px}
+hr{border:0;border-top:1px solid var(--bd-subtle);margin:32px 0}
+
+.wrap{max-width:1200px;margin:0 auto;padding:0 28px}
+@media(max-width:700px){.wrap{padding:0 18px}}
+
+/* ---------- masthead ---------- */
+.masthead{border-bottom:1px solid var(--bd-subtle);position:relative;overflow:hidden}
+.masthead::before{
+  content:"";position:absolute;inset:0;pointer-events:none;
+  background:
+    radial-gradient(1000px 460px at 14% -14%, color-mix(in srgb, var(--accent) 16%, transparent), transparent 62%),
+    radial-gradient(760px 400px at 92% -6%, color-mix(in srgb, var(--sar) 13%, transparent), transparent 62%);
+}
+.masthead::after{
+  content:"";position:absolute;inset:0;pointer-events:none;opacity:.35;
+  background-image:linear-gradient(var(--bd-subtle) 1px,transparent 1px),linear-gradient(90deg,var(--bd-subtle) 1px,transparent 1px);
+  background-size:72px 72px;
+  mask-image:radial-gradient(900px 400px at 30% 0%,#000,transparent 70%);
+}
+.masthead .wrap{position:relative;padding-top:56px;padding-bottom:60px}
+.mast-top{display:flex;align-items:center;gap:14px;margin-bottom:46px}
+.glyph{
+  width:36px;height:36px;border-radius:10px;flex:none;position:relative;
+  background:linear-gradient(150deg,var(--accent),#0EA5A2 55%,#1E3A8A);
+  box-shadow:0 0 0 1px color-mix(in srgb,var(--accent) 40%,transparent),0 0 26px -8px var(--accent);
+}
+.glyph::after{
+  content:"";position:absolute;inset:10px 7px auto 7px;height:2px;border-radius:2px;
+  background:rgba(4,20,15,.8);box-shadow:0 5px 0 rgba(4,20,15,.55),0 10px 0 rgba(4,20,15,.3);
+}
+.glyph.sm{width:24px;height:24px;border-radius:7px}
+.glyph.sm::after{inset:7px 5px auto 5px;height:1.5px;box-shadow:0 3.5px 0 rgba(4,20,15,.55),0 7px 0 rgba(4,20,15,.3)}
+.mast-top b{font-weight:600;letter-spacing:-.01em;font-size:15px}
+.mast-top .spacer{flex:1}
+.masthead h1{max-width:17ch;margin-bottom:20px}
+.lede{color:var(--tx2);max-width:62ch;font-size:17px;line-height:1.6}
+.meta-rail{display:flex;flex-wrap:wrap;gap:8px;margin-top:30px}
+
+/* ---------- nav ---------- */
+nav.toc{position:sticky;top:0;z-index:60;border-bottom:1px solid var(--bd-subtle);
+  background:color-mix(in srgb,var(--canvas) 88%,transparent);backdrop-filter:blur(14px)}
+nav.toc .wrap{display:flex;gap:2px;overflow-x:auto;padding-top:9px;padding-bottom:9px;scrollbar-width:none}
+nav.toc .wrap::-webkit-scrollbar{display:none}
+nav.toc a{color:var(--tx3);font-size:12.5px;font-weight:500;padding:6px 10px;border-radius:var(--r-full);white-space:nowrap}
+nav.toc a:hover{background:var(--hover);color:var(--tx);text-decoration:none}
+nav.toc a.on{background:var(--accent-soft);color:var(--accent)}
+
+section.band{padding:80px 0;border-bottom:1px solid var(--bd-subtle)}
+.sec-head{max-width:68ch;margin-bottom:40px}
+.sec-head .num{font-family:var(--mono);font-size:12px;color:var(--accent);display:block;margin-bottom:12px;letter-spacing:.04em}
+.sec-head p{color:var(--tx2);margin:14px 0 0;font-size:16px}
+.sub{font-size:13px;font-weight:600;color:var(--tx3);margin:34px 0 14px;letter-spacing:.01em}
+
+.grid{display:grid;gap:16px}
+.g2{grid-template-columns:repeat(2,1fr)}
+.g3{grid-template-columns:repeat(3,1fr)}
+.g4{grid-template-columns:repeat(4,1fr)}
+@media(max-width:900px){.g2,.g3,.g4{grid-template-columns:1fr}}
+
+.card{background:var(--surface);border:1px solid var(--bd-subtle);border-radius:var(--r-lg);padding:20px}
+.card h4{margin-bottom:7px}
+.card p{color:var(--tx2);font-size:14px;margin:0}
+.card .rule{font-family:var(--mono);font-size:11px;color:var(--tx3);margin-top:12px;display:block}
+
+.spec{font-family:var(--mono);font-size:12px;color:var(--tx3)}
+.note{border-left:2px solid var(--accent);padding:3px 0 3px 16px;color:var(--tx2);font-size:14.5px;margin:22px 0}
+.warnbox{border:1px solid var(--warn-bd);background:var(--warn-soft);border-radius:var(--r-md);padding:14px 16px;font-size:14px;color:var(--tx2);margin:22px 0}
+.warnbox b{color:var(--tx)}
+ul.tight{margin:0;padding-left:18px;color:var(--tx2);font-size:14.5px}
+ul.tight li{margin-bottom:8px}
+ul.tight li b{color:var(--tx);font-weight:500}
+.caption{font-size:13.5px;color:var(--tx3);margin-top:16px;max-width:76ch}
+.caption b{color:var(--tx2);font-weight:500}
+
+table.tk{width:100%;border-collapse:collapse;font-size:13.5px}
+table.tk th{text-align:left;font-weight:500;color:var(--tx3);font-size:11.5px;padding:0 12px 10px;border-bottom:1px solid var(--bd)}
+table.tk td{padding:11px 12px;border-bottom:1px solid var(--bd-subtle);vertical-align:top}
+table.tk td.m{font-family:var(--mono);font-size:11.5px;color:var(--tx2);white-space:nowrap}
+table.tk tr:last-child td{border-bottom:0}
+.tbl-scroll{overflow-x:auto}
+
+/* ---------- swatches ---------- */
+.swatches{display:grid;grid-template-columns:repeat(auto-fill,minmax(176px,1fr));gap:10px}
+.sw{border:1px solid var(--bd-subtle);border-radius:var(--r-md);overflow:hidden;background:var(--surface);cursor:pointer;text-align:left;padding:0;font:inherit;color:inherit;width:100%}
+.sw:hover{border-color:var(--bd-strong)}
+.sw .cap{height:64px;border-bottom:1px solid var(--bd-subtle);display:grid;place-items:end start;padding:8px}
+.sw .cap em{font-family:var(--mono);font-size:10px;font-style:normal;opacity:0;transition:opacity var(--d-fast)}
+.sw:hover .cap em{opacity:1}
+.sw .lbl{padding:9px 11px}
+.sw .lbl b{display:block;font-size:12.5px;font-weight:500}
+.sw .lbl span{font-family:var(--mono);font-size:11px;color:var(--tx3)}
+
+.ramp-row{display:flex;align-items:baseline;gap:24px;padding:15px 0;border-bottom:1px solid var(--bd-subtle)}
+.ramp-row:last-child{border-bottom:0}
+.ramp-row .sample{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ramp-row .spec{flex:none;width:250px;text-align:right}
+@media(max-width:760px){.ramp-row{flex-direction:column;gap:5px}.ramp-row .spec{text-align:left;width:auto}}
+
+/* ============================================================
+   PRODUCT COMPONENTS (copy these into the app)
+   ============================================================ */
+.btn{
+  display:inline-flex;align-items:center;justify-content:center;gap:8px;
+  border:1px solid transparent;font-family:var(--sans);font-size:13.5px;font-weight:500;
+  line-height:1;padding:10px 14px;border-radius:var(--r-md);cursor:pointer;position:relative;
+  transition:background var(--d-fast) var(--ease),border-color var(--d-fast) var(--ease),color var(--d-fast) var(--ease),box-shadow var(--d-fast) var(--ease);
+}
+.btn:focus-visible{outline:none;box-shadow:0 0 0 3px var(--ring);border-color:var(--accent)}
+.btn-primary{background:var(--accent);color:var(--tx-inv);font-weight:600}
+.btn-primary:hover{background:var(--accent-hi)}
+.btn-primary:active{background:var(--accent-lo)}
+.btn-secondary{background:var(--raised);color:var(--tx);border-color:var(--bd)}
+.btn-secondary:hover{background:var(--hover);border-color:var(--bd-strong)}
+.btn-secondary:active{background:var(--active)}
+.btn-ghost{background:transparent;color:var(--tx2)}
+.btn-ghost:hover{background:var(--hover);color:var(--tx)}
+.btn-danger{background:var(--err-soft);color:var(--err);border-color:var(--err-bd)}
+.btn-danger:hover{background:var(--err);color:#fff;border-color:var(--err)}
+.btn[disabled],.btn[aria-disabled="true"]{opacity:.42;pointer-events:none}
+.btn-sm{padding:7px 10px;font-size:12.5px;border-radius:var(--r-sm)}
+.btn-lg{padding:13px 20px;font-size:14.5px}
+.btn.loading{color:transparent}
+.btn.loading::after{
+  content:"";position:absolute;width:14px;height:14px;border-radius:50%;
+  border:2px solid currentColor;border-top-color:transparent;color:var(--tx-inv);
+  animation:spin .7s linear infinite;
+}
+.btn-secondary.loading::after{color:var(--tx2)}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+.chip{
+  display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:500;line-height:1;
+  padding:6px 10px;border-radius:var(--r-full);border:1px solid var(--bd);background:var(--raised);color:var(--tx2);
+}
+button.chip{cursor:pointer;font-family:var(--sans)}
+button.chip:hover{border-color:var(--bd-strong);color:var(--tx)}
+.chip .dot{width:6px;height:6px;border-radius:50%;background:currentColor;flex:none}
+.chip-optical{background:var(--optical-soft);border-color:color-mix(in srgb,var(--optical) 34%,transparent);color:var(--optical)}
+.chip-sar{background:var(--sar-soft);border-color:color-mix(in srgb,var(--sar) 34%,transparent);color:var(--sar)}
+.chip-accent{background:var(--accent-soft);border-color:color-mix(in srgb,var(--accent) 34%,transparent);color:var(--accent)}
+.chip-warn{background:var(--warn-soft);border-color:var(--warn-bd);color:var(--warn)}
+.chip-err{background:var(--err-soft);border-color:var(--err-bd);color:var(--err)}
+.chip-gain{background:var(--ok-soft);border-color:var(--ok-bd);color:var(--gain)}
+.chip-loss{background:var(--err-soft);border-color:var(--err-bd);color:var(--loss)}
+.chip-mono{font-family:var(--mono);font-size:11px;letter-spacing:.02em}
+
+.field{
+  width:100%;background:var(--inset);border:1px solid var(--bd);border-radius:var(--r-md);
+  color:var(--tx);font-family:var(--sans);font-size:14px;padding:11px 13px;
+  transition:border-color var(--d-fast),box-shadow var(--d-fast);
+}
+.field::placeholder{color:var(--tx3)}
+.field:hover{border-color:var(--bd-strong)}
+.field:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--ring)}
+.field.invalid{border-color:var(--err);box-shadow:0 0 0 3px color-mix(in srgb,var(--err) 18%,transparent)}
+
+.meter{display:flex;align-items:center;gap:10px}
+.meter .track{flex:1;height:5px;border-radius:var(--r-full);background:var(--inset);overflow:hidden;border:1px solid var(--bd-subtle)}
+.meter .fill{height:100%;border-radius:var(--r-full);background:linear-gradient(90deg,var(--accent-lo),var(--accent-hi));transition:width var(--d-slow) var(--ease)}
+.meter .val{font-family:var(--mono);font-size:11.5px;color:var(--tx2);min-width:34px;text-align:right}
+.meter.mid .fill{background:linear-gradient(90deg,#B45309,var(--warn))}
+.meter.low .fill{background:linear-gradient(90deg,#991B1B,var(--err))}
+
+.toast{
+  display:flex;gap:10px;align-items:flex-start;background:var(--raised);border:1px solid var(--bd);
+  border-radius:var(--r-md);padding:12px 14px;box-shadow:var(--e2);max-width:400px;
+}
+.toast .ic{width:16px;height:16px;flex:none;margin-top:2px;display:grid;place-items:center;font-size:12px}
+.toast b{display:block;font-size:13px;font-weight:500;margin-bottom:2px}
+.toast span{font-size:12.5px;color:var(--tx2)}
+
+.skel{background:linear-gradient(90deg,var(--inset) 25%,var(--hover) 37%,var(--inset) 63%);
+  background-size:400% 100%;animation:shimmer 1.5s ease infinite;border-radius:var(--r-sm)}
+@keyframes shimmer{0%{background-position:100% 0}100%{background-position:-100% 0}}
+
+/* ---------- app shell mockups ---------- */
+.mock{border:1px solid var(--bd);border-radius:var(--r-xl);overflow:hidden;background:var(--canvas);box-shadow:var(--e3)}
+.mock-scroll{overflow-x:auto}
+.shell{min-width:980px;display:flex;flex-direction:column;height:640px;font-size:13px}
+.shell.tall{height:700px}
+.shell.short{height:470px}
+
+.topbar{display:flex;align-items:center;gap:12px;padding:0 16px;height:52px;flex:none;
+  border-bottom:1px solid var(--bd-subtle);background:var(--surface)}
+.topbar .name{font-weight:600;font-size:13.5px;letter-spacing:-.01em}
+.topbar .sess{color:var(--tx3);font-size:12.5px;border-left:1px solid var(--bd);padding-left:14px;margin-left:2px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:340px}
+.topbar .spacer{flex:1}
+
+.body-row{display:flex;flex:1;min-height:0}
+
+.rail{width:212px;flex:none;border-right:1px solid var(--bd-subtle);background:var(--surface);
+  display:flex;flex-direction:column;padding:10px 9px;gap:2px;overflow:hidden}
+.rail-h{font-size:10.5px;color:var(--tx3);padding:12px 8px 6px;font-weight:600;letter-spacing:.03em}
+.rail .item{display:flex;align-items:center;gap:9px;padding:8px 9px;border-radius:var(--r-sm);
+  color:var(--tx2);font-size:12.5px;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  transition:background var(--d-fast),color var(--d-fast)}
+.rail .item:hover{background:var(--hover);color:var(--tx)}
+.rail .item.on{background:var(--accent-soft);color:var(--accent)}
+.rail .item .tick{width:3px;height:14px;border-radius:2px;background:currentColor;flex:none;opacity:.9}
+.rail .item .tick.mute{opacity:.22}
+.rail .item .num{margin-left:auto;font-family:var(--mono);font-size:10.5px;color:var(--tx3)}
+
+.stage{flex:1;min-width:0;display:flex;flex-direction:column;background:var(--canvas)}
+.stage-tabs{display:flex;align-items:center;gap:2px;padding:8px 14px;border-bottom:1px solid var(--bd-subtle);flex:none}
+.tab{padding:7px 12px;border-radius:var(--r-sm);font-size:12.5px;font-weight:500;color:var(--tx3);
+  cursor:pointer;display:flex;align-items:center;gap:7px;border:1px solid transparent;background:none;font-family:var(--sans);
+  transition:background var(--d-fast),color var(--d-fast)}
+.tab:hover{color:var(--tx2);background:var(--hover)}
+.tab.on{color:var(--tx);background:var(--raised);border-color:var(--bd)}
+
+.viewport{flex:1;min-height:0;position:relative;background:var(--inset);overflow:hidden}
+.scene{position:absolute;inset:0;width:100%;height:100%;display:block}
+.bezel{position:absolute;inset:0;pointer-events:none;box-shadow:inset 0 0 0 1px rgba(255,255,255,.055),inset 0 0 90px rgba(0,0,0,.5)}
+.gridlines{position:absolute;inset:0;pointer-events:none;opacity:.2;
+  background-image:linear-gradient(rgba(233,238,245,.34) 1px,transparent 1px),linear-gradient(90deg,rgba(233,238,245,.34) 1px,transparent 1px);
+  background-size:88px 88px}
+.crosshair{position:absolute;inset:0;pointer-events:none;opacity:.5}
+.crosshair::before,.crosshair::after{content:"";position:absolute;background:rgba(233,238,245,.22)}
+.crosshair::before{left:50%;top:0;bottom:0;width:1px}
+.crosshair::after{top:50%;left:0;right:0;height:1px}
+
+.vp-badge{position:absolute;top:12px;left:12px;display:flex;gap:6px;flex-wrap:wrap;max-width:64%}
+.vp-tools{position:absolute;top:12px;right:12px;display:flex;gap:6px}
+.icon-btn{width:30px;height:30px;border-radius:var(--r-sm);border:1px solid var(--bd);
+  background:color-mix(in srgb,var(--surface) 82%,transparent);backdrop-filter:blur(8px);color:var(--tx2);
+  display:grid;place-items:center;cursor:pointer;font-size:13px;font-family:var(--sans);
+  transition:color var(--d-fast),border-color var(--d-fast)}
+.icon-btn:hover{color:var(--tx);border-color:var(--bd-strong)}
+.icon-btn.sm{width:26px;height:26px;font-size:12px}
+
+.readout{position:absolute;left:12px;right:12px;bottom:12px;display:flex;align-items:center;gap:16px;flex-wrap:wrap;
+  padding:9px 13px;border-radius:var(--r-md);background:color-mix(in srgb,var(--inset) 84%,transparent);
+  backdrop-filter:blur(10px);border:1px solid var(--bd);font-family:var(--mono);font-size:11px;color:var(--tx2)}
+.readout b{color:var(--tx3);font-weight:400}
+.readout .sep{width:1px;height:12px;background:var(--bd)}
+
+.bbox{position:absolute;border:2px solid var(--accent);border-radius:3px;
+  box-shadow:0 0 0 1px rgba(4,20,15,.7),0 0 26px -6px var(--accent);
+  transition:opacity var(--d-base) var(--ease),border-color var(--d-base)}
+.bbox .tag{position:absolute;top:-11px;left:-2px;font-family:var(--mono);font-size:10px;
+  background:var(--accent);color:var(--tx-inv);padding:2px 6px;border-radius:4px;white-space:nowrap;font-weight:500}
+.bbox.alt{border-color:var(--warn)} .bbox.alt .tag{background:var(--warn);color:#2A1B00}
+.bbox.dim{opacity:.3}
+
+.aside{width:364px;flex:none;border-left:1px solid var(--bd-subtle);background:var(--surface);
+  display:flex;flex-direction:column;min-height:0}
+.thread{flex:1;overflow:hidden;padding:16px;display:flex;flex-direction:column;gap:15px}
+.msg{display:flex;gap:10px}
+.msg .av{width:24px;height:24px;border-radius:7px;flex:none;display:grid;place-items:center;font-size:10px;font-weight:600}
+.msg.user .av{background:var(--raised);border:1px solid var(--bd);color:var(--tx2)}
+.msg.ai .av{background:linear-gradient(150deg,var(--accent),#0EA5A2);color:var(--tx-inv)}
+.msg .bubble{font-size:13px;line-height:1.62;color:var(--tx);min-width:0;flex:1}
+.msg.user .bubble{background:var(--raised);border:1px solid var(--bd-subtle);padding:9px 12px;
+  border-radius:var(--r-md);border-top-left-radius:4px;flex:initial}
+.msg .bubble p{margin:0 0 8px}
+.msg .bubble p:last-child{margin:0}
+.cite{color:var(--accent);border-bottom:1px dashed color-mix(in srgb,var(--accent) 55%,transparent);cursor:pointer}
+.cite:hover{background:var(--accent-soft)}
+
+.trace{border:1px solid var(--bd-subtle);border-radius:var(--r-md);background:var(--raised);overflow:hidden;margin-top:10px}
+.trace-h{display:flex;align-items:center;gap:8px;padding:9px 11px;font-size:11.5px;color:var(--tx2);
+  border-bottom:1px solid var(--bd-subtle);cursor:pointer;width:100%;background:none;border-left:0;border-right:0;border-top:0;font-family:var(--sans);text-align:left}
+.trace-h .caret{margin-left:auto;color:var(--tx3);font-size:10px;transition:transform var(--d-base) var(--ease)}
+.trace[data-open="false"] .trace-h{border-bottom-color:transparent}
+.trace[data-open="false"] .trace-h .caret{transform:rotate(-90deg)}
+.trace[data-open="false"] .trace-b{display:none}
+.trace-b{padding:5px 11px 10px}
+.step{display:flex;gap:10px;padding:7px 0;font-size:11.5px}
+.step+.step{border-top:1px dashed var(--bd-subtle)}
+.step .idx{width:17px;height:17px;border-radius:5px;flex:none;display:grid;place-items:center;
+  font-family:var(--mono);font-size:9.5px;background:var(--accent-soft);color:var(--accent);margin-top:1px}
+.step .idx.done{background:var(--ok-soft);color:var(--gain)}
+.step .idx.run{background:var(--accent-soft);color:var(--accent);animation:pulse 1.4s var(--ease) infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.45}}
+.step .body{min-width:0}
+.step .body b{display:block;font-weight:500;color:var(--tx);font-size:12px}
+.step .body span{color:var(--tx3);font-family:var(--mono);font-size:10.5px}
+
+.composer{flex:none;border-top:1px solid var(--bd-subtle);padding:12px 14px 14px;background:var(--surface)}
+.composer .box{border:1px solid var(--bd);border-radius:var(--r-md);background:var(--inset);padding:10px 12px;
+  transition:border-color var(--d-fast),box-shadow var(--d-fast)}
+.composer .box:focus-within{border-color:var(--accent);box-shadow:0 0 0 3px var(--ring)}
+.composer .txt{color:var(--tx3);font-size:13px;min-height:38px}
+.composer .row{display:flex;align-items:center;gap:6px;margin-top:8px}
+.composer .row .spacer{flex:1}
+.send{width:30px;height:30px;border-radius:8px;background:var(--accent);color:var(--tx-inv);
+  display:grid;place-items:center;border:0;cursor:pointer;font-size:13px}
+.send:hover{background:var(--accent-hi)}
+.suggest{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}
+
+/* split compare */
+.split{position:absolute;inset:0;overflow:hidden}
+.split .after{position:absolute;inset:0}
+.split .handle{position:absolute;top:0;bottom:0;width:2px;background:var(--accent);
+  box-shadow:0 0 18px var(--accent);cursor:ew-resize;z-index:3}
+.split .handle::after{content:"";position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
+  width:32px;height:32px;border-radius:50%;background:var(--surface);border:2px solid var(--accent);
+  box-shadow:var(--e2)}
+.split .handle::before{content:"⇄";position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
+  z-index:2;font-size:12px;color:var(--accent)}
+.date-tag{position:absolute;bottom:58px;font-family:var(--mono);font-size:11px;z-index:2;
+  background:color-mix(in srgb,var(--inset) 86%,transparent);border:1px solid var(--bd);
+  padding:4px 9px;border-radius:var(--r-sm);color:var(--tx2);backdrop-filter:blur(6px)}
+
+.legend{position:absolute;right:12px;bottom:58px;background:color-mix(in srgb,var(--inset) 86%,transparent);
+  border:1px solid var(--bd);border-radius:var(--r-md);padding:10px 12px;display:flex;flex-direction:column;gap:7px;
+  backdrop-filter:blur(8px);z-index:2}
+.legend .li{display:flex;align-items:center;gap:8px;font-size:11px;color:var(--tx2);font-family:var(--mono)}
+.legend .li i{width:10px;height:10px;border-radius:3px;display:block;flex:none}
+
+.stat-row{display:flex;border-top:1px solid var(--bd-subtle);flex:none}
+.stat{flex:1;padding:11px 14px;border-right:1px solid var(--bd-subtle)}
+.stat:last-child{border-right:0}
+.stat .k{font-size:10.5px;color:var(--tx3);margin-bottom:3px}
+.stat .v{font-family:var(--mono);font-size:15px;color:var(--tx)}
+.stat .v.up{color:var(--gain)} .stat .v.down{color:var(--loss)}
+
+.empty{flex:1;display:grid;place-items:center;padding:36px}
+.empty-in{max-width:540px;text-align:center}
+.drop{border:1.5px dashed var(--bd-strong);border-radius:var(--r-lg);padding:32px 28px;background:var(--surface);
+  transition:border-color var(--d-base),background var(--d-base)}
+.drop:hover{border-color:var(--accent);background:var(--accent-soft)}
+.drop .ic{width:48px;height:48px;border-radius:var(--r-md);background:var(--accent-soft);color:var(--accent);
+  display:grid;place-items:center;margin:0 auto 14px;font-size:20px}
+.mode-cards{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:16px}
+.mode-card{border:1px solid var(--bd-subtle);background:var(--surface);border-radius:var(--r-md);padding:13px;text-align:left;cursor:pointer;font-family:var(--sans)}
+.mode-card:hover{border-color:var(--bd-strong);background:var(--raised)}
+.mode-card b{display:block;font-size:12.5px;margin-bottom:3px;color:var(--tx)}
+.mode-card span{font-size:11px;color:var(--tx3);line-height:1.5;display:block}
+
+/* code + diagram */
+pre.mermaid{background:var(--surface);border:1px solid var(--bd-subtle);border-radius:var(--r-lg);padding:26px;overflow-x:auto;text-align:center}
+pre.code{background:var(--inset);border:1px solid var(--bd-subtle);border-radius:var(--r-lg);
+  padding:18px 20px;overflow-x:auto;font-family:var(--mono);font-size:12px;line-height:1.8;color:var(--tx2)}
+pre.code .c{color:var(--tx3)} pre.code .p{color:var(--accent)} pre.code .s{color:var(--sar)}
+
+/* state matrix */
+.matrix{display:grid;grid-template-columns:110px repeat(5,1fr);gap:1px;background:var(--bd-subtle);
+  border:1px solid var(--bd-subtle);border-radius:var(--r-md);overflow:hidden;min-width:700px}
+.matrix > div{background:var(--surface);padding:14px 12px;display:flex;align-items:center;justify-content:center}
+.matrix > div.hd{font-size:11px;color:var(--tx3);font-weight:600;background:var(--raised);justify-content:center}
+.matrix > div.rh{font-size:12px;color:var(--tx2);font-weight:500;justify-content:flex-start}
+
+/* theme toggle */
+.tog{display:inline-flex;border:1px solid var(--bd);border-radius:var(--r-full);padding:3px;background:var(--surface);gap:2px}
+.tog button{border:0;background:none;font-family:var(--sans);font-size:12px;font-weight:500;color:var(--tx3);
+  padding:5px 12px;border-radius:var(--r-full);cursor:pointer}
+.tog button[aria-pressed="true"]{background:var(--accent-soft);color:var(--accent)}
+
+.copied{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(20px);opacity:0;
+  pointer-events:none;transition:opacity var(--d-base),transform var(--d-base) var(--ease);z-index:100}
+.copied.on{opacity:1;transform:translateX(-50%) translateY(0)}
+
+footer{padding:48px 0 80px;color:var(--tx3);font-size:13px}
+
+@media (prefers-reduced-motion:reduce){*{transition-duration:.01ms!important;animation-duration:.01ms!important;animation-iteration-count:1!important}}
+</style>
+</head>
+<body>
+
+<!-- reusable scene filters -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+  <filter id="f-terrain"><feTurbulence type="fractalNoise" baseFrequency="0.009 0.013" numOctaves="5" seed="21"/><feColorMatrix values="0.34 0.22 0.04 0 0.05  0.36 0.30 0.05 0 0.08  0.16 0.20 0.26 0 0.06  0 0 0 0 1"/></filter>
+  <filter id="f-terrain-dry"><feTurbulence type="fractalNoise" baseFrequency="0.008 0.012" numOctaves="5" seed="12"/><feColorMatrix values="0.38 0.30 0.14 0 0.07  0.36 0.32 0.16 0 0.09  0.28 0.26 0.22 0 0.07  0 0 0 0 1"/></filter>
+  <filter id="f-terrain-green"><feTurbulence type="fractalNoise" baseFrequency="0.008 0.012" numOctaves="5" seed="12"/><feColorMatrix values="0.24 0.30 0.05 0 0.03  0.28 0.38 0.06 0 0.08  0.12 0.18 0.20 0 0.05  0 0 0 0 1"/></filter>
+  <filter id="f-water"><feTurbulence type="fractalNoise" baseFrequency="0.022 0.006" numOctaves="3" seed="4"/><feColorMatrix values="0 0 0 0 0.05  0 0 0 0 0.15  0.2 0.2 0.2 0 0.26  0 0 0 0 1"/></filter>
+  <filter id="f-speckle"><feTurbulence type="fractalNoise" baseFrequency="0.18" numOctaves="2" seed="88"/><feColorMatrix values="0.62 0.62 0.62 0 0  0.54 0.54 0.54 0 0.02  0.72 0.72 0.72 0 0.06  0 0 0 0 0.6"/></filter>
+  <filter id="f-fuse"><feTurbulence type="fractalNoise" baseFrequency="0.01 0.014" numOctaves="4" seed="33"/><feColorMatrix values="0.30 0.24 0.10 0 0.05  0.32 0.30 0.12 0 0.07  0.20 0.22 0.30 0 0.07  0 0 0 0 1"/></filter>
+</defs></svg>
+
+<header class="masthead">
+  <div class="wrap">
+    <div class="mast-top">
+      <span class="glyph"></span><b>SatQuery AI</b>
+      <span class="chip chip-mono">Design System v2.0</span>
+      <span class="spacer"></span>
+      <span class="tog" role="group" aria-label="Theme">
+        <button id="t-dark" aria-pressed="true">Dark</button>
+        <button id="t-light" aria-pressed="false">Light</button>
+      </span>
+    </div>
+    <h1>A console for reading the Earth by conversation.</h1>
+    <p class="lede">SatQuery is not a chatbot with pictures attached. It is an analysis workspace where the imagery is the subject, the conversation is the instrument, and every claim arrives with the evidence that produced it. This document is the complete visual, interaction, and implementation specification for that product.</p>
+    <div class="meta-rail">
+      <span class="chip chip-optical"><span class="dot"></span>Optical / multispectral</span>
+      <span class="chip chip-sar"><span class="dot"></span>SAR</span>
+      <span class="chip">Bi-temporal change</span>
+      <span class="chip">Agentic orchestration</span>
+      <span class="chip chip-mono">Inter + Geist Mono</span>
+      <span class="chip chip-mono">Dark-first, light supported</span>
+    </div>
+  </div>
+</header>
+
+<nav class="toc" aria-label="Contents">
+  <div class="wrap">
+    <a href="#use">How to use</a>
+    <a href="#principles">Principles</a>
+    <a href="#brand">Brand</a>
+    <a href="#color">Colour</a>
+    <a href="#type">Type</a>
+    <a href="#layout">Layout</a>
+    <a href="#shape">Shape &amp; depth</a>
+    <a href="#motion">Motion</a>
+    <a href="#icons">Icons</a>
+    <a href="#components">Components</a>
+    <a href="#shell">Shell</a>
+    <a href="#screens">Screens</a>
+    <a href="#states">States</a>
+    <a href="#dataviz">Overlays</a>
+    <a href="#voice">Voice</a>
+    <a href="#a11y">Accessibility</a>
+    <a href="#code">Code</a>
+    <a href="#handoff">Handoff</a>
+  </div>
+</nav>
+
+<!-- 00 HOW TO USE -->
+<section class="band" id="use">
+  <div class="wrap">
+    <div class="sec-head">
+      <span class="num">00</span>
+      <h2>How to use this document</h2>
+      <p>Everything here is live. The theme toggle in the header switches every swatch, component, and screen mockup between dark and light — that is the real light theme, not a mock-up of one. Colour swatches copy their hex on click. The screen mockups are working HTML: tabs switch, the compare handle drags, traces expand.</p>
+    </div>
+    <div class="grid g3">
+      <div class="card"><h4>If you're implementing</h4><p>Start at <a href="#code">Code</a>. The token block and Tailwind config are copy-ready, and the component CSS in this page is the same CSS the product should ship.</p></div>
+      <div class="card"><h4>If you're designing in Figma</h4><p>Start at <a href="#handoff">Handoff</a> for the layer naming, variable structure, and page organisation that matches the file already created.</p></div>
+      <div class="card"><h4>If you're presenting</h4><p>Go to <a href="#screens">Screens</a>. Each one maps to a specific mandatory capability in the ISRO/SAC brief, labelled as such.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- 01 PRINCIPLES -->
+<section class="band" id="principles">
+  <div class="wrap">
+    <div class="sec-head">
+      <span class="num">01</span>
+      <h2>Principles</h2>
+      <p>Six rules that settle arguments. When a design decision is unclear, the answer is whichever option serves the principle higher on this list.</p>
+    </div>
+    <div class="grid g2">
+      <div class="card"><h4>1 · The scene owns the attention</h4><p>Reference chat UIs centre a column of bubbles. That is right when text is the subject. Here the imagery is the subject, so it gets the stage and everything else arranges around it. No panel may exceed the viewport in visual weight.</p><span class="rule">Test: cover the image. If the screen still makes sense, the layout is wrong.</span></div>
+      <div class="card"><h4>2 · Colour is data, not decoration</h4><p>Sky blue is always optical. Violet is always SAR. Green is always gain, rose always loss. A hue never appears for visual interest alone — if you want emphasis without meaning, use weight, size, or space.</p><span class="rule">Test: can you name the data meaning of every coloured pixel on screen?</span></div>
+      <div class="card"><h4>3 · Evidence ships with every claim</h4><p>An answer is incomplete without the chain that produced it, the parameters used, the confidence, and a path back to the pixels. The trace is part of the reply, not a debug drawer.</p><span class="rule">Required by the brief: auditable execution summary.</span></div>
+      <div class="card"><h4>4 · Machine values look like machine values</h4><p>Geist Mono is reserved for what was measured or emitted by a system: coordinates, CRS, GSD, bands, areas, model IDs, timings, confidence. Inter carries everything a person reads as language.</p><span class="rule">Test: no prose in mono, no measurement in sans.</span></div>
+      <div class="card"><h4>5 · Refusal is a design surface</h4><p>Incompatible inputs are the normal case, not the exception. The system names the specific mismatch, the specific threshold it missed, and the specific action that fixes it. It never says "invalid input".</p><span class="rule">Every failure state has at least one recovery button.</span></div>
+      <div class="card"><h4>6 · Motion only where something moved</h4><p>The compare handle, a mask resolving, a trace step completing, a panel opening. No entrance animations, no hover lifts, no gradient drift. Motion that does not describe a change is noise on top of noisy data.</p><span class="rule">Budget: nothing animates longer than 420ms.</span></div>
+    </div>
+  </div>
+</section>
+
+<!-- 02 BRAND -->
+<section class="band" id="brand">
+  <div class="wrap">
+    <div class="sec-head">
+      <span class="num">02</span>
+      <h2>Brand mark</h2>
+      <p>A rounded square holding three descending scan lines — a sensor sweep, not a globe or a satellite silhouette. It reads at 16px, which is the only size that really matters for a tool that lives in a browser tab.</p>
+    </div>
+    <div class="grid g3">
+      <div class="card" style="display:flex;align-items:center;gap:20px">
+        <span class="glyph" style="width:64px;height:64px;border-radius:18px"></span>
+        <div><b style="font-size:13px">Primary</b><br><span class="spec">gradient 150° · accent → #0EA5A2 → #1E3A8A</span></div>
+      </div>
+      <div class="card" style="display:flex;align-items:center;gap:14px">
+        <span class="glyph"></span><span class="glyph sm"></span>
+        <span class="glyph" style="width:16px;height:16px;border-radius:5px"></span>
+        <div><b style="font-size:13px">Sizes</b><br><span class="spec">36 · 24 · 16px</span></div>
+      </div>
+      <div class="card">
+        <div style="display:flex;align-items:center;gap:11px;margin-bottom:12px"><span class="glyph sm"></span><b style="font-weight:600;letter-spacing:-.01em">SatQuery</b></div>
+        <p>Lockup: mark, 11px gap, wordmark in Inter Semi Bold at the mark's height × 0.58. Never stack vertically; never set the wordmark in mono.</p>
+      </div>
+    </div>
+    <div class="note">Clear space around the mark equals one quarter of its height on all sides. On imagery, the mark sits on a 82%-opacity surface pill — never directly on a scene, where the gradient loses against terrain.</div>
+  </div>
+</section>
+
+<!-- 03 COLOR -->
+<section class="band" id="color">
+  <div class="wrap">
+    <div class="sec-head">
+      <span class="num">03</span>
+      <h2>Colour</h2>
+      <p>Dark is the product default — analysts work with false-colour composites and radar returns, and light chrome distorts perception of both. Every token below exists as a Figma variable and a CSS custom property under the same name. Click any swatch to copy its value.</p>
+    </div>
+
+    <h3 class="sub">Surfaces · four depths, no more</h3>
+    <div class="swatches" id="sw-surface"></div>
+
+    <h3 class="sub">Borders and text</h3>
+    <div class="swatches" id="sw-text"></div>
+
+    <h3 class="sub">Semantic — every one of these means something specific</h3>
+    <div class="swatches" id="sw-semantic"></div>
+
+    <h3 class="sub">Status</h3>
+    <div class="swatches" id="sw-status"></div>
+
+    <h3 class="sub">Contrast audit</h3>
+    <div class="tbl-scroll">
+    <table class="tk">
+      <tr><th>Pair</th><th>Dark ratio</th><th>Light ratio</th><th>WCAG</th><th>Approved for</th></tr>
+      <tr><td class="m">text/primary on bg/surface</td><td class="m">14.8:1</td><td class="m">16.1:1</td><td>AAA</td><td>Body, answers, headings</td></tr>
+      <tr><td class="m">text/secondary on bg/surface</td><td class="m">6.9:1</td><td class="m">7.4:1</td><td>AA</td><td>Supporting prose, labels</td></tr>
+      <tr><td class="m">text/muted on bg/surface</td><td class="m">4.6:1</td><td class="m">4.8:1</td><td>AA</td><td>Metadata only, never body</td></tr>
+      <tr><td class="m">accent on bg/surface</td><td class="m">8.2:1</td><td class="m">4.9:1</td><td>AA</td><td>Links, active state, focus</td></tr>
+      <tr><td class="m">text/inverse on accent</td><td class="m">9.1:1</td><td class="m">5.2:1</td><td>AA</td><td>Primary button label</td></tr>
+      <tr><td class="m">optical on optical-soft</td><td class="m">7.8:1</td><td class="m">5.6:1</td><td>AA</td><td>Sensor chip text</td></tr>
+      <tr><td class="m">sar on sar-soft</td><td class="m">6.4:1</td><td class="m">6.1:1</td><td>AA</td><td>Sensor chip text</td></tr>
+    </table>
+    </div>
+
+    <div class="warnbox">
+      <b>Overlay rule — this is the one that gets broken most.</b> Masks and heatmaps render at 45–60% fill opacity with a 1.5px fully-opaque stroke in the same hue. Fill alone reads as haze over terrain and disappears entirely over SAR speckle. The stroke is what makes a boundary legible. No overlay ships without one.
+    </div>
+  </div>
+</section>
+
+<!-- 04 TYPE -->
+<section class="band" id="type">
+  <div class="wrap">
+    <div class="sec-head">
+      <span class="num">04</span>
+      <h2>Typography</h2>
+      <p>Two families with a hard division of labour: Inter for language, Geist Mono for measurement. An analyst should be able to tell at a glance which numbers came out of a model and which words came out of one.</p>
+    </div>
+
+    <div class="ramp-row"><div class="sample" style="font-size:38px;font-weight:600;letter-spacing:-.025em">Analyse a scene</div><div class="spec">Display · Inter 600 · 38/46 · −0.95px</div></div>
+    <div class="ramp-row"><div class="sample" style="font-size:26px;font-weight:600;letter-spacing:-.015em">Change between 2019 and 2024</div><div class="spec">H1 · Inter 600 · 26/34 · −0.4px</div></div>
+    <div class="ramp-row"><div class="sample" style="font-size:20px;font-weight:600">Optical–SAR joint extraction</div><div class="spec">H2 · Inter 600 · 20/28 · −0.2px</div></div>
+    <div class="ramp-row"><div class="sample" style="font-size:16px;font-weight:600">Execution summary</div><div class="spec">H3 · Inter 600 · 16/24 · 0</div></div>
+    <div class="ramp-row"><div class="sample" style="font-size:15px">Built-up area expanded along the south-east bank of the reservoir.</div><div class="spec">Body · Inter 400 · 15/24</div></div>
+    <div class="ramp-row"><div class="sample" style="font-size:13px">Grounded to 3 regions — select a phrase to highlight it</div><div class="spec">Small · Inter 400 · 13/21</div></div>
+    <div class="ramp-row"><div class="sample" style="font-size:13px;font-weight:500">Replace second image</div><div class="spec">Small Medium · Inter 500 · 13/20 · buttons</div></div>
+    <div class="ramp-row"><div class="sample" style="font-size:12px;font-weight:500">Confidence</div><div class="spec">Caption · Inter 500 · 12/16</div></div>
+    <div class="ramp-row"><div class="sample" style="font-family:var(--mono);font-size:13px">EPSG:32645 · 0.65 m GSD · B02,B03,B04,B08</div><div class="spec">Mono · Geist Mono 400 · 13/20</div></div>
+    <div class="ramp-row"><div class="sample" style="font-family:var(--mono);font-size:11px;letter-spacing:.3px">changeformer-cd · 2.41 s · iou 0.68</div><div class="spec">Mono Small · Geist Mono 500 · 11/16 · +0.3px</div></div>
+
+    <h3 class="sub">Rules</h3>
+    <ul class="tight">
+      <li><b>Measure.</b> Body prose caps at 68 characters. The conversation rail is 364px precisely so 13/21 lands near that without a max-width override.</li>
+      <li><b>Numbers.</b> Tabular figures on every mono run (<code>font-variant-numeric: tabular-nums</code>) so values in the stat strip do not jitter when they update.</li>
+      <li><b>No all-caps.</b> Section labels use 10.5px Inter 600 in <code>text/muted</code>, sentence case. Uppercase tracking is reserved for nothing.</li>
+      <li><b>Never italic.</b> Emphasis is carried by weight and colour; italic Inter at 13px on a dark ground loses too much stroke contrast.</li>
+      <li><b>Truncation.</b> File names and session titles truncate with an ellipsis at the end and expose the full string in a native title attribute.</li>
+    </ul>
+  </div>
+</section>
+
+<!-- 05 LAYOUT -->
+<section class="band" id="layout">
+  <div class="wrap">
+    <div class="sec-head">
+      <span class="num">05</span>
+      <h2>Layout, spacing, breakpoints</h2>
+      <p>A 4px base grid. 8 / 12 / 16 / 24 do almost all the work; the larger steps exist for empty states and marketing surfaces only.</p>
+    </div>
+
+    <div class="grid g2">
+      <div>
+        <h3 class="sub" style="margin-top:0">Spacing scale</h3>
+        <table class="tk">
+          <tr><th>Token</th><th>px</th><th>Applied to</th></tr>
+          <tr><td class="m">space/2</td><td class="m">2</td><td>Icon optical alignment nudges</td></tr>
+          <tr><td class="m">space/4</td><td class="m">4</td><td>Icon → label inside a chip</td></tr>
+          <tr><td class="m">space/6</td><td class="m">6</td><td>Chip → chip in a row</td></tr>
+          <tr><td class="m">space/8</td><td class="m">8</td><td>Sibling controls, button groups</td></tr>
+          <tr><td class="m">space/12</td><td class="m">12</td><td>Input padding, list row padding</td></tr>
+          <tr><td class="m">space/16</td><td class="m">16</td><td>Panel padding, message gap</td></tr>
+          <tr><td class="m">space/24</td><td class="m">24</td><td>Between grouped blocks</td></tr>
+          <tr><td class="m">space/40</td><td class="m">40</td><td>Empty-state breathing room</td></tr>
+          <tr><td class="m">space/64</td><td class="m">64</td><td>Section rhythm, docs only</td></tr>
+        </table>
+      </div>
+      <div>
+        <h3 class="sub" style="margin-top:0">Breakpoints and shell behaviour</h3>
+        <table class="tk">
+          <tr><th>Width</th><th>Rail</th><th>Stage</th><th>Aside</th></tr>
+          <tr><td class="m">≥1440</td><td>212px full</td><td>fluid</td><td>380px</td></tr>
+          <tr><td class="m">1180–1439</td><td>212px full</td><td>fluid, min 560</td><td>364px</td></tr>
+          <tr><td class="m">900–1179</td><td>64px icons only</td><td>fluid, min 520</td><td>340px</td></tr>
+          <tr><td class="m">640–899</td><td>drawer, overlay</td><td>full width</td><td>bottom sheet, 55vh</td></tr>
+          <tr><td class="m">&lt;640</td><td>drawer</td><td>full width, 48vh</td><td>bottom sheet, snap 48/88vh</td></tr>
+        </table>
+        <p class="caption">Below 900px the stage and the conversation stack vertically rather than side by side. The stage stays pinned to the top so the image remains the anchor even on a phone — the sheet slides over it, never above it.</p>
+      </div>
+    </div>
+
+    <h3 class="sub">Shell redline</h3>
+<pre class="code"><span class="c">┌──────────────────────────────────────────────────────────────────────────┐</span>
+<span class="c">│</span> 16 ⟷ <span class="p">◈</span> SatQuery │ Hooghly reservoir · 2019↔2024      <span class="p">[</span>Export<span class="p">]</span> <span class="p">[</span>⋯<span class="p">]</span> ⟷ 16 <span class="c">│</span> h 52
+<span class="c">├──────────┬────────────────────────────────────────────┬──────────────────┤</span>
+<span class="c">│</span> pad 9    <span class="c">│</span> pad 14   Optical │ SAR │ Change │ Split     <span class="c">│</span> pad 16           <span class="c">│</span> h 40
+<span class="c">│</span>          <span class="c">├────────────────────────────────────────────┤</span>                  <span class="c">│</span>
+<span class="c">│</span> item h32 <span class="c">│</span>                                            <span class="c">│</span> msg gap 15       <span class="c">│</span>
+<span class="c">│</span> gap 2    <span class="c">│</span>              <span class="p">V I E W P O R T</span>               <span class="c">│</span> avatar 24        <span class="c">│</span>
+<span class="c">│</span>          <span class="c">│</span>       overlays · compare · readout         <span class="c">│</span> bubble r10       <span class="c">│</span>
+<span class="c">│</span>          <span class="c">│</span>                                            <span class="c">│</span> trace r10        <span class="c">│</span>
+<span class="c">│</span>          <span class="c">│</span>  <span class="p">┌─ readout ── inset 12 ── h 34 ─────────┐</span>   <span class="c">│</span>                  <span class="c">│</span>
+<span class="c">│</span>          <span class="c">│</span>  <span class="p">│</span> CRS · GSD · bands · extent · date     <span class="p">│</span>   <span class="c">│</span> <span class="p">┌ composer ────┐</span> <span class="c">│</span>
+<span class="c">│</span>          <span class="c">│</span>  <span class="p">└───────────────────────────────────────┘</span>   <span class="c">│</span> <span class="p">│</span> min-h 38     <span class="p">│</span> <span class="c">│</span>
+<span class="c">│</span>          <span class="c">├────────────────────────────────────────────┤</span> <span class="p">└──────────────┘</span> <span class="c">│</span> h 44
+<span class="c">│</span>          <span class="c">│</span> gain 4.2 km² │ loss 0.8 │ net +3.4 │ 11.4%  <span class="c">│</span> pad 12/14/14     <span class="c">│</span>
+<span class="c">└──────────┴────────────────────────────────────────────┴──────────────────┘</span>
+   212px                   fluid, min 560px                     364px</pre>
+  </div>
+</section>
+
+<!-- 06 SHAPE -->
+<section class="band" id="shape">
+  <div class="wrap">
+    <div class="sec-head">
+      <span class="num">06</span>
+      <h2>Shape and depth</h2>
+      <p>Radius is graded by mobility: the more a surface can move, the rounder it is. Fixed chrome is squarer, floating things are rounder. Elevation is used sparingly — in a dark interface, shadow is weak, so borders do most of the separating.</p>
+    </div>
+    <div class="grid g2">
+      <div>
+        <table class="tk">
+          <tr><th>Radius</th><th>px</th><th>Applied to</th></tr>
+          <tr><td class="m">radius/xs</td><td class="m">4</td><td>Tags on bounding boxes</td></tr>
+          <tr><td class="m">radius/sm</td><td class="m">6</td><td>Tabs, rail rows, icon buttons</td></tr>
+          <tr><td class="m">radius/md</td><td class="m">10</td><td>Buttons, inputs, readout, bubbles</td></tr>
+          <tr><td class="m">radius/lg</td><td class="m">14</td><td>Cards, panels, trace block</td></tr>
+          <tr><td class="m">radius/xl</td><td class="m">20</td><td>Modals, sheets, the app frame</td></tr>
+          <tr><td class="m">radius/full</td><td class="m">999</td><td>Chips, meters, avatars</td></tr>
+        </table>
+      </div>
+      <div>
+        <table class="tk">
+          <tr><th>Elevation</th><th>Value</th><th>Applied to</th></tr>
+          <tr><td class="m">e0</td><td class="m">border only</td><td>Cards, panels — the default</td></tr>
+          <tr><td class="m">e1</td><td class="m">0 1px 2px /.45</td><td>Raised chips, badges on scenes</td></tr>
+          <tr><td class="m">e2</td><td class="m">0 8px 24px −8px /.65</td><td>Popovers, dropdowns, toasts</td></tr>
+          <tr><td class="m">e3</td><td class="m">0 24px 64px −16px /.8</td><td>Modals, sheets</td></tr>
+          <tr><td class="m">glow</td><td class="m">0 0 24px −6px accent</td><td>Compare handle, active overlay</td></tr>
+          <tr><td class="m">scrim</td><td class="m">rgba(5,7,10,.72)</td><td>Behind modals</td></tr>
+        </table>
+      </div>
+    </div>
+    <div class="note">Asymmetric radius appears in exactly one place: the user message bubble, where the top-left corner drops to 4px to point at its avatar. Do not extend this pattern anywhere else.</div>
+  </div>
+</section>
+
+<!-- 07 MOTION -->
+<section class="band" id="motion">
+  <div class="wrap">
+    <div class="sec-head">
+      <span class="num">07</span>
+      <h2>Motion</h2>
+      <p>Four durations, three curves, and a hard rule: motion describes a change the user caused or the system made. Nothing animates to look alive.</p>
+    </div>
+    <div class="tbl-scroll">
+    <table class="tk">
+      <tr><th>Token</th><th>Value</th><th>Curve</th><th>Used for</th></tr>
+      <tr><td class="m">d-fast</td><td class="m">120ms</td><td class="m">ease</td><td>Hover, focus, chip and button colour</td></tr>
+      <tr><td class="m">d-base</td><td class="m">180ms</td><td class="m">ease</td><td>Panel open, trace expand, tab switch</td></tr>
+      <tr><td class="m">d-slow</td><td class="m">280ms</td><td class="m">ease</td><td>Sheet slide, modal entry, meter fill</td></tr>
+      <tr><td class="m">d-scene</td><td class="m">420ms</td><td class="m">ease</td><td>Overlay mask fade-in, view mode change</td></tr>
+      <tr><td class="m">ease</td><td class="m">cubic-bezier(.2,.8,.2,1)</td><td>—</td><td>Default for everything entering</td></tr>
+      <tr><td class="m">ease-in</td><td class="m">cubic-bezier(.4,0,1,1)</td><td>—</td><td>Things leaving the screen</td></tr>
+      <tr><td class="m">ease-spring</td><td class="m">cubic-bezier(.34,1.3,.64,1)</td><td>—</td><td>Compare handle release only</td></tr>
+    </table>
+    </div>
+    <h3 class="sub">Named interactions</h3>
+    <ul class="tight">
+      <li><b>Compare drag.</b> The handle follows the pointer with zero delay — no easing during drag, easing only on keyboard step. Arrow keys move it 2% per press, Shift+Arrow 10%, Home/End to the edges.</li>
+      <li><b>Mask reveal.</b> When a change mask finishes computing it fades in over 420ms with the stroke arriving first (0–180ms) and the fill following (180–420ms). This reads as the boundary being found, then filled.</li>
+      <li><b>Trace step completion.</b> The pending index swaps to a check with no transition; the row's left edge flashes <code>accent</code> at 30% for 180ms. No slide, no height animation — the block must not reflow while the analyst is reading.</li>
+      <li><b>Streaming answer.</b> Text appears token-by-token with no cursor animation. The trace above it stays pinned; the thread auto-scrolls only if the analyst is already within 40px of the bottom.</li>
+      <li><b>Reduced motion.</b> Everything above collapses to instant. The mask appears at full opacity, the handle jumps, the spinner becomes a static ring with a text label. Nothing is lost, only the timing.</li>
+    </ul>
+  </div>
+</section>
+
+<!-- 08 ICONS -->
+<section class="band" id="icons">
+  <div class="wrap">
+    <div class="sec-head">
+      <span class="num">08</span>
+      <h2>Iconography</h2>
+      <p>Lucide, 1.5px stroke, 16px in dense chrome and 20px in empty states. Icons are never the only label on a control the analyst uses rarely — the viewport tools are the one exception, and they carry tooltips.</p>
+    </div>
+    <div class="grid g4">
+      <div class="card"><h4>Navigation</h4><p>panel-left · chevron-right · x · more-horizontal · external-link</p></div>
+      <div class="card"><h4>Viewport</h4><p>zoom-in · zoom-out · maximize · contrast · layers · crosshair · move</p></div>
+      <div class="card"><h4>Data</h4><p>image · layers-2 · radio-tower (SAR) · sun (optical) · git-compare (bi-temporal) · scan</p></div>
+      <div class="card"><h4>Action</h4><p>upload · download · send-horizontal · plus · refresh-cw · file-text</p></div>
+    </div>
+    <div class="note">Sensor icons are the only ones that carry colour: <code>sun</code> in optical blue, <code>radio-tower</code> in SAR violet. Every other icon inherits <code>currentColor</code> from its control.</div>
+  </div>
+</section>
+
+<!-- 09 COMPONENTS -->
+<section class="band" id="components">
+  <div class="wrap">
+    <div class="sec-head">
+      <span class="num">09</span>
+      <h2>Components</h2>
+      <p>Thirteen components carry the entire product. The set is deliberately small — most of the interface is chrome around a picture, so consistency matters more than coverage.</p>
+    </div>
+
+    <h3 class="sub">Button — full state matrix</h3>
+    <div class="tbl-scroll">
+      <div class="matrix">
+        <div class="hd"></div><div class="hd">Default</div><div class="hd">Hover</div><div class="hd">Focus</div><div class="hd">Loading</div><div class="hd">Disabled</div>
+        <div class="rh">Primary</div>
+        <div><button class="btn btn-primary">Run analysis</button></div>
+        <div><button class="btn btn-primary" style="background:var(--accent-hi)">Run analysis</button></div>
+        <div><button class="btn btn-primary" style="box-shadow:0 0 0 3px var(--ring)">Run analysis</button></div>
+        <div><button class="btn btn-primary loading">Run analysis</button></div>
+        <div><button class="btn btn-primary" disabled>Run analysis</button></div>
+        <div class="rh">Secondary</div>
+        <div><button class="btn btn-secondary">Add image</button></div>
+        <div><button class="btn btn-secondary" style="background:var(--hover);border-color:var(--bd-strong)">Add image</button></div>
+        <div><button class="btn btn-secondary" style="box-shadow:0 0 0 3px var(--ring);border-color:var(--accent)">Add image</button></div>
+        <div><button class="btn btn-secondary loading">Add image</button></div>
+        <div><button class="btn btn-secondary" disabled>Add image</button></div>
+        <div class="rh">Ghost</div>
+        <div><button class="btn btn-ghost">Clear</button></div>
+        <div><button class="btn btn-ghost" style="background:var(--hover);color:var(--tx)">Clear</button></div>
+        <div><button class="btn btn-ghost" style="box-shadow:0 0 0 3px var(--ring)">Clear</button></div>
+        <div><button class="btn btn-ghost loading">Clear</button></div>
+        <div><button class="btn btn-ghost" disabled>Clear</button></div>
+        <div class="rh">Danger</div>
+        <div><button class="btn btn-danger">Delete session</button></div>
+        <div><button class="btn btn-danger" style="background:var(--err);color:#fff;border-color:var(--err)">Delete session</button></div>
+        <div><button class="btn btn-danger" style="box-shadow:0 0 0 3px var(--ring)">Delete session</button></div>
+        <div><button class="btn btn-danger loading">Delete session</button></div>
+        <div><button class="btn btn-danger" disabled>Delete session</button></div>
+      </div>
+    </div>
+    <p class="caption"><b>Rule.</b> One primary per view, reserved for running an analysis or exporting. Sizes: <code>sm</code> 30px, default 38px, <code>lg</code> 44px. Icon-only buttons are always 30×30 with a tooltip.</p>
+
+    <h3 class="sub">Chips</h3>
+    <div class="card">
+      <p style="margin-bottom:16px">Sensor chips are read-only facts about the input and never interactive. Suggestion and filter chips are buttons and get hover states.</p>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">
+        <span class="chip chip-optical"><span class="dot"></span>Optical · R,G,B,NIR</span>
+        <span class="chip chip-sar"><span class="dot"></span>SAR · VV+VH</span>
+        <span class="chip chip-gain">+ Built-up 4.2 km²</span>
+        <span class="chip chip-loss">− Water 0.8 km²</span>
+        <span class="chip chip-warn">Resolution mismatch</span>
+        <span class="chip chip-err">Not co-registered</span>
+        <span class="chip chip-mono">GeoTIFF · 4096²</span>
+      </div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap">
+        <button class="chip">Describe land cover</button>
+        <button class="chip">Highlight the water body</button>
+        <button class="chip">Count vessels</button>
+      </div>
+    </div>
+
+    <div class="grid g2" style="margin-top:16px">
+      <div class="card">
+        <h4>Text field and composer</h4>
+        <p style="margin-bottom:14px">Focus is a 1px accent border plus a 3px soft ring — never a glow on the whole field.</p>
+        <input class="field" placeholder="Session name" style="margin-bottom:8px">
+        <input class="field invalid" value="ovelap 12%" style="margin-bottom:6px">
+        <span style="font-size:12px;color:var(--err)">Overlap must be at least 80% for change analysis.</span>
+      </div>
+      <div class="card">
+        <h4>Confidence meter</h4>
+        <p style="margin-bottom:14px">Always paired with the number. Three bands: ≥0.75 accent, 0.60–0.74 amber, &lt;0.60 red — and below 0.60 the answer copy must hedge explicitly, not rely on colour.</p>
+        <div class="meter" style="margin-bottom:9px"><span class="spec" style="width:74px">Answer</span><span class="track"><span class="fill" style="width:88%"></span></span><span class="val">0.88</span></div>
+        <div class="meter mid" style="margin-bottom:9px"><span class="spec" style="width:74px">Grounding</span><span class="track"><span class="fill" style="width:67%"></span></span><span class="val">0.67</span></div>
+        <div class="meter low"><span class="spec" style="width:74px">Water extent</span><span class="track"><span class="fill" style="width:44%"></span></span><span class="val">0.44</span></div>
+      </div>
+    </div>
+
+    <div class="grid g2" style="margin-top:16px">
+      <div class="card">
+        <h4>Execution trace</h4>
+        <p style="margin-bottom:14px">Collapsed by default, expanded on the first answer of a session so people discover it. Steps name the tool as an analyst would, with the model ID in mono beneath. Click the header to toggle.</p>
+        <div class="trace" data-open="true">
+          <button class="trace-h"><span class="chip chip-accent chip-mono" style="padding:3px 7px">4 steps</span> Execution summary <span class="caret">▾</span></button>
+          <div class="trace-b">
+            <div class="step"><span class="idx done">✓</span><span class="body"><b>Validated pair</b><span>2 rasters · co-registered · 0.4 px RMSE</span></span></div>
+            <div class="step"><span class="idx done">✓</span><span class="body"><b>Routed to change analysis</b><span>task-router · 0.96</span></span></div>
+            <div class="step"><span class="idx done">✓</span><span class="body"><b>Segmented change</b><span>changeformer-cd · 4 classes · 1.84 s</span></span></div>
+            <div class="step"><span class="idx run">4</span><span class="body"><b>Composing answer…</b><span>rs-vlm-7b · streaming</span></span></div>
+          </div>
+        </div>
+      </div>
+      <div class="card">
+        <h4>Toasts</h4>
+        <p style="margin-bottom:14px">Bottom-centre, 4s, stacked to a maximum of three. Success toasts use the past tense of the button that triggered them.</p>
+        <div style="display:flex;flex-direction:column;gap:9px">
+          <div class="toast"><span class="ic" style="color:var(--ok)">✓</span><div><b>Report exported</b><span>satquery-hooghly-20240211.pdf · 12.4 MB</span></div></div>
+          <div class="toast"><span class="ic" style="color:var(--warn)">⚠</span><div><b>SAR image resampled</b><span>3 m → 0.65 m to match the optical grid</span></div></div>
+          <div class="toast"><span class="ic" style="color:var(--err)">✕</span><div><b>Upload failed</b><span>sar_vv.tif is missing geotransform data. <a href="#">Try again</a></span></div></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="grid g2" style="margin-top:16px">
+      <div class="card">
+        <h4>Scene overlays</h4>
+        <p style="margin-bottom:14px">Boxes for grounding, filled masks for segmentation. The label sits above-left and never crosses the box edge. Hover a box to focus it and dim its siblings.</p>
+        <div style="position:relative;height:160px;border-radius:var(--r-md);overflow:hidden;border:1px solid var(--bd)" id="ov-demo">
+          <svg class="scene" viewBox="0 0 420 160" preserveAspectRatio="none"><rect width="420" height="160" filter="url(#f-terrain)"/></svg>
+          <div class="gridlines"></div>
+          <div class="bbox" style="left:9%;top:22%;width:26%;height:44%"><span class="tag">water body · 0.91</span></div>
+          <div class="bbox alt" style="left:55%;top:38%;width:22%;height:36%"><span class="tag">built-up · 0.74</span></div>
+        </div>
+      </div>
+      <div class="card">
+        <h4>Loading skeletons</h4>
+        <p style="margin-bottom:14px">Skeletons match the shape of what is coming, never a generic grey block. The viewport never shows a skeleton — it shows the source image immediately and overlays arrive on top.</p>
+        <div style="display:flex;gap:10px;margin-bottom:12px"><div class="skel" style="width:24px;height:24px;border-radius:7px;flex:none"></div>
+          <div style="flex:1"><div class="skel" style="height:11px;width:92%;margin-bottom:7px"></div><div class="skel" style="height:11px;width:76%;margin-bottom:7px"></div><div class="skel" style="height:11px;width:54%"></div></div></div>
+        <div class="skel" style="height:46px;border-radius:var(--r-md)"></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 10 SHELL -->
+<section class="band" id="shell">
+  <div class="wrap">
+    <div class="sec-head">
+      <span class="num">10</span>
+      <h2>The shell</h2>
+      <p>Three columns with fixed proportions. Sessions and inputs on the left, the stage taking everything left over, the conversation and trace on the right. The stage never falls below 560px — below that viewport width the aside becomes a bottom sheet.</p>
+    </div>
+    <div class="grid g3">
+      <div class="card"><h4>Rail · 212px</h4><p>Session history, the current session's input files, and a live list of whatever the analysis produced — detected regions, change classes, extracted objects. Selecting an item highlights it on the stage.</p></div>
+      <div class="card"><h4>Stage · fluid</h4><p>Tabs for view modes, the viewport itself, and a stat strip when the analysis produces scene-level numbers. This column is the product.</p></div>
+      <div class="card"><h4>Aside · 364px</h4><p>The thread, the traces attached to each answer, and the composer. Scrolls independently. Never contains controls that affect the stage — those live on the stage.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- 11 SCREENS -->
+<section class="band" id="screens">
+  <div class="wrap">
+    <div class="sec-head">
+      <span class="num">11</span>
+      <h2>Screens</h2>
+      <p>Five screens, each mapped to a mandatory capability in the brief. All of them are working HTML — switch tabs, drag the compare handle, expand a trace.</p>
+    </div>
+
+    <!-- SESSION START -->
+    <h3 class="sub" style="margin-top:0">11.1 · Session start <span class="chip chip-mono" style="margin-left:8px">input upload + compatibility check</span></h3>
+    <div class="mock mock-scroll">
+      <div class="shell short">
+        <div class="topbar"><span class="glyph sm"></span><span class="name">SatQuery</span><span class="sess">New session</span><span class="spacer"></span><button class="btn btn-ghost btn-sm">Docs</button><button class="btn btn-secondary btn-sm">Account</button></div>
+        <div class="body-row">
+          <div class="rail">
+            <div class="rail-h">Recent</div>
+            <div class="item"><span class="tick mute"></span>Hooghly reservoir<span class="num">3</span></div>
+            <div class="item"><span class="tick mute"></span>Paradip port<span class="num">5</span></div>
+            <div class="item"><span class="tick mute"></span>Cropland, Nashik<span class="num">2</span></div>
+            <div class="rail-h">Benchmarks</div>
+            <div class="item"><span class="tick mute"></span>VRSBench samples</div>
+            <div class="item"><span class="tick mute"></span>RSVQA samples</div>
+            <div class="item"><span class="tick mute"></span>CDVQA pairs</div>
+          </div>
+          <div class="stage">
+            <div class="empty"><div class="empty-in">
+              <div class="drop">
+                <div class="ic">▦</div>
+                <h3 style="margin-bottom:6px">Drop a scene to start</h3>
+                <p style="color:var(--tx2);font-size:13px;margin-bottom:16px">GeoTIFF or TIFF. PNG and JPEG work for benchmark samples.</p>
+                <button class="btn btn-primary">Choose files</button>
+              </div>
+              <div class="mode-cards">
+                <button class="mode-card"><b>One image</b><span>Ask questions, get a description, or highlight a region by name.</span></button>
+                <button class="mode-card"><b>Two dates</b><span>Same place, different times. Find and describe what changed.</span></button>
+                <button class="mode-card"><b>Optical + SAR</b><span>Same place, two sensors. Read structure and spectrum together.</span></button>
+              </div>
+            </div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <p class="caption"><b>Copy note.</b> The cards describe what the analyst gets, not what the system does — "find and describe what changed", not "bi-temporal change VQA pipeline". The technical name belongs in the trace where it is verifiable, not on the front door where it is only jargon.</p>
+
+    <!-- SINGLE IMAGE -->
+    <h3 class="sub">11.2 · Single image — VQA and grounding <span class="chip chip-mono" style="margin-left:8px">mandatory baseline + second single-image task</span></h3>
+    <div class="mock mock-scroll">
+      <div class="shell">
+        <div class="topbar"><span class="glyph sm"></span><span class="name">SatQuery</span><span class="sess">cartosat2s_20240211_kolkata.tif</span><span class="spacer"></span>
+          <span class="chip chip-optical"><span class="dot"></span>Optical</span><button class="btn btn-secondary btn-sm">Export report</button></div>
+        <div class="body-row">
+          <div class="rail">
+            <div class="rail-h">Session</div>
+            <div class="item on"><span class="tick"></span>Kolkata fringe</div>
+            <div class="rail-h">Inputs</div>
+            <div class="item"><span class="tick mute"></span>cartosat2s_2024.tif</div>
+            <div class="rail-h">Grounded regions</div>
+            <div class="item" data-focus="0"><span class="tick" style="color:var(--accent)"></span>water body<span class="num">0.91</span></div>
+            <div class="item" data-focus="1"><span class="tick" style="color:var(--warn)"></span>built-up<span class="num">0.74</span></div>
+            <div class="item"><span class="tick mute"></span>vegetation<span class="num">0.69</span></div>
+          </div>
+          <div class="stage">
+            <div class="stage-tabs" data-tabs>
+              <button class="tab on">Scene</button><button class="tab">Grounding</button><button class="tab">Bands</button><button class="tab">Metadata</button>
+            </div>
+            <div class="viewport">
+              <svg class="scene" viewBox="0 0 800 460" preserveAspectRatio="xMidYMid slice">
+                <rect width="800" height="460" filter="url(#f-terrain)"/>
+                <path d="M40 300 C 150 250, 220 330, 330 296 S 480 236, 560 268 L 560 344 C 470 322, 380 388, 300 362 S 120 382, 40 368 Z" filter="url(#f-water)" opacity="0.96"/>
+                <g stroke="rgba(233,238,245,.18)" stroke-width="1.5" fill="none">
+                  <path d="M560 60 L 700 100 L 760 220"/><path d="M600 40 L 640 180"/>
+                </g>
+              </svg>
+              <div class="gridlines"></div><div class="bezel"></div>
+              <div class="vp-badge"><span class="chip chip-optical"><span class="dot"></span>Cartosat-2S · pan-sharpened</span><span class="chip chip-mono">3 regions grounded</span></div>
+              <div class="vp-tools"><button class="icon-btn" title="Zoom in">＋</button><button class="icon-btn" title="Zoom out">−</button><button class="icon-btn" title="Fit">⤢</button><button class="icon-btn" title="Contrast">◐</button></div>
+              <div class="bbox" data-box="0" style="left:6%;top:56%;width:60%;height:24%"><span class="tag">water body · 0.91</span></div>
+              <div class="bbox alt" data-box="1" style="left:66%;top:14%;width:24%;height:30%"><span class="tag">built-up · 0.74</span></div>
+              <div class="readout">
+                <span><b>CRS</b> EPSG:32645</span><span class="sep"></span>
+                <span><b>GSD</b> 0.65 m</span><span class="sep"></span>
+                <span><b>Bands</b> R,G,B,NIR</span><span class="sep"></span>
+                <span><b>Size</b> 4096 × 4096</span><span class="sep"></span>
+                <span><b>Acquired</b> 2024-02-11</span>
+              </div>
+            </div>
+          </div>
+          <div class="aside">
+            <div class="thread">
+              <div class="msg user"><span class="av">SM</span><div class="bubble">Describe the land cover and major objects visible in this image.</div></div>
+              <div class="msg ai"><span class="av">◈</span><div class="bubble">
+                <p>The scene is a peri-urban river fringe. A broad <span class="cite" data-focus="0">water body</span> runs east–west across the lower half, with silt deposits along its northern bank.</p>
+                <p>Dense <span class="cite" data-focus="1">built-up fabric</span> occupies the north-east quadrant — regular rooftop geometry and a road grid on roughly 40 m spacing. The remainder is cultivated vegetation in rectangular parcels.</p>
+                <div class="meter" style="margin:12px 0 0"><span class="spec" style="width:66px">Confidence</span><span class="track"><span class="fill" style="width:88%"></span></span><span class="val">0.88</span></div>
+                <div class="trace" data-open="true">
+                  <button class="trace-h"><span class="chip chip-accent chip-mono" style="padding:3px 7px">3 steps</span> Execution summary <span class="caret">▾</span></button>
+                  <div class="trace-b">
+                    <div class="step"><span class="idx done">✓</span><span class="body"><b>Validated input</b><span>1 raster · GeoTIFF · 4 bands · 0.65 m</span></span></div>
+                    <div class="step"><span class="idx done">✓</span><span class="body"><b>Captioned scene</b><span>rs-vlm-7b (BigEarthNet-adapted) · 1.21 s</span></span></div>
+                    <div class="step"><span class="idx done">✓</span><span class="body"><b>Grounded 3 phrases</b><span>rs-grounding-dino · mean iou 0.68</span></span></div>
+                  </div>
+                </div>
+              </div></div>
+            </div>
+            <div class="composer">
+              <div class="suggest"><button class="chip">Highlight the water body</button><button class="chip">Count the bridges</button></div>
+              <div class="box"><div class="txt">Ask about this scene…</div>
+                <div class="row"><button class="icon-btn sm">＋</button><span class="chip chip-mono">VQA</span><span class="spacer"></span><button class="send">➤</button></div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <p class="caption"><b>Try it.</b> Hover an underlined phrase or a region in the left rail — its box goes to full opacity and the others drop to 30%. This is the one hover effect that earns its place: it answers "which one do you mean?", which is the analyst's actual question.</p>
+
+    <!-- CHANGE -->
+    <h3 class="sub">11.3 · Bi-temporal change <span class="chip chip-mono" style="margin-left:8px">mandatory change description + change VQA</span></h3>
+    <div class="mock mock-scroll">
+      <div class="shell tall">
+        <div class="topbar"><span class="glyph sm"></span><span class="name">SatQuery</span><span class="sess">Hooghly reservoir · 2019-03-04 ↔ 2024-02-11</span><span class="spacer"></span>
+          <span class="chip chip-mono">co-registered · 0.4 px RMSE</span><button class="btn btn-secondary btn-sm">Export report</button></div>
+        <div class="body-row">
+          <div class="rail">
+            <div class="rail-h">Inputs</div>
+            <div class="item"><span class="tick mute"></span>T1 · 2019-03-04</div>
+            <div class="item"><span class="tick mute"></span>T2 · 2024-02-11</div>
+            <div class="rail-h">Change classes</div>
+            <div class="item on"><span class="tick"></span>Built-up<span class="num">+4.2</span></div>
+            <div class="item"><span class="tick mute"></span>Water<span class="num">−0.8</span></div>
+            <div class="item"><span class="tick mute"></span>Vegetation<span class="num">−3.1</span></div>
+            <div class="item"><span class="tick mute"></span>Bare soil<span class="num">+0.3</span></div>
+          </div>
+          <div class="stage">
+            <div class="stage-tabs" data-tabs>
+              <button class="tab">2019</button><button class="tab">2024</button><button class="tab">Change map</button><button class="tab on">Split compare</button>
+              <span style="flex:1"></span><span class="chip chip-mono">mask 55%</span>
+            </div>
+            <div class="viewport">
+              <div class="split" id="splitter">
+                <svg class="scene" viewBox="0 0 800 420" preserveAspectRatio="xMidYMid slice">
+                  <rect width="800" height="420" filter="url(#f-terrain-green)"/>
+                  <ellipse cx="300" cy="252" rx="214" ry="88" filter="url(#f-water)"/>
+                </svg>
+                <div class="after" id="split-after" style="clip-path:inset(0 0 0 54%)">
+                  <svg class="scene" viewBox="0 0 800 420" preserveAspectRatio="xMidYMid slice">
+                    <rect width="800" height="420" filter="url(#f-terrain-dry)"/>
+                    <ellipse cx="300" cy="252" rx="198" ry="79" filter="url(#f-water)"/>
+                    <g fill="#34D399" fill-opacity="0.5" stroke="#34D399" stroke-width="1.5">
+                      <rect x="468" y="92" width="134" height="88" rx="3"/>
+                      <rect x="616" y="138" width="98" height="122" rx="3"/>
+                      <rect x="500" y="210" width="72" height="56" rx="3"/>
+                    </g>
+                    <g fill="#FB7185" fill-opacity="0.45" stroke="#FB7185" stroke-width="1.5">
+                      <path d="M446 256 q40 -20 84 4 q-22 38 -82 30 Z"/>
+                    </g>
+                  </svg>
+                </div>
+                <div class="handle" id="split-handle" style="left:54%" role="slider" tabindex="0" aria-label="Compare position" aria-valuenow="54" aria-valuemin="0" aria-valuemax="100"></div>
+              </div>
+              <div class="gridlines"></div><div class="bezel"></div>
+              <div class="vp-badge"><span class="chip chip-mono">drag the handle, or use arrow keys</span></div>
+              <div class="vp-tools"><button class="icon-btn">＋</button><button class="icon-btn">−</button><button class="icon-btn">⤢</button></div>
+              <div class="date-tag" style="left:12px">2019-03-04</div>
+              <div class="date-tag" style="right:152px">2024-02-11</div>
+              <div class="legend">
+                <div class="li"><i style="background:#34D399"></i>gain · built-up</div>
+                <div class="li"><i style="background:#FB7185"></i>loss · water</div>
+                <div class="li"><i style="background:#64748B"></i>unchanged</div>
+              </div>
+              <div class="readout">
+                <span><b>CRS</b> EPSG:32645</span><span class="sep"></span><span><b>GSD</b> 2.5 m</span><span class="sep"></span>
+                <span><b>Δt</b> 4 y 11 m</span><span class="sep"></span><span><b>Overlap</b> 98.6%</span><span class="sep"></span><span><b>RMSE</b> 0.4 px</span>
+              </div>
+            </div>
+            <div class="stat-row">
+              <div class="stat"><div class="k">Built-up</div><div class="v up">+4.2 km²</div></div>
+              <div class="stat"><div class="k">Water</div><div class="v down">−0.8 km²</div></div>
+              <div class="stat"><div class="k">Vegetation</div><div class="v down">−3.1 km²</div></div>
+              <div class="stat"><div class="k">Changed area</div><div class="v">11.4%</div></div>
+            </div>
+          </div>
+          <div class="aside">
+            <div class="thread">
+              <div class="msg user"><span class="av">SM</span><div class="bubble">What changed between these two dates, and where did the change occur?</div></div>
+              <div class="msg ai"><span class="av">◈</span><div class="bubble">
+                <p>Built-up area grew substantially, concentrated on the <span class="cite">eastern and north-eastern edge</span> of the reservoir. Three contiguous new blocks account for most of the 4.2 km² gain.</p>
+                <p>The reservoir itself shrank by 0.8 km², clearest along the <span class="cite">south-east shoreline</span>. Vegetation loss of 3.1 km² sits directly beneath the new built-up blocks, so the expansion consumed cropland rather than bare land.</p>
+                <div class="meter" style="margin:12px 0 0"><span class="spec" style="width:66px">Confidence</span><span class="track"><span class="fill" style="width:82%"></span></span><span class="val">0.82</span></div>
+                <div class="trace" data-open="false">
+                  <button class="trace-h"><span class="chip chip-accent chip-mono" style="padding:3px 7px">4 steps</span> Execution summary <span class="caret">▾</span></button>
+                  <div class="trace-b">
+                    <div class="step"><span class="idx done">✓</span><span class="body"><b>Checked pair compatibility</b><span>same CRS · 0.4 px RMSE · 98.6% overlap</span></span></div>
+                    <div class="step"><span class="idx done">✓</span><span class="body"><b>Routed to change analysis</b><span>task-router · 0.96</span></span></div>
+                    <div class="step"><span class="idx done">✓</span><span class="body"><b>Segmented change</b><span>changeformer-cd · mask + 4 classes · 1.84 s</span></span></div>
+                    <div class="step"><span class="idx done">✓</span><span class="body"><b>Answered from mask</b><span>cdvqa-head · 2.41 s</span></span></div>
+                  </div>
+                </div>
+              </div></div>
+              <div class="msg user"><span class="av">SM</span><div class="bubble">Has the built-up area increased, decreased, or remained unchanged?</div></div>
+              <div class="msg ai"><span class="av">◈</span><div class="bubble">
+                <p>Increased — by 4.2 km², or 63% relative to its 2019 extent.</p>
+              </div></div>
+            </div>
+            <div class="composer">
+              <div class="suggest"><button class="chip">Quantify the water loss</button><button class="chip">Export the change mask</button></div>
+              <div class="box"><div class="txt">Ask about this change…</div>
+                <div class="row"><button class="icon-btn sm">＋</button><span class="chip chip-mono">Change VQA</span><span class="spacer"></span><button class="send">➤</button></div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <p class="caption"><b>Why the stat strip sits under the stage, not in the chat.</b> Numbers that describe the whole scene belong to the scene. Fixed under the viewport, they stay visible as the thread scrolls and they update live when the analyst filters to one change class in the rail.</p>
+
+    <!-- FUSION -->
+    <h3 class="sub">11.4 · Optical–SAR pair <span class="chip chip-mono" style="margin-left:8px">mandatory cross-modal extraction</span></h3>
+    <div class="mock mock-scroll">
+      <div class="shell">
+        <div class="topbar"><span class="glyph sm"></span><span class="name">SatQuery</span><span class="sess">Paradip port · optical + SAR</span><span class="spacer"></span>
+          <span class="chip chip-optical"><span class="dot"></span>Cartosat-2S</span><span class="chip chip-sar"><span class="dot"></span>RISAT · VV</span><button class="btn btn-secondary btn-sm">Export</button></div>
+        <div class="body-row">
+          <div class="rail">
+            <div class="rail-h">Inputs</div>
+            <div class="item"><span class="tick mute"></span>optical.tif</div>
+            <div class="item"><span class="tick mute"></span>sar_vv.tif</div>
+            <div class="rail-h">Extracted</div>
+            <div class="item on"><span class="tick"></span>Built-up<span class="num">6.1</span></div>
+            <div class="item"><span class="tick mute"></span>Open water<span class="num">22.4</span></div>
+            <div class="item"><span class="tick mute"></span>Vessels<span class="num">14</span></div>
+            <div class="rail-h">Sensor blend</div>
+            <div class="item" style="padding-top:4px"><div class="meter" style="width:100%"><span class="track"><span class="fill" style="width:62%;background:linear-gradient(90deg,var(--optical),var(--sar))"></span></span></div></div>
+          </div>
+          <div class="stage">
+            <div class="stage-tabs" data-tabs><button class="tab">Optical</button><button class="tab">SAR</button><button class="tab on">Fused</button><button class="tab">Extraction</button></div>
+            <div class="viewport">
+              <svg class="scene" viewBox="0 0 800 420" preserveAspectRatio="xMidYMid slice">
+                <rect width="800" height="420" filter="url(#f-fuse)"/>
+                <rect x="0" y="238" width="800" height="182" filter="url(#f-water)"/>
+                <rect width="800" height="420" filter="url(#f-speckle)" opacity="0.48"/>
+                <g fill="#38BDF8" fill-opacity="0.32" stroke="#38BDF8" stroke-width="1.5">
+                  <rect x="86" y="66" width="184" height="116" rx="3"/><rect x="300" y="48" width="122" height="78" rx="3"/>
+                </g>
+                <g fill="#A78BFA" fill-opacity="0.34" stroke="#A78BFA" stroke-width="1.5">
+                  <rect x="470" y="262" width="46" height="16" rx="3"/><rect x="556" y="300" width="52" height="15" rx="3"/>
+                  <rect x="392" y="332" width="44" height="14" rx="3"/><rect x="640" y="250" width="40" height="14" rx="3"/>
+                  <rect x="516" y="352" width="48" height="14" rx="3"/>
+                </g>
+              </svg>
+              <div class="gridlines"></div><div class="bezel"></div>
+              <div class="vp-badge"><span class="chip chip-optical"><span class="dot"></span>spectral 62%</span><span class="chip chip-sar"><span class="dot"></span>backscatter 38%</span><span class="chip chip-warn">41% cloud in optical</span></div>
+              <div class="vp-tools"><button class="icon-btn">＋</button><button class="icon-btn">−</button><button class="icon-btn">◐</button></div>
+              <div class="legend">
+                <div class="li"><i style="background:#38BDF8"></i>built-up · optical</div>
+                <div class="li"><i style="background:#A78BFA"></i>vessels · SAR only</div>
+              </div>
+              <div class="readout">
+                <span><b>CRS</b> EPSG:32645</span><span class="sep"></span>
+                <span><b>Optical</b> 0.65 m · R,G,B,NIR</span><span class="sep"></span>
+                <span><b>SAR</b> 3 m · VV · 35.4° inc</span><span class="sep"></span>
+                <span><b>Resampled</b> SAR → 0.65 m</span>
+              </div>
+            </div>
+          </div>
+          <div class="aside">
+            <div class="thread">
+              <div class="msg user"><span class="av">SM</span><div class="bubble">Use the optical and SAR images together to identify built-up and water-covered regions.</div></div>
+              <div class="msg ai"><span class="av">◈</span><div class="bubble">
+                <p><span class="cite">Built-up</span> covers 6.1 km² across the northern quay and the storage yard behind it. Optical carried this — rooftop spectra are unambiguous where the scene is clear.</p>
+                <p>Open water covers 22.4 km² south of the breakwater. Optical is 41% cloud-obscured here, so the extent comes from SAR low-backscatter regions instead. SAR also resolved <span class="cite">14 vessels</span> as bright point returns that optical cannot see through cloud.</p>
+                <p style="color:var(--tx2);font-size:12.5px">Water extent under cloud is SAR-derived and carries a wider margin than the built-up figure.</p>
+                <div class="meter mid" style="margin:12px 0 0"><span class="spec" style="width:66px">Confidence</span><span class="track"><span class="fill" style="width:70%"></span></span><span class="val">0.70</span></div>
+                <div class="trace" data-open="false">
+                  <button class="trace-h"><span class="chip chip-accent chip-mono" style="padding:3px 7px">5 steps</span> Execution summary <span class="caret">▾</span></button>
+                  <div class="trace-b">
+                    <div class="step"><span class="idx done">✓</span><span class="body"><b>Verified co-registration</b><span>0.7 px RMSE · resampled SAR 3 m → 0.65 m</span></span></div>
+                    <div class="step"><span class="idx done">✓</span><span class="body"><b>Routed to cross-modal extraction</b><span>task-router · 0.91</span></span></div>
+                    <div class="step"><span class="idx done">✓</span><span class="body"><b>Built-up from optical</b><span>rs-segformer · 6.1 km²</span></span></div>
+                    <div class="step"><span class="idx done">✓</span><span class="body"><b>Water and vessels from SAR</b><span>sar-backscatter-seg · 22.4 km² · 14 pts</span></span></div>
+                    <div class="step"><span class="idx done">✓</span><span class="body"><b>Fused and answered</b><span>rs-vlm-7b · 3.08 s</span></span></div>
+                  </div>
+                </div>
+              </div></div>
+            </div>
+            <div class="composer"><div class="box"><div class="txt">Ask about this pair…</div>
+              <div class="row"><button class="icon-btn sm">＋</button><span class="chip chip-mono">Cross-modal</span><span class="spacer"></span><button class="send">➤</button></div></div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <p class="caption"><b>Honesty in the answer.</b> When a figure comes from only one sensor, the answer says so and the confidence drops to reflect it. That is the brief's evidence-grounding requirement, and it is also the difference between a tool an analyst trusts and one they double-check.</p>
+
+    <!-- REPORT -->
+    <h3 class="sub">11.5 · Report export <span class="chip chip-mono" style="margin-left:8px">downloadable reports</span></h3>
+    <div class="mock" style="max-width:700px">
+      <div style="background:var(--surface);padding:24px 26px 22px">
+        <h3 style="margin-bottom:4px">Export session report</h3>
+        <p style="color:var(--tx2);font-size:13px;margin-bottom:20px">Hooghly reservoir · 2019-03-04 ↔ 2024-02-11 · 3 queries · 2 analyses</p>
+        <div style="display:flex;flex-direction:column;gap:3px;margin-bottom:20px">
+          <label style="display:flex;gap:11px;align-items:flex-start;padding:12px;border:1px solid var(--bd-subtle);border-radius:var(--r-md);background:var(--raised);cursor:pointer">
+            <span style="width:16px;height:16px;border-radius:5px;background:var(--accent);color:var(--tx-inv);display:grid;place-items:center;font-size:10px;flex:none;margin-top:2px">✓</span>
+            <span><b style="font-size:13px;font-weight:500;display:block">Scene figures</b><span style="font-size:12px;color:var(--tx3)">Split compare, change map, and both source dates at full resolution</span></span></label>
+          <label style="display:flex;gap:11px;align-items:flex-start;padding:12px;border:1px solid var(--bd-subtle);border-radius:var(--r-md);background:var(--raised);cursor:pointer">
+            <span style="width:16px;height:16px;border-radius:5px;background:var(--accent);color:var(--tx-inv);display:grid;place-items:center;font-size:10px;flex:none;margin-top:2px">✓</span>
+            <span><b style="font-size:13px;font-weight:500;display:block">Questions and answers</b><span style="font-size:12px;color:var(--tx3)">All 3 exchanges with per-answer confidence</span></span></label>
+          <label style="display:flex;gap:11px;align-items:flex-start;padding:12px;border:1px solid var(--bd-subtle);border-radius:var(--r-md);background:var(--raised);cursor:pointer">
+            <span style="width:16px;height:16px;border-radius:5px;background:var(--accent);color:var(--tx-inv);display:grid;place-items:center;font-size:10px;flex:none;margin-top:2px">✓</span>
+            <span><b style="font-size:13px;font-weight:500;display:block">Execution trace</b><span style="font-size:12px;color:var(--tx3)">Tools, parameters and timings for every step — required for audit</span></span></label>
+          <label style="display:flex;gap:11px;align-items:flex-start;padding:12px;border:1px solid var(--bd-subtle);border-radius:var(--r-md);cursor:pointer">
+            <span style="width:16px;height:16px;border-radius:5px;border:1px solid var(--bd-strong);flex:none;margin-top:2px"></span>
+            <span><b style="font-size:13px;font-weight:500;display:block">Georeferenced masks</b><span style="font-size:12px;color:var(--tx3)">Change mask and class rasters as GeoTIFF · adds ~48 MB</span></span></label>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+          <span class="chip chip-mono">PDF</span><span class="chip chip-mono">GeoJSON</span><span class="chip chip-mono">JSON trace</span>
+          <span style="flex:1"></span><button class="btn btn-ghost">Cancel</button><button class="btn btn-primary">Export report</button>
+        </div>
+      </div>
+    </div>
+    <p class="caption"><b>Copy note.</b> The button says "Export report" because the trigger said "Export report", and the toast that follows says "Report exported". One action, one name, all the way through.</p>
+  </div>
+</section>
+
+<!-- 12 STATES -->
+<section class="band" id="states">
+  <div class="wrap">
+    <div class="sec-head">
+      <span class="num">12</span>
+      <h2>States</h2>
+      <p>Every screen has four states beyond the happy path, and each one is designed rather than defaulted. Failure states carry a specific threshold and a specific recovery action.</p>
+    </div>
+
+    <div class="grid g2">
+      <div class="card">
+        <h4>Running</h4>
+        <p style="margin-bottom:14px">The composer is replaced by the live trace. Steps resolve top-down; the current one pulses rather than spins, so attention goes to what is happening rather than to the motion.</p>
+        <div class="trace" data-open="true">
+          <div class="trace-b">
+            <div class="step"><span class="idx done">✓</span><span class="body"><b>Validated pair</b><span>0.4 px RMSE · 98.6% overlap</span></span></div>
+            <div class="step"><span class="idx done">✓</span><span class="body"><b>Routed to change analysis</b><span>task-router · 0.96</span></span></div>
+            <div class="step"><span class="idx run">3</span><span class="body"><b>Segmenting change…</b><span>changeformer-cd · 1.2 s elapsed</span></span></div>
+          </div>
+        </div>
+        <div style="margin-top:10px"><button class="btn btn-ghost btn-sm">Cancel analysis</button></div>
+      </div>
+
+      <div class="card">
+        <h4>Incompatible inputs</h4>
+        <p style="margin-bottom:14px">Names the mismatch, the threshold it missed, and what to do. Never "invalid input".</p>
+        <div style="border:1px solid var(--warn-bd);background:var(--warn-soft);border-radius:var(--r-md);padding:13px">
+          <div style="display:flex;gap:9px;align-items:flex-start">
+            <span style="color:var(--warn);font-size:14px;line-height:1.3">⚠</span>
+            <div><b style="font-size:13px;display:block;margin-bottom:3px">These two images cover different areas</b>
+              <span style="font-size:12.5px;color:var(--tx2);line-height:1.55">They overlap by 12%. Change detection needs at least 80%. You can still ask about either image on its own.</span>
+              <div style="display:flex;gap:6px;margin-top:11px"><button class="btn btn-secondary btn-sm">Replace second image</button><button class="btn btn-ghost btn-sm">Analyse separately</button></div></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h4>Low confidence</h4>
+        <p style="margin-bottom:14px">Below 0.60 the answer hedges in words as well as colour, and offers the action that would raise it.</p>
+        <div style="border:1px solid var(--bd-subtle);background:var(--raised);border-radius:var(--r-md);padding:13px;font-size:12.5px;line-height:1.6;color:var(--tx2)">
+          <span style="color:var(--tx)">The water boundary is uncertain here.</span> Optical is 41% cloud-covered and the SAR incidence angle is steep, so the extent could be off by up to 2 km². Adding a second SAR acquisition would narrow this.
+          <div class="meter low" style="margin-top:11px"><span class="track"><span class="fill" style="width:44%"></span></span><span class="val">0.44</span></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h4>Out of scope</h4>
+        <p style="margin-bottom:14px">Questions the system cannot ground in the imagery are declined by naming what it can do instead — never with a generic apology.</p>
+        <div style="border:1px solid var(--bd-subtle);background:var(--raised);border-radius:var(--r-md);padding:13px;font-size:12.5px;line-height:1.6;color:var(--tx2)">
+          <span style="color:var(--tx)">This scene can't answer that.</span> Crop yield needs field-level ground data alongside the imagery. From these bands I can give you vegetation extent, health indices, and parcel boundaries.
+          <div style="display:flex;gap:6px;margin-top:11px"><button class="chip">Show vegetation extent</button><button class="chip">Compute NDVI</button></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 13 DATAVIZ -->
+<section class="band" id="dataviz">
+  <div class="wrap">
+    <div class="sec-head">
+      <span class="num">13</span>
+      <h2>Overlays and data display</h2>
+      <p>The rules that keep model output legible on top of real imagery. These are the specifications most likely to be violated under deadline, so they are stated as numbers rather than intentions.</p>
+    </div>
+    <div class="tbl-scroll">
+    <table class="tk">
+      <tr><th>Overlay</th><th>Fill</th><th>Stroke</th><th>Label</th><th>Notes</th></tr>
+      <tr><td>Grounding box</td><td class="m">none</td><td class="m">2px, 100% opacity</td><td>Above-left, mono 10px on solid hue</td><td>Outer 1px dark ring for legibility over bright terrain</td></tr>
+      <tr><td>Segmentation mask</td><td class="m">45–60%</td><td class="m">1.5px, 100%</td><td>Centroid, only if &gt;80px wide</td><td>Never below 45% — reads as haze</td></tr>
+      <tr><td>Change gain</td><td class="m">50% gain</td><td class="m">1.5px gain</td><td>In legend only</td><td>Also carries a 45° hatch for colour-blind separation</td></tr>
+      <tr><td>Change loss</td><td class="m">45% loss</td><td class="m">1.5px loss</td><td>In legend only</td><td>Hatch runs the opposite direction to gain</td></tr>
+      <tr><td>Point detections</td><td class="m">n/a</td><td class="m">1.5px sensor hue</td><td>Count in rail, not on scene</td><td>Min 12px hit area even if the object is 3px</td></tr>
+      <tr><td>Heatmap / attention</td><td class="m">0→70% ramp</td><td class="m">none</td><td>Scale bar bottom-right</td><td>Single-hue ramp only, never rainbow</td></tr>
+    </table>
+    </div>
+
+    <h3 class="sub">Charts, when they appear</h3>
+    <ul class="tight">
+      <li><b>Class area comparison</b> — horizontal bars, one row per class, gain and loss on a shared zero axis. Never a pie; proportions of changed area are read comparatively, not as a whole.</li>
+      <li><b>Time series</b> — only when more than two acquisitions exist. Single line, 1.5px, points at each acquisition, mono axis labels.</li>
+      <li><b>Band histogram</b> — stacked translucent fills in the actual band colours where they map to visible wavelengths, grey where they do not.</li>
+      <li><b>No gridline below 20% opacity</b>, no chart junk, no drop shadows on data marks, and the value is always printed as well as plotted.</li>
+    </ul>
+  </div>
+</section>
+
+<!-- 14 VOICE -->
+<section class="band" id="voice">
+  <div class="wrap">
+    <div class="sec-head">
+      <span class="num">14</span>
+      <h2>Voice and microcopy</h2>
+      <p>The interface speaks like a competent colleague reporting a finding: specific, unhurried, and willing to say what it does not know. It never performs enthusiasm and never apologises.</p>
+    </div>
+    <div class="tbl-scroll">
+    <table class="tk">
+      <tr><th>Situation</th><th>Write this</th><th>Not this</th></tr>
+      <tr><td>Empty session</td><td>Drop a scene to start</td><td>Welcome to SatQuery AI! 🛰️</td></tr>
+      <tr><td>Analysis running</td><td>Segmenting change…</td><td>Thinking… / Working on it!</td></tr>
+      <tr><td>Answer delivered</td><td>Built-up grew by 4.2 km², concentrated on the eastern edge.</td><td>Great question! Based on my analysis, it appears that…</td></tr>
+      <tr><td>Uncertain</td><td>The water boundary is uncertain — optical is 41% cloud-covered.</td><td>I'm not entirely sure, but possibly…</td></tr>
+      <tr><td>Bad input</td><td>These two images cover different areas. They overlap by 12%; change detection needs 80%.</td><td>Sorry, invalid input. Please try again.</td></tr>
+      <tr><td>Out of scope</td><td>This scene can't answer that. Crop yield needs field-level ground data.</td><td>I'm unable to assist with that request.</td></tr>
+      <tr><td>Success toast</td><td>Report exported</td><td>Success! Your report has been generated.</td></tr>
+      <tr><td>Destructive confirm</td><td>Delete this session and its 3 analyses?</td><td>Are you sure?</td></tr>
+    </table>
+    </div>
+    <h3 class="sub">Rules</h3>
+    <ul class="tight">
+      <li><b>Sentence case everywhere</b>, including buttons and headings. No title case, no all caps.</li>
+      <li><b>An action keeps its name</b> through trigger, dialog, and confirmation: Export report → Export report → Report exported.</li>
+      <li><b>Units always attached</b>, always with a thin space: 4.2 km², 0.65 m, 2.41 s. Areas to one decimal, confidence to two, timings to two.</li>
+      <li><b>Numbers lead the sentence</b> when the number is the answer. "Increased — by 4.2 km²" beats "Yes, the built-up area has increased, and the amount is 4.2 km²".</li>
+      <li><b>Never use "simply", "just", "easily"</b>, or an exclamation mark. Nothing here is simple and the analyst knows it.</li>
+    </ul>
+  </div>
+</section>
+
+<!-- 15 A11Y -->
+<section class="band" id="a11y">
+  <div class="wrap">
+    <div class="sec-head">
+      <span class="num">15</span>
+      <h2>Accessibility floor</h2>
+      <p>Non-negotiable. A change map that only works for trichromats is not a change map — it is a picture of one.</p>
+    </div>
+    <div class="grid g2">
+      <div>
+        <ul class="tight">
+          <li><b>Colour is never the only channel.</b> Gain and loss masks carry opposing 45° hatch patterns. Sensor chips carry the word as well as the hue. Confidence carries the number as well as the bar.</li>
+          <li><b>Contrast.</b> Body text ≥4.5:1, large text and UI borders ≥3:1, every combination audited in the table in section 03 for both themes.</li>
+          <li><b>Focus.</b> A 3px accent ring on every interactive element, never removed, visible against all four surface depths.</li>
+          <li><b>Keyboard.</b> The compare handle is a slider with arrow, Shift+arrow, Home and End. View tabs are a roving tabindex. The viewport pans with arrows when focused and zooms with + and −.</li>
+        </ul>
+      </div>
+      <div>
+        <ul class="tight">
+          <li><b>Screen readers.</b> Every change map has a text summary conveying everything the colours do — class, direction, magnitude, location. The trace is a semantic ordered list. Streaming answers use <code>aria-live="polite"</code>, the trace uses <code>aria-live="off"</code> so it does not interrupt.</li>
+          <li><b>Targets.</b> 44×44 minimum on touch; 30×30 with 8px spacing on pointer. Point detections get a 12px hit area regardless of rendered size.</li>
+          <li><b>Motion.</b> <code>prefers-reduced-motion</code> collapses every transition to instant and replaces the pulsing step indicator with a static ring plus text.</li>
+          <li><b>Zoom.</b> Layout holds to 200% browser zoom without horizontal scroll at 1280px; the aside becomes a sheet rather than compressing.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 16 CODE -->
+<section class="band" id="code">
+  <div class="wrap">
+    <div class="sec-head">
+      <span class="num">16</span>
+      <h2>Implementation</h2>
+      <p>Copy-ready. The CSS in this page is the CSS the product should ship — the component classes are named for direct reuse.</p>
+    </div>
+
+    <h3 class="sub" style="margin-top:0">Tokens · globals.css</h3>
+<pre class="code"><span class="c">/* Dark is the default. Light is opt-in via [data-theme="light"]. */</span>
+<span class="p">:root</span> {
+  <span class="c">/* surfaces */</span>
+  <span class="p">--canvas</span>:#0A0D12; <span class="p">--surface</span>:#11151C; <span class="p">--raised</span>:#161C25; <span class="p">--inset</span>:#0D1117;
+  <span class="p">--hover</span>:#1B222C;  <span class="p">--active</span>:#212A36;  <span class="p">--scrim</span>:rgba(5,7,10,.72);
+  <span class="c">/* borders + text */</span>
+  <span class="p">--bd-subtle</span>:#1E252F; <span class="p">--bd</span>:#2A3340; <span class="p">--bd-strong</span>:#3B4757;
+  <span class="p">--tx</span>:#E9EEF5; <span class="p">--tx2</span>:#9AA8B9; <span class="p">--tx3</span>:#64748B; <span class="p">--tx-inv</span>:#06110F;
+  <span class="c">/* accent */</span>
+  <span class="p">--accent</span>:#2DD4BF; <span class="p">--accent-hi</span>:#5EEAD4; <span class="p">--accent-lo</span>:#14B8A6;
+  <span class="p">--accent-soft</span>:#11302E; <span class="p">--ring</span>:rgba(45,212,191,.22);
+  <span class="c">/* sensor + change semantics — never used decoratively */</span>
+  <span class="p">--optical</span>:#38BDF8; <span class="p">--optical-soft</span>:#0C2738;
+  <span class="p">--sar</span>:#A78BFA;     <span class="p">--sar-soft</span>:#1E1B33;
+  <span class="p">--gain</span>:#34D399; <span class="p">--loss</span>:#FB7185; <span class="p">--stable</span>:#64748B;
+  <span class="c">/* status */</span>
+  <span class="p">--ok</span>:#22C55E; <span class="p">--warn</span>:#F59E0B; <span class="p">--err</span>:#EF4444; <span class="p">--info</span>:#60A5FA;
+  <span class="c">/* shape · elevation · motion */</span>
+  <span class="p">--r-xs</span>:4px; <span class="p">--r-sm</span>:6px; <span class="p">--r-md</span>:10px; <span class="p">--r-lg</span>:14px; <span class="p">--r-xl</span>:20px;
+  <span class="p">--e1</span>:0 1px 2px rgba(0,0,0,.45);
+  <span class="p">--e2</span>:0 8px 24px -8px rgba(0,0,0,.65);
+  <span class="p">--e3</span>:0 24px 64px -16px rgba(0,0,0,.8);
+  <span class="p">--d-fast</span>:120ms; <span class="p">--d-base</span>:180ms; <span class="p">--d-slow</span>:280ms; <span class="p">--d-scene</span>:420ms;
+  <span class="p">--ease</span>:cubic-bezier(.2,.8,.2,1);
+}
+<span class="p">[data-theme="light"]</span> {
+  <span class="p">--canvas</span>:#F2F5F9; <span class="p">--surface</span>:#FFFFFF; <span class="p">--raised</span>:#FFFFFF; <span class="p">--inset</span>:#EEF2F7;
+  <span class="p">--bd-subtle</span>:#E3E9F0; <span class="p">--bd</span>:#CFD8E3; <span class="p">--bd-strong</span>:#A9B6C7;
+  <span class="p">--tx</span>:#0B1220; <span class="p">--tx2</span>:#4A5768; <span class="p">--tx3</span>:#7B8797; <span class="p">--tx-inv</span>:#FFFFFF;
+  <span class="p">--accent</span>:#0D9488; <span class="p">--optical</span>:#0284C7; <span class="p">--sar</span>:#7C3AED;
+  <span class="p">--gain</span>:#059669; <span class="p">--loss</span>:#E11D48;
+}</pre>
+
+    <h3 class="sub">Tailwind · tailwind.config.ts</h3>
+<pre class="code"><span class="s">export default</span> {
+  theme: { extend: {
+    colors: {
+      canvas:<span class="p">'var(--canvas)'</span>, surface:<span class="p">'var(--surface)'</span>, raised:<span class="p">'var(--raised)'</span>, inset:<span class="p">'var(--inset)'</span>,
+      border:{ subtle:<span class="p">'var(--bd-subtle)'</span>, DEFAULT:<span class="p">'var(--bd)'</span>, strong:<span class="p">'var(--bd-strong)'</span> },
+      fg:{ DEFAULT:<span class="p">'var(--tx)'</span>, muted:<span class="p">'var(--tx2)'</span>, subtle:<span class="p">'var(--tx3)'</span>, inverse:<span class="p">'var(--tx-inv)'</span> },
+      accent:{ DEFAULT:<span class="p">'var(--accent)'</span>, hi:<span class="p">'var(--accent-hi)'</span>, soft:<span class="p">'var(--accent-soft)'</span> },
+      optical:<span class="p">'var(--optical)'</span>, sar:<span class="p">'var(--sar)'</span>, gain:<span class="p">'var(--gain)'</span>, loss:<span class="p">'var(--loss)'</span>,
+    },
+    borderRadius:{ xs:<span class="p">'4px'</span>, sm:<span class="p">'6px'</span>, md:<span class="p">'10px'</span>, lg:<span class="p">'14px'</span>, xl:<span class="p">'20px'</span> },
+    fontFamily:{ sans:[<span class="p">'Inter'</span>,<span class="p">'system-ui'</span>], mono:[<span class="p">'Geist Mono'</span>,<span class="p">'ui-monospace'</span>] },
+    boxShadow:{ e1:<span class="p">'var(--e1)'</span>, e2:<span class="p">'var(--e2)'</span>, e3:<span class="p">'var(--e3)'</span> },
+    transitionTimingFunction:{ DEFAULT:<span class="p">'cubic-bezier(.2,.8,.2,1)'</span> },
+  }}
+}
+<span class="c">// Rule: never write a raw hex in a component. If a colour isn't in this map,</span>
+<span class="c">// it doesn't have a meaning yet — decide the meaning first.</span></pre>
+
+    <h3 class="sub">Component contracts</h3>
+    <div class="tbl-scroll">
+    <table class="tk">
+      <tr><th>Component</th><th>Props</th><th>Notes</th></tr>
+      <tr><td class="m">&lt;Viewport&gt;</td><td class="m">source, overlays[], viewMode, blend, onFocusRegion</td><td>OpenLayers or deck.gl over a COG. Not an &lt;img&gt;.</td></tr>
+      <tr><td class="m">&lt;SplitCompare&gt;</td><td class="m">before, after, position, onChange</td><td>Controlled. Keyboard slider semantics.</td></tr>
+      <tr><td class="m">&lt;OverlayLayer&gt;</td><td class="m">geojson, kind, focusedId, opacity</td><td>kind: box | mask | point | heatmap</td></tr>
+      <tr><td class="m">&lt;Readout&gt;</td><td class="m">crs, gsd, bands, size, acquired, extra[]</td><td>Mono only. Truncates from the right.</td></tr>
+      <tr><td class="m">&lt;Message&gt;</td><td class="m">role, spans[], confidence, trace</td><td>spans carry regionId for phrase↔box linking.</td></tr>
+      <tr><td class="m">&lt;ExecutionTrace&gt;</td><td class="m">steps[], defaultOpen, streaming</td><td>steps: {label, tool, params, ms, status}</td></tr>
+      <tr><td class="m">&lt;ConfidenceMeter&gt;</td><td class="m">value, label, band</td><td>band derived from value; never passed raw colour.</td></tr>
+      <tr><td class="m">&lt;StatStrip&gt;</td><td class="m">stats[], activeClass</td><td>Filters live with the rail selection.</td></tr>
+    </table>
+    </div>
+
+    <h3 class="sub">Build order</h3>
+    <ul class="tight">
+      <li><b>1 · Tokens.</b> Drop the block above into <code>globals.css</code>, wire the Tailwind map, and ban raw hex in review.</li>
+      <li><b>2 · Shell.</b> Three-column grid with the stage as a server component and the aside as a client component. Getting column behaviour right before content exists saves a rewrite.</li>
+      <li><b>3 · Viewport.</b> The risky part. Tile server-side and serve Cloud-Optimised GeoTIFF — a 4096² raster sent whole will make the demo feel broken no matter how good the models are.</li>
+      <li><b>4 · Trace streaming.</b> If the backend emits step events over SSE, the running state comes nearly free and it is the single most convincing thing in a live demo.</li>
+      <li><b>5 · Report.</b> Render server-side from the same components so the figures match what was on screen exactly.</li>
+    </ul>
+
+    <div class="warnbox">
+      <b>Decide these before writing components, not after.</b> Overlay geometry must come back as GeoJSON in the image CRS, not pixel coordinates — pixels break the first time someone zooms. Answers must come back as structured spans with region IDs, not a plain string, or phrase↔box linking cannot be retrofitted. And decide what "confidence" means per task: a model logit and an IoU are different quantities and must not share a meter.
+    </div>
+  </div>
+</section>
+
+<!-- 17 HANDOFF -->
+<section class="band" id="handoff">
+  <div class="wrap">
+    <div class="sec-head">
+      <span class="num">17</span>
+      <h2>Figma handoff</h2>
+      <p>Structure for the working file, matching the variables and text styles already created. Note that a Starter plan allows one variable mode and three pages — the structure below fits inside that, and the light theme lives as a second collection rather than a second mode.</p>
+    </div>
+    <div class="grid g3">
+      <div class="card"><h4>Page 1 · Foundations</h4><p>Variable documentation, type ramp specimens, spacing and radius rulers, elevation samples, icon sheet, the contrast audit board.</p></div>
+      <div class="card"><h4>Page 2 · Components</h4><p>One component set per primitive, variants by state. Buttons: Variant × Size × State. Chips: Kind × Interactive. Every set has a description filled in.</p></div>
+      <div class="card"><h4>Page 3 · Screens</h4><p>Five screen frames at 1440×900, each with a stacked states section beneath it, plus the 768 and 390 responsive variants.</p></div>
+    </div>
+
+    <h3 class="sub">Naming conventions</h3>
+    <div class="tbl-scroll">
+    <table class="tk">
+      <tr><th>Thing</th><th>Pattern</th><th>Example</th></tr>
+      <tr><td>Colour variable</td><td class="m">group/role</td><td class="m">sensor/optical · bg/surface · change/gain</td></tr>
+      <tr><td>Number variable</td><td class="m">group/step</td><td class="m">space/16 · radius/md</td></tr>
+      <tr><td>Text style</td><td class="m">Group/Name</td><td class="m">Body/Small Medium · Utility/Mono</td></tr>
+      <tr><td>Component</td><td class="m">Category/Name</td><td class="m">Control/Button · Scene/Overlay Box</td></tr>
+      <tr><td>Variant props</td><td class="m">lowercase, no abbrev</td><td class="m">variant=primary, size=sm, state=hover</td></tr>
+      <tr><td>Screen frame</td><td class="m">NN · Name · Width</td><td class="m">03 · Change analysis · 1440</td></tr>
+      <tr><td>Layer</td><td class="m">purpose, not shape</td><td class="m">"readout bar" not "Rectangle 47"</td></tr>
+    </table>
+    </div>
+
+    <h3 class="sub">Ship checklist</h3>
+    <ul class="tight">
+      <li><b>No raw hex</b> anywhere in a component or a screen — every fill and stroke is a variable.</li>
+      <li><b>Auto layout everywhere</b> children are related; absolute positioning only for overlays on a scene.</li>
+      <li><b>Every component set has a description</b> stating when to use it and when not to.</li>
+      <li><b>Every screen has its four states</b> below it: running, empty, incompatible input, low confidence.</li>
+      <li><b>Both themes rendered</b> for at least the shell, the composer, and one overlay-heavy screen.</li>
+      <li><b>Contrast checked</b> on every text-on-colour pairing, both themes, before handoff.</li>
+      <li><b>Responsive variants exist</b> at 768 and 390 for the shell, not just the desktop frame.</li>
+    </ul>
+  </div>
+</section>
+
+<!-- ORCHESTRATION -->
+<section class="band" id="flow">
+  <div class="wrap">
+    <div class="sec-head">
+      <span class="num">18</span>
+      <h2>Orchestration, made visible</h2>
+      <p>The agentic controller is the part a judge will want to see working. The interface surfaces it twice: as live state while a query runs, and as a permanent trace attached to the answer.</p>
+    </div>
+<pre class="mermaid">
+flowchart LR
+  Q["Query + images"] --> V["Validate inputs<br/>count · modality · CRS · overlap"]
+  V -->|incompatible| E["Name the mismatch<br/>offer the fix"]
+  V --> R{"Classify task"}
+  R -->|single image| A["VQA + caption<br/>+ grounding"]
+  R -->|bi-temporal| B["Change segmentation<br/>+ change VQA"]
+  R -->|optical + SAR| C["Per-sensor extraction<br/>+ fusion"]
+  A --> M["Merge text + overlays<br/>score confidence"]
+  B --> M
+  C --> M
+  M --> O["Answer · evidence · trace"]
+</pre>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <p style="margin:0 0 6px">SatQuery AI · Design System v2.0 · dark-first with light theme · Inter + Geist Mono</p>
+    <p style="margin:0">Built against the ISRO/SAC agentic remote-sensing problem statement. Every screen maps to a mandatory capability.</p>
+  </div>
+</footer>
+
+<div class="copied" id="copied"><div class="toast"><span class="ic" style="color:var(--ok)">✓</span><div><b>Copied</b><span id="copied-val"></span></div></div></div>
+
+<script>
+(function(){
+  /* ---------- swatch rendering ---------- */
+  var groups = {
+    'sw-surface':[['bg/canvas','--canvas'],['bg/surface','--surface'],['bg/raised','--raised'],['bg/inset','--inset'],['bg/hover','--hover'],['bg/active','--active']],
+    'sw-text':[['border/subtle','--bd-subtle'],['border/default','--bd'],['border/strong','--bd-strong'],['text/primary','--tx'],['text/secondary','--tx2'],['text/muted','--tx3']],
+    'sw-semantic':[['accent/base','--accent'],['accent/hover','--accent-hi'],['accent/soft','--accent-soft'],['sensor/optical','--optical'],['sensor/sar','--sar'],['change/gain','--gain'],['change/loss','--loss'],['change/stable','--stable']],
+    'sw-status':[['status/success','--ok'],['status/warn','--warn'],['status/error','--err'],['status/info','--info'],['status/warn-soft','--warn-soft'],['status/error-soft','--err-soft']]
+  };
+  function paint(){
+    var cs = getComputedStyle(document.documentElement);
+    Object.keys(groups).forEach(function(id){
+      var el = document.getElementById(id); if(!el) return;
+      el.innerHTML = groups[id].map(function(p){
+        var v = cs.getPropertyValue(p[1]).trim();
+        return '<button class="sw" data-copy="'+v+'"><span class="cap" style="background:'+v+'"></span>'+
+               '<span class="lbl"><b>'+p[0]+'</b><span>'+v+'</span></span></button>';
+      }).join('');
+    });
+  }
+  paint();
+
+  /* ---------- copy ---------- */
+  var toast = document.getElementById('copied'), tval = document.getElementById('copied-val'), tmr;
+  document.addEventListener('click', function(e){
+    var sw = e.target.closest('[data-copy]'); if(!sw) return;
+    var v = sw.getAttribute('data-copy');
+    if(navigator.clipboard) navigator.clipboard.writeText(v);
+    tval.textContent = v; toast.classList.add('on');
+    clearTimeout(tmr); tmr = setTimeout(function(){ toast.classList.remove('on'); }, 1600);
+  });
+
+  /* ---------- theme ---------- */
+  var d = document.getElementById('t-dark'), l = document.getElementById('t-light');
+  function setTheme(t){
+    document.documentElement.setAttribute('data-theme', t);
+    d.setAttribute('aria-pressed', t==='dark'); l.setAttribute('aria-pressed', t==='light');
+    try{ localStorage.setItem('sq-theme', t); }catch(err){}
+    setTimeout(paint, 30);
+  }
+  d.addEventListener('click', function(){ setTheme('dark'); });
+  l.addEventListener('click', function(){ setTheme('light'); });
+  try{ var saved = localStorage.getItem('sq-theme'); if(saved) setTheme(saved); }catch(err){}
+
+  /* ---------- tabs ---------- */
+  document.querySelectorAll('[data-tabs]').forEach(function(bar){
+    bar.addEventListener('click', function(e){
+      var t = e.target.closest('.tab'); if(!t) return;
+      bar.querySelectorAll('.tab').forEach(function(x){ x.classList.remove('on'); });
+      t.classList.add('on');
+    });
+  });
+
+  /* ---------- trace toggle ---------- */
+  document.addEventListener('click', function(e){
+    var h = e.target.closest('.trace-h'); if(!h) return;
+    var tr = h.closest('.trace');
+    tr.setAttribute('data-open', tr.getAttribute('data-open') === 'false' ? 'true' : 'false');
+  });
+
+  /* ---------- phrase ↔ box focus ---------- */
+  function focusBox(id){
+    document.querySelectorAll('[data-box]').forEach(function(b){
+      b.classList.toggle('dim', id !== null && b.getAttribute('data-box') !== id);
+    });
+  }
+  document.querySelectorAll('[data-focus]').forEach(function(el){
+    el.addEventListener('mouseenter', function(){ focusBox(el.getAttribute('data-focus')); });
+    el.addEventListener('mouseleave', function(){ focusBox(null); });
+  });
+
+  /* ---------- split compare ---------- */
+  var sp = document.getElementById('splitter');
+  if(sp){
+    var after = document.getElementById('split-after'), handle = document.getElementById('split-handle'), dragging = false;
+    function set(pct){
+      pct = Math.max(0, Math.min(100, pct));
+      after.style.clipPath = 'inset(0 0 0 ' + pct + '%)';
+      handle.style.left = pct + '%';
+      handle.setAttribute('aria-valuenow', Math.round(pct));
+    }
+    function fromEvent(ev){
+      var r = sp.getBoundingClientRect();
+      var x = (ev.touches ? ev.touches[0].clientX : ev.clientX) - r.left;
+      set((x / r.width) * 100);
+    }
+    handle.addEventListener('mousedown', function(e){ dragging = true; e.preventDefault(); });
+    handle.addEventListener('touchstart', function(){ dragging = true; }, {passive:true});
+    window.addEventListener('mousemove', function(e){ if(dragging) fromEvent(e); });
+    window.addEventListener('touchmove', function(e){ if(dragging) fromEvent(e); }, {passive:true});
+    window.addEventListener('mouseup', function(){ dragging = false; });
+    window.addEventListener('touchend', function(){ dragging = false; });
+    sp.addEventListener('click', function(e){ if(!e.target.closest('.handle')) fromEvent(e); });
+    handle.addEventListener('keydown', function(e){
+      var cur = parseFloat(handle.getAttribute('aria-valuenow')), step = e.shiftKey ? 10 : 2;
+      if(e.key === 'ArrowLeft'){ set(cur - step); e.preventDefault(); }
+      if(e.key === 'ArrowRight'){ set(cur + step); e.preventDefault(); }
+      if(e.key === 'Home'){ set(0); e.preventDefault(); }
+      if(e.key === 'End'){ set(100); e.preventDefault(); }
+    });
+  }
+
+  /* ---------- toc active state ---------- */
+  var links = Array.prototype.slice.call(document.querySelectorAll('nav.toc a'));
+  var obs = new IntersectionObserver(function(entries){
+    entries.forEach(function(en){
+      if(!en.isIntersecting) return;
+      links.forEach(function(a){ a.classList.toggle('on', a.getAttribute('href') === '#' + en.target.id); });
+    });
+  }, {rootMargin:'-60px 0px -75% 0px'});
+  document.querySelectorAll('section.band[id]').forEach(function(s){ obs.observe(s); });
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,836 @@
+<!DOCTYPE html>
+
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>SatQuery AI - Remote Sensing Reports Dashboard</title>
+<!-- Tailwind CSS v3 CDN with forms & container queries -->
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<!-- Google Fonts: Inter -->
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&amp;display=swap" rel="stylesheet"/>
+<script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'sans-serif'],
+          },
+          colors: {
+            brand: {
+              cyan: '#00e5ff',
+              teal: '#06b6d4',
+              darkBg: '#050a14',
+              cardBg: '#0b1325',
+              panelBg: '#070e1c',
+              border: '#15243e',
+              borderLight: '#1f3458',
+              accentHover: '#0ea5e9'
+            }
+          }
+        }
+      }
+    }
+  </script>
+<style data-purpose="custom-scrollbars">
+    /* Custom subtle dark scrollbars */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #070e1c;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #1c2e4d;
+      border-radius: 9999px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #2b4572;
+    }
+  </style>
+<style data-purpose="topography-card">
+    .topo-gradient {
+      background: radial-gradient(circle at 100% 100%, rgba(6, 182, 212, 0.15) 0%, rgba(5, 10, 20, 0.8) 70%);
+    }
+    .active-nav-glow {
+      box-shadow: inset 0 0 15px rgba(6, 182, 212, 0.15), 0 0 10px rgba(6, 182, 212, 0.08);
+    }
+  </style>
+</head>
+<body class="bg-[#050a14] text-slate-200 font-sans antialiased min-h-screen flex overflow-x-hidden selection:bg-cyan-500/20 selection:text-cyan-300">
+<!-- BEGIN: LeftSidebar -->
+<aside class="w-64 flex-shrink-0 bg-[#070e1c] border-r border-[#15243e] flex flex-col justify-between h-screen sticky top-0 z-30" data-purpose="main-navigation-sidebar">
+<div class="p-4 flex flex-col h-full overflow-y-auto">
+<!-- Brand Logo & Subtitle -->
+<div class="flex items-center gap-3 px-2 py-3 mb-4">
+<div class="relative w-9 h-9 rounded-xl bg-gradient-to-tr from-cyan-600 via-teal-400 to-sky-300 p-[1.5px] shadow-[0_0_15px_rgba(6,182,212,0.4)]">
+<div class="w-full h-full bg-[#070e1c] rounded-[10px] flex items-center justify-center">
+<svg class="w-5 h-5 text-cyan-400" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2.2" viewbox="0 0 24 24">
+<circle cx="12" cy="12" r="7"></circle>
+<path d="M12 2v3m0 14v3M2 12h3m14 0h3"></path>
+<path d="m4.9 4.9 2.1 2.1m10 10 2.1 2.1M4.9 19.1l2.1-2.1m10-10 2.1-2.1"></path>
+</svg>
+</div>
+</div>
+<div>
+<div class="flex items-center gap-1.5 font-bold text-base tracking-tight text-white">
+<span>SatQuery</span>
+<span class="text-cyan-400 text-xs px-1 py-0.5 rounded bg-cyan-950/70 border border-cyan-800/40">AI</span>
+</div>
+<p class="text-[10px] text-slate-400 tracking-tight font-medium">Remote Sensing · Vision · Intelligence</p>
+</div>
+</div>
+<!-- Main Navigation Menu -->
+<nav class="space-y-1 mb-6">
+<a class="flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-slate-400 hover:text-slate-200 hover:bg-[#0f1b33] transition-all text-sm font-medium" href="#">
+<svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewbox="0 0 24 24"><path d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+<span>Home</span>
+</a>
+<a class="flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-slate-400 hover:text-slate-200 hover:bg-[#0f1b33] transition-all text-sm font-medium" href="#">
+<svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewbox="0 0 24 24"><circle cx="12" cy="12" r="9"></circle><path d="M12 8v8m-4-4h8" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+<span>New Analysis</span>
+</a>
+<a class="flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-slate-400 hover:text-slate-200 hover:bg-[#0f1b33] transition-all text-sm font-medium" href="#">
+<svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewbox="0 0 24 24"><circle cx="12" cy="12" r="9"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+<span>History</span>
+</a>
+<a class="flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-slate-400 hover:text-slate-200 hover:bg-[#0f1b33] transition-all text-sm font-medium" href="#">
+<svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewbox="0 0 24 24"><path d="M4 7v10c0 2 1.5 3 3.5 3h9c2 0 3.5-1 3.5-3V7" stroke-linecap="round" stroke-linejoin="round"></path><ellipse cx="12" cy="7" rx="8" ry="3"></ellipse><path d="M4 12c0 1.66 3.58 3 8 3s8-1.34 8-3" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+<span>Datasets</span>
+</a>
+<!-- Active Nav Item -->
+<a class="flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-cyan-400 bg-cyan-950/40 border border-cyan-500/30 active-nav-glow font-semibold text-sm transition-all" href="#">
+<svg class="w-4 h-4 text-cyan-400" fill="none" stroke="currentColor" stroke-width="2" viewbox="0 0 24 24"><path d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+<span>Reports</span>
+</a>
+</nav>
+<!-- Section: Analysis Tools -->
+<div class="mb-5">
+<div class="text-[10px] uppercase font-bold tracking-wider text-slate-500 px-3.5 mb-2">Analysis Tools</div>
+<nav class="space-y-1">
+<a class="flex items-center gap-3 px-3.5 py-2 rounded-xl text-slate-400 hover:text-slate-200 hover:bg-[#0f1b33] transition-all text-xs font-medium" href="#">
+<svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewbox="0 0 24 24"><path d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+<span>AI Assistant</span>
+</a>
+<a class="flex items-center gap-3 px-3.5 py-2 rounded-xl text-slate-400 hover:text-slate-200 hover:bg-[#0f1b33] transition-all text-xs font-medium" href="#">
+<svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewbox="0 0 24 24"><path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" stroke-linecap="round" stroke-linejoin="round"></path><path d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+<span>VQA</span>
+</a>
+<a class="flex items-center gap-3 px-3.5 py-2 rounded-xl text-slate-400 hover:text-slate-200 hover:bg-[#0f1b33] transition-all text-xs font-medium" href="#">
+<svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewbox="0 0 24 24"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-2 2 2 2 0 01-2-2v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 01-2-2 2 2 0 012-2h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 012-2 2 2 0 012 2v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 012 2 2 2 0 01-2 2h-.09a1.65 1.65 0 00-1.51 1z" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+<span>Grounding</span>
+</a>
+<a class="flex items-center gap-3 px-3.5 py-2 rounded-xl text-slate-400 hover:text-slate-200 hover:bg-[#0f1b33] transition-all text-xs font-medium" href="#">
+<svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewbox="0 0 24 24"><path d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+<span>Change Analysis</span>
+</a>
+<a class="flex items-center gap-3 px-3.5 py-2 rounded-xl text-slate-400 hover:text-slate-200 hover:bg-[#0f1b33] transition-all text-xs font-medium" href="#">
+<svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewbox="0 0 24 24"><polygon points="12 2 2 7 12 12 22 7 12 2"></polygon><polyline points="2 17 12 22 22 17"></polyline><polyline points="2 12 12 17 22 12"></polyline></svg>
+<span>Optical + SAR Fusion</span>
+</a>
+</nav>
+</div>
+<!-- Section: Resources -->
+<div class="mb-4">
+<div class="text-[10px] uppercase font-bold tracking-wider text-slate-500 px-3.5 mb-2">Resources</div>
+<nav class="space-y-1">
+<a class="flex items-center gap-3 px-3.5 py-2 rounded-xl text-slate-400 hover:text-slate-200 hover:bg-[#0f1b33] transition-all text-xs font-medium" href="#">
+<svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewbox="0 0 24 24"><path d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+<span>Documentation</span>
+</a>
+<a class="flex items-center gap-3 px-3.5 py-2 rounded-xl text-slate-400 hover:text-slate-200 hover:bg-[#0f1b33] transition-all text-xs font-medium" href="#">
+<svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewbox="0 0 24 24"><circle cx="12" cy="12" r="9"></circle><path d="M9.09 9a3 3 0 015.83 1c0 2-3 3-3 3m.08 4h.01" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+<span>Help &amp; Support</span>
+</a>
+</nav>
+</div>
+<!-- Eco Promo Banner with contour illustration -->
+<div class="mt-auto relative rounded-2xl p-4 bg-gradient-to-br from-[#0a162b] to-[#061021] border border-cyan-500/20 overflow-hidden topo-gradient">
+<!-- SVG Topographic Contour Lines -->
+<svg class="absolute -right-4 -bottom-6 w-36 h-36 opacity-30 pointer-events-none text-cyan-400" fill="none" stroke="currentColor" stroke-width="1" viewbox="0 0 120 120">
+<ellipse cx="60" cy="60" rx="20" ry="12"></ellipse>
+<ellipse cx="60" cy="60" rx="35" ry="22"></ellipse>
+<ellipse cx="60" cy="60" rx="50" ry="32"></ellipse>
+<ellipse cx="60" cy="60" rx="68" ry="42"></ellipse>
+<path d="M10 80 Q 40 40 90 90"></path>
+<path d="M0 60 Q 50 30 110 70"></path>
+</svg>
+<div class="w-8 h-8 rounded-lg bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400 mb-2.5">
+<svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewbox="0 0 24 24"><path d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.286L13 21l-2.286-6.857L5 12l5.714-2.286L13 3z" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+</div>
+<h4 class="text-xs font-semibold text-white leading-snug mb-1">Better insights<br/>for a healthier planet</h4>
+<p class="text-[10px] text-slate-400 leading-relaxed">AI-powered remote sensing for a sustainable future.</p>
+</div>
+</div>
+</aside>
+<!-- END: LeftSidebar -->
+<!-- BEGIN: MainContentArea -->
+<div class="flex-1 flex flex-col min-w-0 bg-[#050a14]">
+<!-- BEGIN: TopHeader -->
+<header class="h-16 border-b border-[#15243e] bg-[#070e1c]/80 backdrop-blur px-6 flex items-center justify-between sticky top-0 z-20" data-purpose="top-navigation-bar">
+<!-- Search Bar -->
+<div class="relative w-full max-w-lg">
+<div class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
+<svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewbox="0 0 24 24"><circle cx="11" cy="11" r="8"></circle><line x1="21" x2="16.65" y1="21" y2="16.65"></line></svg>
+</div>
+<input class="w-full bg-[#0d172c] border border-[#1b2b48] rounded-xl pl-10 pr-12 py-2 text-xs text-slate-200 placeholder-slate-400 focus:outline-none focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/30 transition-colors" placeholder="Search reports, locations, or keywords..." type="text"/>
+<div class="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
+<kbd class="text-[10px] bg-[#17253d] border border-slate-700/60 text-slate-400 px-1.5 py-0.5 rounded font-mono">⌘ K</kbd>
+</div>
+</div>
+<!-- Right Controls -->
+<div class="flex items-center gap-3 ml-4">
+<!-- Day / Night Toggle -->
+<button class="p-2 rounded-xl bg-[#0d172c] border border-[#1b2b48] text-slate-400 hover:text-white hover:border-slate-600 transition-colors" title="Toggle Theme">
+<svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewbox="0 0 24 24"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2m0 16v2M4.93 4.93l1.41 1.41m11.32 11.32l1.41 1.41M2 12h2m16 0h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+</button>
+<!-- Notification Bell -->
+<button class="relative p-2 rounded-xl bg-[#0d172c] border border-[#1b2b48] text-slate-400 hover:text-white hover:border-slate-600 transition-colors" title="Notifications">
+<svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewbox="0 0 24 24"><path d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+<span class="absolute top-2 right-2 w-2 h-2 rounded-full bg-rose-500 ring-2 ring-[#070e1c]"></span>
+</button>
+<!-- User Profile Pill -->
+<div class="flex items-center gap-2.5 pl-2 border-l border-[#1a2944] cursor-pointer group">
+<div class="w-8 h-8 rounded-full bg-gradient-to-tr from-cyan-600 to-sky-500 text-white font-semibold text-xs flex items-center justify-center ring-2 ring-cyan-500/20">
+            SM
+          </div>
+<span class="text-xs font-medium text-slate-200 group-hover:text-white hidden sm:inline-block">Sandipan Majumder</span>
+<svg class="w-3.5 h-3.5 text-slate-400 group-hover:text-slate-200" fill="none" stroke="currentColor" stroke-width="2" viewbox="0 0 24 24"><polyline points="6 9 12 15 18 9"></polyline></svg>
+</div>
+</div>
+</header>
+<!-- END: TopHeader -->
+<!-- Page Body Container with reports table and details drawer -->
+<div class="flex-1 flex overflow-hidden">
+<!-- Center Main Section: Reports Management -->
+<main class="flex-1 overflow-y-auto p-6 space-y-5" data-purpose="reports-management-section">
+<!-- Reports Page Header -->
+<div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+<div class="flex items-start gap-3.5">
+<div class="w-10 h-10 rounded-xl bg-cyan-950/60 border border-cyan-500/30 flex items-center justify-center text-cyan-400 mt-0.5 shadow-[0_0_15px_rgba(6,182,212,0.15)]">
+<svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewbox="0 0 24 24"><path d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+</div>
+<div>
+<h1 class="text-xl font-bold text-white tracking-tight">Reports</h1>
+<p class="text-xs text-slate-400 mt-0.5">View, manage and download your analysis reports. Each report includes detailed insights, visualizations and export options.</p>
+</div>
+</div>
+<!-- Generate Report Button -->
+<button class="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-cyan-600 to-teal-500 hover:from-cyan-500 hover:to-teal-400 text-white font-medium text-xs shadow-[0_0_20px_rgba(6,182,212,0.3)] transition-all flex-shrink-0">
+<svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.5" viewbox="0 0 24 24"><path d="M12 4v16m8-8H4" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+<span>Generate Report</span>
+</button>
+</div>
+<!-- Filter Tabs -->
+<div class="flex items-center gap-2 border-b border-[#15243e] pb-3">
+<button class="px-3 py-1.5 rounded-lg bg-cyan-950/70 border border-cyan-500/40 text-cyan-400 text-xs font-semibold flex items-center gap-2 shadow-sm">
+<span>All Reports</span>
+<span class="text-[10px] bg-cyan-500/20 text-cyan-300 font-bold px-1.5 py-0.2 rounded-full">24</span>
+</button>
+<button class="px-3 py-1.5 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-[#0d172c] text-xs font-medium flex items-center gap-2 transition-colors">
+<span>Completed</span>
+<span class="text-[10px] bg-[#16233b] text-slate-400 font-medium px-1.5 py-0.2 rounded-full">18</span>
+</button>
+<button class="px-3 py-1.5 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-[#0d172c] text-xs font-medium flex items-center gap-2 transition-colors">
+<span>In Progress</span>
+<span class="text-[10px] bg-[#16233b] text-slate-400 font-medium px-1.5 py-0.2 rounded-full">4</span>
+</button>
+<button class="px-3 py-1.5 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-[#0d172c] text-xs font-medium flex items-center gap-2 transition-colors">
+<span>Failed</span>
+<span class="text-[10px] bg-[#16233b] text-slate-400 font-medium px-1.5 py-0.2 rounded-full">2</span>
+</button>
+</div>
+<!-- Search and Filter Bar Row -->
+<div class="flex flex-wrap items-center gap-3">
+<!-- Search within reports -->
+<div class="relative flex-1 min-w-[200px]">
+<div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewbox="0 0 24 24"><circle cx="11" cy="11" r="8"></circle><line x1="21" x2="16.65" y1="21" y2="16.65"></line></svg>
+</div>
+<input class="w-full bg-[#0a1224] border border-[#162542] rounded-xl pl-9 pr-3 py-1.5 text-xs text-slate-200 placeholder-slate-400 focus:outline-none focus:border-cyan-500/40" placeholder="Search reports..." type="text"/>
+</div>
+<!-- All Regions Dropdown -->
+<div class="relative">
+<select class="bg-[#0a1224] border border-[#162542] text-slate-300 text-xs rounded-xl py-1.5 pl-3 pr-8 focus:outline-none focus:border-cyan-500/40 appearance-none cursor-pointer">
+<option>All Regions</option>
+<option>Asia</option>
+<option>South America</option>
+<option>Europe</option>
+</select>
+<div class="absolute inset-y-0 right-0 flex items-center px-2 pointer-events-none text-slate-400">
+<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewbox="0 0 24 24"><polyline points="6 9 12 15 18 9"></polyline></svg>
+</div>
+</div>
+<!-- All Types Dropdown -->
+<div class="relative">
+<select class="bg-[#0a1224] border border-[#162542] text-slate-300 text-xs rounded-xl py-1.5 pl-3 pr-8 focus:outline-none focus:border-cyan-500/40 appearance-none cursor-pointer">
+<option>All Types</option>
+<option>Change Analysis</option>
+<option>Optical + SAR</option>
+<option>VQA</option>
+<option>SAR</option>
+</select>
+<div class="absolute inset-y-0 right-0 flex items-center px-2 pointer-events-none text-slate-400">
+<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewbox="0 0 24 24"><polyline points="6 9 12 15 18 9"></polyline></svg>
+</div>
+</div>
+<!-- Time Range Dropdown -->
+<div class="relative">
+<select class="bg-[#0a1224] border border-[#162542] text-slate-300 text-xs rounded-xl py-1.5 pl-8 pr-8 focus:outline-none focus:border-cyan-500/40 appearance-none cursor-pointer">
+<option>Last 30 days</option>
+<option>Last 7 days</option>
+<option>Last 90 days</option>
+<option>Year to date</option>
+</select>
+<div class="absolute inset-y-0 left-0 flex items-center pl-2.5 pointer-events-none text-slate-400">
+<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewbox="0 0 24 24"><rect height="18" rx="2" ry="2" width="18" x="3" y="4"></rect><line x1="16" x2="16" y1="2" y2="6"></line><line x1="8" x2="8" y1="2" y2="6"></line><line x1="3" x2="21" y1="10" y2="10"></line></svg>
+</div>
+<div class="absolute inset-y-0 right-0 flex items-center px-2 pointer-events-none text-slate-400">
+<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewbox="0 0 24 24"><polyline points="6 9 12 15 18 9"></polyline></svg>
+</div>
+</div>
+<!-- View Toggle Icons (Grid / List) -->
+<div class="flex items-center border border-[#162542] rounded-xl bg-[#0a1224] p-0.5">
+<button class="p-1.5 rounded-lg text-slate-400 hover:text-white transition-colors" title="Grid View">
+<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewbox="0 0 24 24"><rect height="7" width="7" x="3" y="3"></rect><rect height="7" width="7" x="14" y="3"></rect><rect height="7" width="7" x="14" y="14"></rect><rect height="7" width="7" x="3" y="14"></rect></svg>
+</button>
+<button class="p-1.5 rounded-lg bg-cyan-950/60 text-cyan-400 shadow-sm" title="List View">
+<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewbox="0 0 24 24"><line x1="8" x2="21" y1="6" y2="6"></line><line x1="8" x2="21" y1="12" y2="12"></line><line x1="8" x2="21" y1="18" y2="18"></line><line x1="3" x2="3.01" y1="6" y2="6"></line><line x1="3" x2="3.01" y1="12" y2="12"></line><line x1="3" x2="3.01" y1="18" y2="18"></line></svg>
+</button>
+</div>
+</div>
+<!-- Reports Table -->
+<div class="border border-[#15243e] rounded-2xl bg-[#091122]/70 backdrop-blur overflow-hidden shadow-lg" data-purpose="reports-data-table">
+<div class="overflow-x-auto">
+<table class="w-full text-left text-xs border-collapse">
+<thead>
+<tr class="border-b border-[#15243e] text-slate-400 text-[11px] font-semibold tracking-wider bg-[#0c162b]/50">
+<th class="py-3 px-4">Report</th>
+<th class="py-3 px-3">Type</th>
+<th class="py-3 px-3">Location</th>
+<th class="py-3 px-3">Created</th>
+<th class="py-3 px-3">Status</th>
+<th class="py-3 px-4 text-right">Actions</th>
+</tr>
+</thead>
+<tbody class="divide-y divide-[#132039] text-slate-300">
+<!-- Row 1: Urban Area Detection (Active Selection) -->
+<tr class="hover:bg-[#101d36]/80 transition-colors bg-cyan-950/15 cursor-pointer">
+<td class="py-3 px-4">
+<div class="flex items-center gap-3">
+<!-- Satellite thumbnail with change mask -->
+<div class="w-10 h-10 rounded-lg overflow-hidden flex-shrink-0 border border-cyan-500/30 relative shadow-sm">
+<img alt="Delhi satellite map" class="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBSNms-5EYl_4LRgUy_MpvJbGgeyBSjXjlQS9kNQZM5bdDVXJGweAZsxujIwLBxzHjG9okFbg97oVOGxk2o1Zw5SdzOBIVOa1_FWk_h7Lx9Fb8RA9H8_6dlE46yHqbxZadV1jRu3VqmJ1pyeIeWlR86pqydyoD2oo6B6FaimM35OSaGsVve-Ctpeib-jDvTFEB3WRot5FzznvIVJKvRHh2fkIPaqhmPB3a5QV04aGuuCsq5E5zFp_g"/>
+<div class="absolute inset-0 bg-red-600/25 mix-blend-color-burn"></div>
+</div>
+<div>
+<div class="font-semibold text-white text-xs hover:text-cyan-300 transition-colors">Urban Area Detection</div>
+<div class="text-[11px] text-slate-400">Expansion analysis of Delhi region</div>
+</div>
+</div>
+</td>
+<td class="py-3 px-3 whitespace-nowrap">
+<span class="px-2.5 py-0.5 rounded-full text-[10px] font-medium bg-purple-950/70 text-purple-300 border border-purple-800/40">Change Analysis</span>
+</td>
+<td class="py-3 px-3 text-slate-300 whitespace-nowrap">Delhi, India</td>
+<td class="py-3 px-3 text-slate-400 whitespace-nowrap">
+<div class="text-slate-300 font-medium">Oct 12, 2025</div>
+<div class="text-[10px] text-slate-500">11:42 AM</div>
+</td>
+<td class="py-3 px-3 whitespace-nowrap">
+<span class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-medium bg-emerald-950/60 text-emerald-400 border border-emerald-800/40">
+<span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span> Completed
+                    </span>
+</td>
+<td class="py-3 px-4 text-right whitespace-nowrap">
+<div class="flex items-center justify-end gap-1 text-slate-400">
+<button class="p-1.5 hover:text-cyan-400 hover:bg-[#152545] rounded-lg transition-colors" title="Download">
+<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewbox="0 0 24 24"><path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+</button>
+<button class="p-1.5 hover:text-slate-200 hover:bg-[#152545] rounded-lg transition-colors" title="More">
+<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewbox="0 0 24 24"><circle cx="12" cy="12" r="1"></circle><circle cx="12" cy="5" r="1"></circle><circle cx="12" cy="19" r="1"></circle></svg>
+</button>
+</div>
+</td>
+</tr>
+<!-- Row 2: Coastal Change Analysis -->
+<tr class="hover:bg-[#101d36]/50 transition-colors cursor-pointer">
+<td class="py-3 px-4">
+<div class="flex items-center gap-3">
+<div class="w-10 h-10 rounded-lg overflow-hidden flex-shrink-0 border border-[#1c2e4d] relative">
+<img alt="Coast satellite" class="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBFlyyx-ODl_yqrrWmJVu28R_4--FpuCg1lmWv5OfZZpSw4SmtIpN6KsrNCYUcyfTI8LKSo7DUW60zaxCeFEmGBINBA5xSPWtFzCij5GZHTO4Lw7NGlhcJVr3seyChKzmxxELrCMaISDt_CqpTTEEoW0aYLF_AoC3NbdwnOpcI7m0NE8bBRMtmZ6y_lZ3YIXzXhQDg4zmiN8LEzo5Ivylj97A6KW6Sej-3ie8EXDpKvqOkEwCRFzWY"/>
+</div>
+<div>
+<div class="font-semibold text-white text-xs hover:text-cyan-300">Coastal Change Analysis</div>
+<div class="text-[11px] text-slate-400">Shoreline variation - Mumbai coast</div>
+</div>
+</div>
+</td>
+<td class="py-3 px-3 whitespace-nowrap">
+<span class="px-2.5 py-0.5 rounded-full text-[10px] font-medium bg-purple-950/70 text-purple-300 border border-purple-800/40">Change Analysis</span>
+</td>
+<td class="py-3 px-3 text-slate-300 whitespace-nowrap">Mumbai, India</td>
+<td class="py-3 px-3 text-slate-400 whitespace-nowrap">
+<div class="text-slate-300 font-medium">Oct 10, 2025</div>
+<div class="text-[10px] text-slate-500">04:21 PM</div>
+</td>
+<td class="py-3 px-3 whitespace-nowrap">
+<span class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-medium bg-emerald-950/60 text-emerald-400 border border-emerald-800/40">
+<span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span> Completed
+                    </span>
+</td>
+<td class="py-3 px-4 text-right whitespace-nowrap">
+<div class="flex items-center justify-end gap-1 text-slate-400">
+<button class="p-1.5 hover:text-cyan-400 hover:bg-[#152545] rounded-lg transition-colors"><svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewbox="0 0 24 24"><path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
+<button class="p-1.5 hover:text-slate-200 hover:bg-[#152545] rounded-lg transition-colors"><svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewbox="0 0 24 24"><circle cx="12" cy="12" r="1"></circle><circle cx="12" cy="5" r="1"></circle><circle cx="12" cy="19" r="1"></circle></svg></button>
+</div>
+</td>
+</tr>
+<!-- Row 3: Land Cover Classification -->
+<tr class="hover:bg-[#101d36]/50 transition-colors cursor-pointer">
+<td class="py-3 px-4">
+<div class="flex items-center gap-3">
+<div class="w-10 h-10 rounded-lg overflow-hidden flex-shrink-0 border border-[#1c2e4d]">
+<img alt="Desert land cover" class="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBlwo-M_VOTeaqvz2inVt6d68Cou9dQ3LiCb8bcJ0NVeRO1bV8L6q2hgVbXVTWccx6hGqG9TjpmsD2SYPXax2aQZGD4Pu5bkgtooydCFz1CQh1gVXN1VXetVV3kPb4M9BM3EQp4q8bVW_D6l_Kq3fbD1Tp4M1g2oSM533IJHORLyu4-4uCvUh3hqTWAeQudBvuHFhv1G8GaXLBLkN6jJEnrgC0wc-UHgKvGNTDTdmoIDy4ilnX7BBM"/>
+</div>
+<div>
+<div class="font-semibold text-white text-xs hover:text-cyan-300">Land Cover Classification</div>
+<div class="text-[11px] text-slate-400">Agricultural vs urban mapping</div>
+</div>
+</div>
+</td>
+<td class="py-3 px-3 whitespace-nowrap">
+<span class="px-2.5 py-0.5 rounded-full text-[10px] font-medium bg-sky-950/70 text-sky-300 border border-sky-800/40">Optical + SAR</span>
+</td>
+<td class="py-3 px-3 text-slate-300 whitespace-nowrap">Rajasthan, India</td>
+<td class="py-3 px-3 text-slate-400 whitespace-nowrap">
+<div class="text-slate-300 font-medium">Oct 08, 2025</div>
+<div class="text-[10px] text-slate-500">01:17 PM</div>
+</td>
+<td class="py-3 px-3 whitespace-nowrap">
+<span class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-medium bg-emerald-950/60 text-emerald-400 border border-emerald-800/40">
+<span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span> Completed
+                    </span>
+</td>
+<td class="py-3 px-4 text-right whitespace-nowrap">
+<div class="flex items-center justify-end gap-1 text-slate-400">
+<button class="p-1.5 hover:text-cyan-400 hover:bg-[#152545] rounded-lg transition-colors"><svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewbox="0 0 24 24"><path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
+<button class="p-1.5 hover:text-slate-200 hover:bg-[#152545] rounded-lg transition-colors"><svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewbox="0 0 24 24"><circle cx="12" cy="12" r="1"></circle><circle cx="12" cy="5" r="1"></circle><circle cx="12" cy="19" r="1"></circle></svg></button>
+</div>
+</td>
+</tr>
+<!-- Row 4: Vegetation Health Monitor -->
+<tr class="hover:bg-[#101d36]/50 transition-colors cursor-pointer">
+<td class="py-3 px-4">
+<div class="flex items-center gap-3">
+<div class="w-10 h-10 rounded-lg overflow-hidden flex-shrink-0 border border-[#1c2e4d]">
+<img alt="Amazon Forest NDVI" class="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBQeW8SQ9CONyEnorYlkduEzlGDcuJk--4jtISc6iZw2E80OwwBuq5xbkrIR4x5zQw0f8SwrMqead6EatbiVDm5ZNs_WXpiDXxdrhWGdaw3SMi-yl0ERALCCE83mYrUjNgnVckC6wu3gdk5RzvXUrI-s2X7XB7BHhEiJIg2idcH-_GFhWLWrQ6eEN0KnJge7-Rv-tjVr4zHqlI0K0RaHiMRqBMruLLi3mnPQPjlfNAStGruHOz7njA"/>
+</div>
+<div>
+<div class="font-semibold text-white text-xs hover:text-cyan-300">Vegetation Health Monitor</div>
+<div class="text-[11px] text-slate-400">NDVI analysis for forest area</div>
+</div>
+</div>
+</td>
+<td class="py-3 px-3 whitespace-nowrap">
+<span class="px-2.5 py-0.5 rounded-full text-[10px] font-medium bg-teal-950/70 text-teal-300 border border-teal-800/40">VQA</span>
+</td>
+<td class="py-3 px-3 text-slate-300 whitespace-nowrap">Amazon, Brazil</td>
+<td class="py-3 px-3 text-slate-400 whitespace-nowrap">
+<div class="text-slate-300 font-medium">Oct 06, 2025</div>
+<div class="text-[10px] text-slate-500">09:33 AM</div>
+</td>
+<td class="py-3 px-3 whitespace-nowrap">
+<span class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-medium bg-emerald-950/60 text-emerald-400 border border-emerald-800/40">
+<span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span> Completed
+                    </span>
+</td>
+<td class="py-3 px-4 text-right whitespace-nowrap">
+<div class="flex items-center justify-end gap-1 text-slate-400">
+<button class="p-1.5 hover:text-cyan-400 hover:bg-[#152545] rounded-lg transition-colors"><svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewbox="0 0 24 24"><path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
+<button class="p-1.5 hover:text-slate-200 hover:bg-[#152545] rounded-lg transition-colors"><svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewbox="0 0 24 24"><circle cx="12" cy="12" r="1"></circle><circle cx="12" cy="5" r="1"></circle><circle cx="12" cy="19" r="1"></circle></svg></button>
+</div>
+</td>
+</tr>
+<!-- Row 5: Water Body Detection -->
+<tr class="hover:bg-[#101d36]/50 transition-colors cursor-pointer">
+<td class="py-3 px-4">
+<div class="flex items-center gap-3">
+<div class="w-10 h-10 rounded-lg overflow-hidden flex-shrink-0 border border-[#1c2e4d]">
+<img alt="Lake water mapping" class="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCxfVRPEWTQBu2AFd9P_shnuqBoJhJ76A-0LhW3XYKHIzfMxX7bKqzMfl_5xFuW_if5n0l58ET0pa4HgEEXTi6_x-HemWaaH83-pZa5Hxg9jhydVgvcsgHmxOdFN8vdtRx4hEc0NxmJ1dp42Bzt-feklJvHqC7_ckDDELoPOUHPW0KSbgc3qd5XkTlXwDjEK-cLE6TzcbsX277vQRfNlQFvOb5tFOt28DasC90NRYjfh5KAN987fuw"/>
+</div>
+<div>
+<div class="font-semibold text-white text-xs hover:text-cyan-300">Water Body Detection</div>
+<div class="text-[11px] text-slate-400">Lakes and reservoirs mapping</div>
+</div>
+</div>
+</td>
+<td class="py-3 px-3 whitespace-nowrap">
+<span class="px-2.5 py-0.5 rounded-full text-[10px] font-medium bg-blue-950/70 text-blue-300 border border-blue-800/40">Optical</span>
+</td>
+<td class="py-3 px-3 text-slate-300 whitespace-nowrap">Uttarakhand, India</td>
+<td class="py-3 px-3 text-slate-400 whitespace-nowrap">
+<div class="text-slate-300 font-medium">Oct 04, 2025</div>
+<div class="text-[10px] text-slate-500">02:11 PM</div>
+</td>
+<td class="py-3 px-3 whitespace-nowrap">
+<span class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-medium bg-emerald-950/60 text-emerald-400 border border-emerald-800/40">
+<span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span> Completed
+                    </span>
+</td>
+<td class="py-3 px-4 text-right whitespace-nowrap">
+<div class="flex items-center justify-end gap-1 text-slate-400">
+<button class="p-1.5 hover:text-cyan-400 hover:bg-[#152545] rounded-lg transition-colors"><svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewbox="0 0 24 24"><path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
+<button class="p-1.5 hover:text-slate-200 hover:bg-[#152545] rounded-lg transition-colors"><svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewbox="0 0 24 24"><circle cx="12" cy="12" r="1"></circle><circle cx="12" cy="5" r="1"></circle><circle cx="12" cy="19" r="1"></circle></svg></button>
+</div>
+</td>
+</tr>
+<!-- Row 6: Urban Expansion Analysis (In Progress) -->
+<tr class="hover:bg-[#101d36]/50 transition-colors cursor-pointer">
+<td class="py-3 px-4">
+<div class="flex items-center gap-3">
+<div class="w-10 h-10 rounded-lg overflow-hidden flex-shrink-0 border border-[#1c2e4d]">
+<img alt="Bangalore urban aerial" class="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCwDrPVG7gQqqaj0SS2S8NQrftZEkO50rq-nXuL_6D8omwlnQCz5LUcORuOlik3uQfcW02MqDevc3Y-miaMNC5h53VPJAOH4rF1Uqbqd6-3nGWsrmU68o8_LMdqfz1AzmdchtFoht-0wu-spi4hDqMvSrTQMYXIU03_h4swcv9QmzDruvzM5IauHkwAOF6Z3sRgoyjboEjRvofN1F2B-ph2uw5wJDOxWOjNOfXf9W_bVKYwocki40o"/>
+</div>
+<div>
+<div class="font-semibold text-white text-xs hover:text-cyan-300">Urban Expansion Analysis</div>
+<div class="text-[11px] text-slate-400">Growth pattern - Bangalore</div>
+</div>
+</div>
+</td>
+<td class="py-3 px-3 whitespace-nowrap">
+<span class="px-2.5 py-0.5 rounded-full text-[10px] font-medium bg-purple-950/70 text-purple-300 border border-purple-800/40">Change Analysis</span>
+</td>
+<td class="py-3 px-3 text-slate-300 whitespace-nowrap">Bangalore, India</td>
+<td class="py-3 px-3 text-slate-400 whitespace-nowrap">
+<div class="text-slate-300 font-medium">Oct 02, 2025</div>
+<div class="text-[10px] text-slate-500">06:45 PM</div>
+</td>
+<td class="py-3 px-3 whitespace-nowrap">
+<span class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-medium bg-amber-950/60 text-amber-400 border border-amber-800/40">
+<span class="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse"></span> In Progress
+                    </span>
+</td>
+<td class="py-3 px-4 text-right whitespace-nowrap">
+<div class="flex items-center justify-end gap-1 text-slate-400">
+<button class="p-1.5 hover:text-cyan-400 hover:bg-[#152545] rounded-lg transition-colors"><svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewbox="0 0 24 24"><path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
+<button class="p-1.5 hover:text-slate-200 hover:bg-[#152545] rounded-lg transition-colors"><svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewbox="0 0 24 24"><circle cx="12" cy="12" r="1"></circle><circle cx="12" cy="5" r="1"></circle><circle cx="12" cy="19" r="1"></circle></svg></button>
+</div>
+</td>
+</tr>
+<!-- Row 7: Flood Risk Assessment -->
+<tr class="hover:bg-[#101d36]/50 transition-colors cursor-pointer">
+<td class="py-3 px-4">
+<div class="flex items-center gap-3">
+<div class="w-10 h-10 rounded-lg overflow-hidden flex-shrink-0 border border-[#1c2e4d]">
+<img alt="Assam flood risk SAR" class="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCOV2QNT3xa88-2wZ0mN7yc2AVMeXXCqUR5ElaOI9bbPLut5NdLC43eA_f2C9aFf44OUc7fl9_VcPigRNqr4ay14yJmkhYGZdXxMj6c-ztXpdQ5TAJBsAhrky_3MTaexL3hGDiLU-BrgX9-OZkQ63gZAQjqoY2gSdCnhkIzYZQqWuYZ-G2LYXkBoVAiVNJog6W88qFbcj0XZe-pUiPr-HkbVGcHrmuT7rPib33s5MqfuCgXtkDpFLQ"/>
+</div>
+<div>
+<div class="font-semibold text-white text-xs hover:text-cyan-300">Flood Risk Assessment</div>
+<div class="text-[11px] text-slate-400">SAR based flood detection</div>
+</div>
+</div>
+</td>
+<td class="py-3 px-3 whitespace-nowrap">
+<span class="px-2.5 py-0.5 rounded-full text-[10px] font-medium bg-indigo-950/70 text-indigo-300 border border-indigo-800/40">SAR</span>
+</td>
+<td class="py-3 px-3 text-slate-300 whitespace-nowrap">Assam, India</td>
+<td class="py-3 px-3 text-slate-400 whitespace-nowrap">
+<div class="text-slate-300 font-medium">Sep 30, 2025</div>
+<div class="text-[10px] text-slate-500">10:12 AM</div>
+</td>
+<td class="py-3 px-3 whitespace-nowrap">
+<span class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-medium bg-emerald-950/60 text-emerald-400 border border-emerald-800/40">
+<span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span> Completed
+                    </span>
+</td>
+<td class="py-3 px-4 text-right whitespace-nowrap">
+<div class="flex items-center justify-end gap-1 text-slate-400">
+<button class="p-1.5 hover:text-cyan-400 hover:bg-[#152545] rounded-lg transition-colors"><svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewbox="0 0 24 24"><path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
+<button class="p-1.5 hover:text-slate-200 hover:bg-[#152545] rounded-lg transition-colors"><svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewbox="0 0 24 24"><circle cx="12" cy="12" r="1"></circle><circle cx="12" cy="5" r="1"></circle><circle cx="12" cy="19" r="1"></circle></svg></button>
+</div>
+</td>
+</tr>
+<!-- Row 8: Infrastructure Mapping (Failed) -->
+<tr class="hover:bg-[#101d36]/50 transition-colors cursor-pointer">
+<td class="py-3 px-4">
+<div class="flex items-center gap-3">
+<div class="w-10 h-10 rounded-lg overflow-hidden flex-shrink-0 border border-[#1c2e4d]">
+<img alt="Infrastructure roads" class="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCajw9fX8Wx6Z0n_vCBkpTjRF4nfvrYakrg-di47gNRn1PnnfeDGm3gHJ2Rj4Dyqg-ZiU2hdsE9oJHQ1g5Pxq9B504xPd8d6SSXLdY04hyBToaLrY2bnvwFTAwNIiF4BnD9zcnJrAMQH0sGNvHAHlkWhKuuIbO66dMDdYrMlb6At8RyPJZzq9HwR22VdBua5nTPRKR83EFQRs6r9je1HKYLzrmmFjPQUpZBa8e3FW9dDJIDGLNlIJ0"/>
+</div>
+<div>
+<div class="font-semibold text-white text-xs hover:text-cyan-300">Infrastructure Mapping</div>
+<div class="text-[11px] text-slate-400">Roads and buildings extraction</div>
+</div>
+</div>
+</td>
+<td class="py-3 px-3 whitespace-nowrap">
+<span class="px-2.5 py-0.5 rounded-full text-[10px] font-medium bg-blue-950/70 text-blue-300 border border-blue-800/40">Optical</span>
+</td>
+<td class="py-3 px-3 text-slate-300 whitespace-nowrap">Chennai, India</td>
+<td class="py-3 px-3 text-slate-400 whitespace-nowrap">
+<div class="text-slate-300 font-medium">Sep 28, 2025</div>
+<div class="text-[10px] text-slate-500">03:22 PM</div>
+</td>
+<td class="py-3 px-3 whitespace-nowrap">
+<span class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-medium bg-rose-950/60 text-rose-400 border border-rose-800/40">
+<span class="w-1.5 h-1.5 rounded-full bg-rose-500"></span> Failed
+                    </span>
+</td>
+<td class="py-3 px-4 text-right whitespace-nowrap">
+<div class="flex items-center justify-end gap-1 text-slate-400">
+<button class="p-1.5 hover:text-cyan-400 hover:bg-[#152545] rounded-lg transition-colors"><svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewbox="0 0 24 24"><path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
+<button class="p-1.5 hover:text-slate-200 hover:bg-[#152545] rounded-lg transition-colors"><svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewbox="0 0 24 24"><circle cx="12" cy="12" r="1"></circle><circle cx="12" cy="5" r="1"></circle><circle cx="12" cy="19" r="1"></circle></svg></button>
+</div>
+</td>
+</tr>
+<!-- Row 9: Bi-temporal Change Detection -->
+<tr class="hover:bg-[#101d36]/50 transition-colors cursor-pointer">
+<td class="py-3 px-4">
+<div class="flex items-center gap-3">
+<div class="w-10 h-10 rounded-lg overflow-hidden flex-shrink-0 border border-[#1c2e4d]">
+<img alt="Sundarbans mangroves" class="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBCvypqnqZJ-db5MobrkTSa0_FeceGsxCfC9A94wSNF7vpjmcn-iMSYceb5YTVXLJmTqcQxhMAnybhvVuRwhF5jUXg03XN9e8f8InYIeeqVKzU1RJrWIAUJ4jyJ8STymymaPUsKv1IYj7-jnUn0Vv1lIEbqySVJ44NxH5VbRAfbTIDKOkEdbwSIguB_XQ5qbIwo98xdWy6iMYET9FLhtGCyGHp4-MNgk8sJAr47bC8JIp88xCbV_z0"/>
+</div>
+<div>
+<div class="font-semibold text-white text-xs hover:text-cyan-300">Bi-temporal Change Detection</div>
+<div class="text-[11px] text-slate-400">Pre &amp; post event analysis</div>
+</div>
+</div>
+</td>
+<td class="py-3 px-3 whitespace-nowrap">
+<span class="px-2.5 py-0.5 rounded-full text-[10px] font-medium bg-purple-950/70 text-purple-300 border border-purple-800/40">Change Analysis</span>
+</td>
+<td class="py-3 px-3 text-slate-300 whitespace-nowrap">Sundarbans, India</td>
+<td class="py-3 px-3 text-slate-400 whitespace-nowrap">
+<div class="text-slate-300 font-medium">Sep 26, 2025</div>
+<div class="text-[10px] text-slate-500">05:41 PM</div>
+</td>
+<td class="py-3 px-3 whitespace-nowrap">
+<span class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-medium bg-emerald-950/60 text-emerald-400 border border-emerald-800/40">
+<span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span> Completed
+                    </span>
+</td>
+<td class="py-3 px-4 text-right whitespace-nowrap">
+<div class="flex items-center justify-end gap-1 text-slate-400">
+<button class="p-1.5 hover:text-cyan-400 hover:bg-[#152545] rounded-lg transition-colors"><svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewbox="0 0 24 24"><path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
+<button class="p-1.5 hover:text-slate-200 hover:bg-[#152545] rounded-lg transition-colors"><svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewbox="0 0 24 24"><circle cx="12" cy="12" r="1"></circle><circle cx="12" cy="5" r="1"></circle><circle cx="12" cy="19" r="1"></circle></svg></button>
+</div>
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+<!-- Pagination Bar -->
+<div class="flex items-center justify-between text-xs text-slate-400 pt-1">
+<div>Showing <span class="text-slate-200 font-medium">1 - 9</span> of <span class="text-slate-200 font-medium">24</span> reports</div>
+<div class="flex items-center gap-1.5">
+<button class="p-1.5 rounded-lg border border-[#172744] hover:bg-[#101b33] text-slate-400 disabled:opacity-40" disabled="">
+<svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewbox="0 0 24 24"><polyline points="15 18 9 12 15 6"></polyline></svg>
+</button>
+<button class="w-7 h-7 rounded-lg bg-cyan-600 text-white font-semibold flex items-center justify-center text-xs shadow-sm">1</button>
+<button class="w-7 h-7 rounded-lg border border-[#172744] hover:bg-[#101b33] text-slate-300 flex items-center justify-center text-xs transition-colors">2</button>
+<button class="w-7 h-7 rounded-lg border border-[#172744] hover:bg-[#101b33] text-slate-300 flex items-center justify-center text-xs transition-colors">3</button>
+<button class="p-1.5 rounded-lg border border-[#172744] hover:bg-[#101b33] text-slate-300 transition-colors">
+<svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewbox="0 0 24 24"><polyline points="9 18 15 12 9 6"></polyline></svg>
+</button>
+</div>
+</div>
+</main>
+<!-- END: Center Main Section -->
+<!-- BEGIN: RightDetailsDrawer -->
+<aside class="w-96 flex-shrink-0 border-l border-[#15243e] bg-[#070e1c] overflow-y-auto p-5 flex flex-col space-y-5" data-purpose="report-details-drawer">
+<!-- Header: Back link & status badge -->
+<div class="flex items-center justify-between">
+<button class="flex items-center gap-1.5 text-xs text-slate-400 hover:text-white transition-colors font-medium">
+<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewbox="0 0 24 24"><line x1="19" x2="5" y1="12" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
+<span>Report Details</span>
+</button>
+<span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-medium bg-emerald-950/70 text-emerald-400 border border-emerald-800/40">
+<svg class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2.5" viewbox="0 0 24 24"><polyline points="20 6 9 17 4 12"></polyline></svg>
+            Completed
+          </span>
+</div>
+<!-- Title & Subtitle -->
+<div>
+<h2 class="text-base font-bold text-white tracking-tight">Urban Area Detection</h2>
+<p class="text-xs text-slate-400 mt-0.5">Expansion analysis of Delhi region</p>
+</div>
+<!-- Meta tags row -->
+<div class="flex flex-wrap items-center gap-2 text-[11px] text-slate-300">
+<div class="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[#0d182e] border border-[#1b2b4b]">
+<svg class="w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor" stroke-width="2" viewbox="0 0 24 24"><rect height="18" rx="2" ry="2" width="18" x="3" y="4"></rect><line x1="16" x2="16" y1="2" y2="6"></line><line x1="8" x2="8" y1="2" y2="6"></line><line x1="3" x2="21" y1="10" y2="10"></line></svg>
+<span>Oct 12, 2025 11:42 AM</span>
+</div>
+<div class="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[#0d182e] border border-[#1b2b4b]">
+<svg class="w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor" stroke-width="2" viewbox="0 0 24 24"><path d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" stroke-linecap="round" stroke-linejoin="round"></path><path d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+<span>Delhi, India</span>
+</div>
+<span class="px-2.5 py-1 rounded-lg bg-purple-950/60 text-purple-300 border border-purple-800/40 font-medium">Change Analysis</span>
+</div>
+<!-- Split Comparison Satellite Image Viewer -->
+<div class="relative w-full h-44 rounded-xl overflow-hidden border border-[#1a2d4f] shadow-md group cursor-ew-resize select-none" data-purpose="satellite-comparison-viewer">
+<!-- Left / Before Image -->
+<div class="absolute inset-0 w-full h-full">
+<img alt="Satellite Before" class="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAVFqDueiUGcGN9EAGXeDgGM5-LpGP-9oOT4V28MecMFyWDANyI6VDAl-2bI9kXoFu4DzpJjMT4dC6iG2zCdVk4VcW4GRaStteBa4l8MOmPE0zXJPL8ijunqUTm_kZ4jyCjq3fo2zv9vAo78jY8yvtAGc3tUm8RM0-Mw0iTivC4d-m9KMGiNLb2d5pyJuHu7kMu6p_Gaz-aqFjbI1BhqjHobi0jAZT_i17WwimWklQy-Z9KbTYGstk"/>
+</div>
+<!-- Right / After Image with Red Overlay (Clipped) -->
+<div class="absolute inset-0 left-1/2 w-1/2 h-full overflow-hidden">
+<div class="w-full h-full relative" style="width: 200%; margin-left: -100%;">
+<img alt="Satellite After" class="w-full h-full object-cover filter contrast-125" src="https://lh3.googleusercontent.com/aida-public/AB6AXuD1SfN3D-KVs6s3id6ym7yrANCo8Vieu9A2flB2WK4rLK8aY5nhxLR1OCdE_2ml20WJv5rUF8ofeH7WEeU_MJwbHtVDFWzhsydzeaZNr9IjLaHHvb95QgrdnC3N9fAVidEV0MB0aq1KcNNbTNEdzqqaVM-0qiMFIUzJ1ZdJVyWwSD2Ot_4-vr4ahzlhINu7ggfqXMw-v1WfehdFnmj4qEZaB8ouz2Bzo8uxHxNPG8j_iqxla3VrHsU"/>
+<!-- High-density Red Urban Detection Mask Overlay -->
+<div class="absolute inset-0 bg-red-600/40 mix-blend-color-dodge"></div>
+<!-- Simulated Urban Growth Heat Lines -->
+<svg class="absolute inset-0 w-full h-full text-red-500/80 pointer-events-none" preserveaspectratio="none" viewbox="0 0 100 100">
+<path d="M50,10 Q65,30 55,60 T75,90" fill="none" opacity="0.7" stroke="red" stroke-width="1.5"></path>
+<path d="M60,20 Q80,45 70,80" fill="none" opacity="0.8" stroke="#ff3b30" stroke-width="2"></path>
+<circle cx="68" cy="40" fill="rgba(239,68,68,0.3)" r="10" stroke="red" stroke-width="1"></circle>
+<circle cx="82" cy="65" fill="rgba(239,68,68,0.35)" r="14" stroke="red" stroke-width="1"></circle>
+</svg>
+</div>
+</div>
+<!-- Vertical Divider Slider with Drag Handle -->
+<div class="absolute top-0 bottom-0 left-1/2 -ml-[1px] w-[2px] bg-cyan-400 shadow-[0_0_10px_#00e5ff] flex items-center justify-center pointer-events-none">
+<div class="w-6 h-6 rounded-full bg-[#070e1c] border-2 border-cyan-400 text-cyan-300 flex items-center justify-center shadow-lg">
+<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.5" viewbox="0 0 24 24"><polyline points="8 15 5 12 8 9"></polyline><polyline points="16 9 19 12 16 15"></polyline></svg>
+</div>
+</div>
+<!-- Corner Labels -->
+<div class="absolute bottom-2 left-2 px-2 py-0.5 rounded bg-black/60 backdrop-blur text-[10px] text-white font-medium border border-white/10">
+            Before (2022)
+          </div>
+<div class="absolute bottom-2 right-2 px-2 py-0.5 rounded bg-black/60 backdrop-blur text-[10px] text-white font-medium border border-white/10">
+            After (2025)
+          </div>
+</div>
+<!-- Key Findings Section -->
+<div>
+<h3 class="text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2.5 flex items-center gap-1.5">
+<svg class="w-3.5 h-3.5 text-cyan-400" fill="none" stroke="currentColor" stroke-width="2" viewbox="0 0 24 24"><path d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+<span>Key Findings</span>
+</h3>
+<div class="grid grid-cols-2 gap-2">
+<!-- Metric 1 -->
+<div class="p-2.5 rounded-xl bg-[#0b1428] border border-[#172744]">
+<div class="flex items-center gap-1.5 text-cyan-400 mb-1">
+<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.5" viewbox="0 0 24 24"><path d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+<span class="text-sm font-bold text-white">+18.7%</span>
+</div>
+<p class="text-[10px] text-slate-400 leading-tight">Urban expansion in target area</p>
+</div>
+<!-- Metric 2 -->
+<div class="p-2.5 rounded-xl bg-[#0b1428] border border-[#172744]">
+<div class="flex items-center gap-1.5 text-cyan-400 mb-1">
+<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewbox="0 0 24 24"><rect height="20" rx="2" ry="2" width="16" x="4" y="2"></rect><line x1="9" x2="9" y1="22" y2="22.01"></line><line x1="15" x2="15" y1="22" y2="22.01"></line><line x1="9" x2="9" y1="6" y2="6.01"></line><line x1="15" x2="15" y1="6" y2="6.01"></line><line x1="9" x2="9" y1="10" y2="10.01"></line><line x1="15" x2="15" y1="10" y2="10.01"></line><line x1="9" x2="9" y1="14" y2="14.01"></line><line x1="15" x2="15" y1="14" y2="14.01"></line><line x1="9" x2="9" y1="18" y2="18.01"></line><line x1="15" x2="15" y1="18" y2="18.01"></line></svg>
+<span class="text-sm font-bold text-white">12.4 km²</span>
+</div>
+<p class="text-[10px] text-slate-400 leading-tight">New built-up area</p>
+</div>
+<!-- Metric 3 -->
+<div class="p-2.5 rounded-xl bg-[#0b1428] border border-[#172744]">
+<div class="flex items-center gap-1.5 text-emerald-400 mb-1">
+<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewbox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 14.5V17a1 1 0 01-2 0v-.5a3.5 3.5 0 01-.5-6.96V9a1 1 0 012 0v.04A3.5 3.5 0 0113 16.5z" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+<span class="text-sm font-bold text-white">-6.2%</span>
+</div>
+<p class="text-[10px] text-slate-400 leading-tight">Vegetation loss</p>
+</div>
+<!-- Metric 4 -->
+<div class="p-2.5 rounded-xl bg-[#0b1428] border border-[#172744]">
+<div class="flex items-center gap-1.5 text-cyan-400 mb-1">
+<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewbox="0 0 24 24"><path d="M12 2.69l5.66 5.66a8 8 0 11-11.31 0z" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+<span class="text-sm font-bold text-white">+3.8%</span>
+</div>
+<p class="text-[10px] text-slate-400 leading-tight">Road network expansion</p>
+</div>
+</div>
+</div>
+<!-- Insights Section -->
+<div>
+<h3 class="text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+<svg class="w-3.5 h-3.5 text-cyan-400" fill="none" stroke="currentColor" stroke-width="2" viewbox="0 0 24 24"><path d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+<span>Insights</span>
+</h3>
+<ul class="space-y-2 text-[11px] text-slate-300">
+<li class="flex items-start gap-2">
+<span class="w-1 h-1 rounded-full bg-cyan-400 mt-1.5 flex-shrink-0"></span>
+<span>Significant urban growth detected in the eastern and southern parts of the city.</span>
+</li>
+<li class="flex items-start gap-2">
+<span class="w-1 h-1 rounded-full bg-cyan-400 mt-1.5 flex-shrink-0"></span>
+<span>New infrastructure and road networks are visible in the expanded area.</span>
+</li>
+<li class="flex items-start gap-2">
+<span class="w-1 h-1 rounded-full bg-cyan-400 mt-1.5 flex-shrink-0"></span>
+<span>Vegetation loss is primarily concentrated around construction zones.</span>
+</li>
+</ul>
+</div>
+<!-- Download Full Report CTA Buttons -->
+<div>
+<div class="text-[11px] font-semibold text-slate-300 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+<svg class="w-3.5 h-3.5 text-cyan-400" fill="none" stroke="currentColor" stroke-width="2" viewbox="0 0 24 24"><path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+<span>Download Report</span>
+</div>
+<div class="flex items-center gap-2">
+<button class="flex-1 py-2.5 px-3 rounded-xl bg-gradient-to-r from-cyan-500 to-teal-400 hover:from-cyan-400 hover:to-teal-300 text-slate-950 font-bold text-xs flex items-center justify-center gap-2 shadow-[0_0_20px_rgba(6,182,212,0.35)] transition-all">
+<svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.5" viewbox="0 0 24 24"><path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+<span>Download Full Report (PDF)</span>
+</button>
+<button class="p-2.5 rounded-xl border border-[#1a2c4e] bg-[#0c162b] text-slate-300 hover:text-white hover:border-slate-500 transition-colors" title="Share or Copy Link">
+<svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewbox="0 0 24 24"><path d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+</button>
+</div>
+</div>
+<!-- Related Files Section -->
+<div>
+<div class="text-[11px] font-semibold text-slate-300 uppercase tracking-wider mb-2">Related Files</div>
+<div class="space-y-1.5">
+<!-- File 1 -->
+<div class="flex items-center justify-between p-2 rounded-xl bg-[#0b1428] border border-[#152542] hover:border-[#213861] transition-colors">
+<div class="flex items-center gap-2 min-w-0">
+<svg class="w-4 h-4 text-cyan-400 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewbox="0 0 24 24"><rect height="18" rx="2" ry="2" width="18" x="3" y="3"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>
+<span class="text-xs text-slate-300 truncate font-mono">analysis_visualization.png</span>
+</div>
+<div class="flex items-center gap-2 pl-2 flex-shrink-0">
+<span class="text-[10px] text-slate-500">2.4 MB</span>
+<button class="p-1 text-slate-400 hover:text-cyan-300 transition-colors">
+<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewbox="0 0 24 24"><path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+</button>
+</div>
+</div>
+<!-- File 2 -->
+<div class="flex items-center justify-between p-2 rounded-xl bg-[#0b1428] border border-[#152542] hover:border-[#213861] transition-colors">
+<div class="flex items-center gap-2 min-w-0">
+<svg class="w-4 h-4 text-teal-400 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewbox="0 0 24 24"><polygon points="12 2 2 7 12 12 22 7 12 2"></polygon><polyline points="2 17 12 22 22 17"></polyline><polyline points="2 12 12 17 22 12"></polyline></svg>
+<span class="text-xs text-slate-300 truncate font-mono">change_mask.geojson</span>
+</div>
+<div class="flex items-center gap-2 pl-2 flex-shrink-0">
+<span class="text-[10px] text-slate-500">1.2 MB</span>
+<button class="p-1 text-slate-400 hover:text-cyan-300 transition-colors">
+<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewbox="0 0 24 24"><path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+</button>
+</div>
+</div>
+<!-- File 3 -->
+<div class="flex items-center justify-between p-2 rounded-xl bg-[#0b1428] border border-[#152542] hover:border-[#213861] transition-colors">
+<div class="flex items-center gap-2 min-w-0">
+<svg class="w-4 h-4 text-amber-400 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewbox="0 0 24 24"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>
+<span class="text-xs text-slate-300 truncate font-mono">metadata.json</span>
+</div>
+<div class="flex items-center gap-2 pl-2 flex-shrink-0">
+<span class="text-[10px] text-slate-500">450 KB</span>
+<button class="p-1 text-slate-400 hover:text-cyan-300 transition-colors">
+<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewbox="0 0 24 24"><path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+</button>
+</div>
+</div>
+</div>
+</div>
+</aside>
+<!-- END: RightDetailsDrawer -->
+</div>
+</div>
+<!-- END: MainContentArea -->
+</body></html>
