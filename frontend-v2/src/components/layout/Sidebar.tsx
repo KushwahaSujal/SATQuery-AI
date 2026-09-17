@@ -217,16 +217,16 @@ export default function Sidebar({ hideBrand = false, activeItem, className = "" 
               </svg>
               <span>Documentation</span>
             </Link>
-            <Link
-              href="/documentation#support"
-              className="flex items-center gap-3 px-3 py-2 text-[var(--sidebar-icon)] hover:text-[var(--sidebar-text)] hover:bg-[var(--surface-hover)] rounded-lg transition-all"
-            >
-              <svg className="w-4 h-4 text-[var(--sidebar-icon)]" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                <circle cx="12" cy="12" r="9" />
-                <path d="M9.09 9a3 3 0 015.83 1c0 2-3 3-3 3m.08 4h.01" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-              <span>Help &amp; Support</span>
-            </Link>
+            {/*<Link*/}
+            {/*  href="/documentation#support"*/}
+            {/*  className="flex items-center gap-3 px-3 py-2 text-[var(--sidebar-icon)] hover:text-[var(--sidebar-text)] hover:bg-[var(--surface-hover)] rounded-lg transition-all"*/}
+            {/*>*/}
+            {/*  <svg className="w-4 h-4 text-[var(--sidebar-icon)]" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">*/}
+            {/*    <circle cx="12" cy="12" r="9" />*/}
+            {/*    <path d="M9.09 9a3 3 0 015.83 1c0 2-3 3-3 3m.08 4h.01" strokeLinecap="round" strokeLinejoin="round" />*/}
+            {/*  </svg>*/}
+            {/*  <span>Help &amp; Support</span>*/}
+            {/*</Link>*/}
           </nav>
         </div>
       </div>

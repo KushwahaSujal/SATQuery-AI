@@ -13,21 +13,21 @@ export default function DocumentationPage() {
   const tabs = ["Getting Started", "Guides", "API Reference", "Tutorials", "Examples", "Advanced"];
 
   return (
-    <div className="bg-[var(--canvas)] text-[var(--text)] font-sans antialiased min-h-screen flex flex-col selection:bg-cyan-500 selection:text-[var(--canvas)]">
-      {/* Top Outer Wrapper */}
+    <div className="bg-[var(--canvas)] text-[var(--text)] font-sans antialiased h-screen overflow-hidden flex flex-col selection:bg-[var(--cyan)]/30 selection:text-[var(--canvas)]">
+      {/* Full-width TopBar */}
+      <TopBar
+        showBrand={true}
+        searchPlaceholder="Search documentation, endpoints, guides, or keywords..."
+        onSearch={(q) => setSearchDoc(q)}
+      />
+
+      {/* Main Body Layout */}
       <div className="flex flex-1 overflow-hidden">
-        {/* Left Sidebar */}
-        <Sidebar hideBrand={false} activeItem="documentation" className="sticky top-0 h-screen" />
+        {/* Left Navigation Sidebar */}
+        <Sidebar hideBrand={true} activeItem="documentation" className="h-full" />
 
         {/* Main Content Area */}
-        <div className="flex-1 flex flex-col min-w-0 bg-[var(--canvas)] overflow-y-auto">
-          {/* TopBar Header */}
-          <TopBar
-            showBrand={false}
-            searchPlaceholder="Search documentation, endpoints, guides, or keywords..."
-            onSearch={(q) => setSearchDoc(q)}
-          />
-
+        <main className="flex-1 overflow-y-auto" data-purpose="documentation-content">
           {/* Scrollable Content Container */}
           <div className="flex-1 px-6 py-5">
             <div className="grid grid-cols-12 gap-5 max-w-[1440px] mx-auto">
@@ -459,29 +459,7 @@ export default function DocumentationPage() {
               </aside>
             </div>
           </div>
-
-          {/* Page Footer */}
-          <footer className="border-t border-[var(--border)] bg-[var(--surface)] px-8 py-3.5 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-[var(--text-3)] shrink-0">
-            <div className="flex items-center gap-1.5 text-[11px]">
-              <span className="font-semibold text-[var(--text)]">SatQuery <span className="text-[var(--cyan)]">AI</span></span>
-              <span className="text-[var(--text-2)]">|</span>
-              <span>© 2025. All rights reserved.</span>
-            </div>
-            <div className="flex items-center gap-6">
-              <div className="flex items-center gap-4 text-[11px]">
-                <Link href="#" className="hover:text-[var(--cyan)] transition-colors">Privacy</Link>
-                <Link href="#" className="hover:text-[var(--cyan)] transition-colors">Terms</Link>
-                <Link href="#" className="hover:text-[var(--cyan)] transition-colors">Contact</Link>
-              </div>
-              <div className="flex items-center gap-3 pl-3 border-l border-[var(--border)]">
-                <span className="text-[var(--text-3)] hover:text-[var(--heading)] cursor-pointer transition-colors text-xs font-bold">GH</span>
-                <span className="text-[var(--text-3)] hover:text-[var(--heading)] cursor-pointer transition-colors text-xs font-bold">IN</span>
-                <span className="text-[var(--text-3)] hover:text-[var(--heading)] cursor-pointer transition-colors text-xs font-bold">X</span>
-                <span className="text-[var(--text-3)] hover:text-[var(--heading)] cursor-pointer transition-colors text-xs font-bold">YT</span>
-              </div>
-            </div>
-          </footer>
-        </div>
+        </main>
       </div>
     </div>
   );

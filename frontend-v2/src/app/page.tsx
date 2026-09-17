@@ -47,24 +47,26 @@ export default function HomePage() {
 
   return (
     <>
-      <style dangerouslySetInnerHTML={{ __html: `body { overflow-y: auto !important; height: auto !important; }` }} />
-      <div className="bg-[var(--canvas)] text-[var(--text)] font-sans min-h-screen flex antialiased selection:bg-[var(--cyan)] selection:text-[var(--canvas)]">
-        {/* Left Sidebar Navigation */}
-        <Sidebar activeItem="home" hideBrand={false} className="sticky top-0 h-screen flex-shrink-0" />
-
-        {/* Main Content Area */}
-        <main className="flex-1 flex flex-col min-w-0 bg-[var(--canvas)] relative">
-        {/* TopBar Header */}
+      <style dangerouslySetInnerHTML={{ __html: `body { overflow: hidden !important; }` }} />
+      <div className="bg-[var(--canvas)] text-[var(--text)] font-sans h-screen overflow-hidden flex flex-col antialiased selection:bg-[var(--cyan)] selection:text-[var(--canvas)]">
+        {/* Full-width TopBar */}
         <TopBar
-          showBrand={false}
+          showBrand={true}
           searchPlaceholder='Search anything... (e.g. "urban expansion in Delhi")'
           onSearch={(val) => {
             if (val) router.push(`/analysis?q=${encodeURIComponent(val)}`);
           }}
         />
 
-        {/* Hero Section */}
-        <section className="relative px-8 pt-8 pb-10 border-b border-[var(--border)] overflow-hidden">
+        {/* Main Body Layout */}
+        <div className="flex flex-1 overflow-hidden">
+          {/* Left Navigation Sidebar */}
+          <Sidebar hideBrand={true} activeItem="home" className="h-full" />
+
+          {/* Workspace Center Content */}
+          <main className="flex-1 overflow-y-auto bg-[var(--canvas)]" data-purpose="home-workspace">
+            {/* Hero Section */}
+            <section className="relative px-8 pt-8 pb-10 border-b border-[var(--border)] overflow-hidden">
           {/* Ambient Glow */}
           <div className="absolute inset-0 hero-glow-overlay pointer-events-none" />
 
@@ -586,7 +588,8 @@ export default function HomePage() {
             </div>
           </div>
         </section>
-        </main>
+          </main>
+        </div>
       </div>
     </>
   );
