@@ -162,6 +162,12 @@ Signatures:
   ymax, xmax] normalised}`. `box_2d` is included so `SAM2Adapter._parse_box` accepts a crater box
   unchanged.
 
+`is_available()` is true only when the model is enabled, its checkpoint is on disk, and — for the
+three segmenters — `training.segmentation` is importable, since they load the trainer's
+`build_model` / `infer_prob` / `infer_logits`. For the crater detector it also requires
+`ultralytics` to be installed. A deploy that ships `backend/` and `configs/` without `training/`
+will report these three as unavailable rather than failing on the first request.
+
 `configs/models.yaml` drives the checkpoint path, device, `class_name` and `tta` for the binary
 segmenters, and `input_size` / `box_threshold` for the detector. `threshold` is left `null` for both
 segmenters so the threshold frozen on validation — which lives inside the checkpoint — is the one
