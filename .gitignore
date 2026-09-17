@@ -96,3 +96,6 @@ htmlcov/
 
 # Modal cloud deploy secrets (never commit; contains API keys and the DB URL)
 deploy/.env.modal
+
+# Team env copy with live credentials (kept locally, never committed)
+satquery_env.txt
