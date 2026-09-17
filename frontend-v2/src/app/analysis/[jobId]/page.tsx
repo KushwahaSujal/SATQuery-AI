@@ -2,8 +2,8 @@
 
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { useState, useEffect, useRef } from "react";
-import { useJob, useAnalysisResult, useLayers, usePixelInspector } from "@/hooks/useSystem";
+import { useState, useRef, useEffect } from "react";
+import { useJob, useAnalysisResult, useLayers } from "@/hooks/useSystem";
 import { api } from "@/lib/api";
 import { ConfidenceRing } from "@/components/ui/ConfidenceRing";
 import { StatusBadge } from "@/components/ui/StatusBadge";
@@ -15,166 +15,196 @@ export default function AnalysisJobPage() {
   const status = job.data?.status ?? "UNKNOWN";
   const result = useAnalysisResult(jobId, status === "COMPLETED");
   const layersQuery = useLayers(jobId);
-  const pixelInspector = usePixelInspector(jobId);
   const data = result.data;
-  const [activeTab, setActiveTab] = useState<"chat" | "analysis" | "trace">("chat");
-  const [followUp, setFollowUp] = useState("");
   const chatRef = useRef<HTMLDivElement>(null);
+  const [activeTab, setActiveTab] = useState<"chat" | "analysis" | "trace">("chat");
+  const [activeLayer, setActiveLayer] = useState("true_color");
+  const [followUp, setFollowUp] = useState("");
+  const [traceOpen, setTraceOpen] = useState(true);
 
   const stats = data?.evidence?.spatial?.statistics;
+  const layers = layersQuery.data?.layers ?? [];
+
   const steps = ((job.data?.execution_steps || data?.execution_trace || data?.trace || []) as Record<string, unknown>[]).map((s) => ({
     step: (s.step as string) || (s.step_name as string) || "unknown",
     status: (s.status as string) || "success",
     duration_ms: typeof s.duration_ms === "number" ? s.duration_ms : typeof s.duration_seconds === "number" ? Math.round(s.duration_seconds as number * 1000) : undefined,
+    model: (s.model_name as string) || (s.model as string),
   }));
-
-  const layers = layersQuery.data?.layers ?? [];
-  const [activeLayer, setActiveLayer] = useState("true_color");
 
   useEffect(() => { chatRef.current?.scrollTo({ top: chatRef.current.scrollHeight, behavior: "smooth" }); }, [data]);
 
   if (job.isLoading) {
     return (
-      <div className="flex items-center justify-center h-[calc(100vh-64px)]">
-        <div className="flex items-center gap-2">
-          <span className="animate-spin-smooth w-3 h-3 border-2 border-cyan-900 border-t-cyan-400 rounded-full" />
-          <span className="text-xs text-slate-400">Loading analysis...</span>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "calc(100vh - 52px - 42px)" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <div className="animate-spin-smooth" style={{ width: 12, height: 12, border: "2px solid #1e252f", borderTopColor: "#2dd4bf", borderRadius: "50%" }} />
+          <span style={{ fontSize: 12, color: "#64748b" }}>Loading analysis...</span>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="flex h-[calc(100vh-64px)] overflow-hidden">
-      {/* Center: Satellite Canvas */}
-      <div className="flex-1 flex flex-col min-w-0 border-r border-[#152033]">
-        {/* Header */}
-        <div className="px-5 py-3 border-b border-[#141d2f] bg-[#090f1d]">
-          <div className="flex items-center justify-between">
-            <div>
-              <Link href="/analysis" className="inline-flex items-center gap-1.5 text-xs text-slate-400 hover:text-slate-200 transition">
-                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M10 19l-7-7m0 0l7-7m-7 7h18" strokeLinecap="round" strokeLinejoin="round" /></svg>
-                Back to Analysis
-              </Link>
-              <div className="flex items-center gap-2.5 mt-1">
-                <h1 className="text-lg font-bold text-white tracking-tight">{data?.task ? data.task.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase()) : "Analysis"}</h1>
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              {data?.status && <StatusBadge status={data.status === "COMPLETED" ? "completed" : data.status === "FAILED" ? "failed" : "processing"} />}
-              <a href={api.downloadUrl(jobId)} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[#22334f] bg-[#101a2d] hover:bg-[#16233b] text-xs font-medium text-slate-200 transition">Export</a>
-            </div>
+    <div style={{ display: "flex", flex: 1, minHeight: 0 }}>
+      {/* ─── STAGE (left: satellite canvas) ─── */}
+      <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", background: "#0d1117" }}>
+        {/* Sub-header */}
+        <div style={{ padding: "12px 16px", borderBottom: "1px solid #1e252f", background: "#11151c", display: "flex", alignItems: "center", justifyContent: "space-between", flex: "none" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <Link href="/analysis" style={{ fontSize: 12, color: "#64748b", textDecoration: "none" }}>← Back to Analysis</Link>
+            <h2 style={{ fontSize: 16, fontWeight: 600, color: "#e2e8f0", margin: 0 }}>
+              {data?.task ? data.task.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase()) : "Analysis"}
+            </h2>
+            {data?.status && <StatusBadge status={data.status === "COMPLETED" ? "completed" : data.status === "FAILED" ? "failed" : "processing"} />}
           </div>
-          {data?.query && <p className="text-xs text-slate-400 mt-2">&ldquo;{data.query}&rdquo;</p>}
+          <div style={{ display: "flex", gap: 8 }}>
+            <a href={api.downloadUrl(jobId)} target="_blank" rel="noreferrer" className="btn btn-secondary btn-sm">Export</a>
+          </div>
         </div>
 
-        {/* Canvas */}
-        <div className="flex-1 bg-black relative flex items-center justify-center overflow-hidden">
+        {/* Badges row */}
+        {data?.query && (
+          <div style={{ padding: "8px 16px", borderBottom: "1px solid #1e252f", display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: "#9aa8b9", flex: "none" }}>
+            <span className="chip chip-mono" style={{ padding: "3px 7px" }}>{data.task?.replace(/_/g, " ")}</span>
+            <span style={{ color: "#64748b" }}>·</span>
+            <span style={{ color: "#64748b" }}>&ldquo;{data.query}&rdquo;</span>
+          </div>
+        )}
+
+        {/* Viewport */}
+        <div className="viewport">
+          {/* Layer image */}
           {jobId && layers.length > 0 ? (
             <img
               src={api.visualizationUrl(jobId, activeLayer)}
               alt="Analysis result"
-              className="max-w-full max-h-full object-contain"
+              style={{ width: "100%", height: "100%", objectFit: "contain" }}
               onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
             />
           ) : (
-            <div className="text-center">
-              <p className="text-xs text-slate-400">Visualization will appear here once analysis completes.</p>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%" }}>
+              <p style={{ fontSize: 12, color: "#64748b" }}>Visualization will appear once analysis completes.</p>
             </div>
           )}
 
-          {/* Layer selector */}
+          {/* Layer selector overlay */}
           {layers.length > 0 && (
-            <div className="absolute left-3 top-3 z-20 w-48 bg-[#09111e]/90 backdrop-blur-md rounded-lg border border-[#1b2b46] shadow-2xl p-2.5 text-xs">
-              <span className="text-[10px] uppercase font-semibold text-slate-400 tracking-wider">Layers</span>
-              <div className="mt-2 space-y-1">
-                {layers.map((l) => (
-                  <button
-                    key={l.id}
-                    onClick={() => setActiveLayer(l.id)}
-                    className={`w-full flex items-center justify-between p-1.5 rounded-md text-[11px] transition ${
-                      l.id === activeLayer ? "bg-[#101b2f] border border-cyan-900/50 text-cyan-300" : "text-slate-400 hover:text-slate-200 hover:bg-[#0d1627]"
-                    }`}
-                  >
-                    <span>{l.name}</span>
-                    <span className="text-[9px] text-slate-500 uppercase">{l.provenance}</span>
-                  </button>
-                ))}
+            <div style={{ position: "absolute", top: 12, left: 12, zIndex: 20, width: 200, background: "rgba(9,17,30,.9)", backdropFilter: "blur(12px)", borderRadius: 10, border: "1px solid #1e252f", padding: 10 }}>
+              <div style={{ display: "flex", borderBottom: "1px solid #1e252f", marginBottom: 8, paddingBottom: 6 }}>
+                <button className={`tab ${true ? "on" : ""}`} style={{ flex: 1, textAlign: "center", fontSize: 11 }}>Images</button>
+                <button className="tab" style={{ flex: 1, textAlign: "center", fontSize: 11 }}>Layers</button>
               </div>
+              {layers.slice(0, 4).map((l) => (
+                <button
+                  key={l.id}
+                  onClick={() => setActiveLayer(l.id)}
+                  style={{
+                    width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between",
+                    padding: "6px 8px", borderRadius: 6, fontSize: 11, cursor: "pointer",
+                    background: l.id === activeLayer ? "#101b2f" : "transparent",
+                    border: l.id === activeLayer ? "1px solid rgba(0,213,191,.3)" : "1px solid transparent",
+                    color: l.id === activeLayer ? "#2dd4bf" : "#9aa8b9",
+                    marginBottom: 2,
+                  }}
+                >
+                  <span>{l.name}</span>
+                  <span style={{ fontSize: 9, color: "#64748b", textTransform: "uppercase" }}>{l.provenance}</span>
+                </button>
+              ))}
             </div>
           )}
-        </div>
 
-        {/* Thumbnail strip */}
-        <div className="h-16 border-t border-[#141e31] bg-[#080d19] px-4 flex items-center gap-3 shrink-0">
-          {layers.slice(0, 4).map((l) => (
-            <button
-              key={l.id}
-              onClick={() => setActiveLayer(l.id)}
-              className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg border shadow-md cursor-pointer transition ${
-                l.id === activeLayer ? "bg-[#0e1728] border-cyan-700/60" : "bg-[#0e1728] border-[#1c2c46] hover:border-slate-500"
-              }`}
-            >
-              <div className="w-10 h-8 rounded bg-slate-800 border border-slate-600" />
-              <span className="text-xs font-semibold text-slate-200">{l.name}</span>
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Right: Chat / Analysis / Trace */}
-      <aside className="w-[420px] bg-[#090f1d] flex flex-col shrink-0 overflow-hidden">
-        {/* Tabs */}
-        <div className="h-11 px-4 border-b border-[#162237] bg-[#0a101f] flex items-center justify-between shrink-0">
-          <div className="flex items-center gap-5 text-xs">
-            {(["chat", "analysis", "trace"] as const).map((tab) => (
-              <button
-                key={tab}
-                onClick={() => setActiveTab(tab)}
-                className={`h-11 flex items-center font-semibold border-b-2 px-1 capitalize ${
-                  activeTab === tab ? "text-cyan-400 border-cyan-400" : "text-slate-400 hover:text-slate-200 border-transparent"
-                }`}
-              >
-                {tab === "trace" ? "Execution Trace" : tab}
-              </button>
-            ))}
+          {/* Readout bar */}
+          <div className="readout">
+            <span><b>CRS</b> EPSG:32636</span><span className="sep" />
+            <span><b>GSD</b> 0.5 m</span><span className="sep" />
+            <span><b>Bands</b> R,G,B</span><span className="sep" />
+            <span><b>Size</b> 1024 × 1024</span>
           </div>
         </div>
 
+        {/* Stat strip */}
+        {stats && (
+          <div className="stat-row">
+            {stats.region_count > 0 && (
+              <div className="stat"><div className="k">Regions</div><div className="v">{stats.region_count}</div></div>
+            )}
+            {stats.changed_pixels > 0 && (
+              <div className="stat"><div className="k">Changed Pixels</div><div className="v">{stats.changed_pixels.toLocaleString()}</div></div>
+            )}
+            {stats.estimated_area_sq_m && (
+              <div className="stat"><div className="k">Area</div><div className="v">{stats.estimated_area_sq_m.toLocaleString()} m²</div></div>
+            )}
+            {stats.change_ratio != null && (
+              <div className="stat"><div className="k">Change Ratio</div><div className="v">{(stats.change_ratio * 100).toFixed(1)}%</div></div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* ─── ASIDE (right: chat + trace + composer) ─── */}
+      <aside style={{ width: 364, flex: "none", borderLeft: "1px solid #1e252f", background: "#11151c", display: "flex", flexDirection: "column", minHeight: 0 }}>
+        {/* Tabs */}
+        <div style={{ display: "flex", alignItems: "center", gap: 2, padding: "8px 14px", borderBottom: "1px solid #1e252f", flex: "none" }}>
+          {(["chat", "analysis", "trace"] as const).map((t) => (
+            <button
+              key={t}
+              onClick={() => setActiveTab(t)}
+              className={`tab ${activeTab === t ? "on" : ""}`}
+              style={{ textTransform: "capitalize" }}
+            >
+              {t === "trace" ? "Execution Trace" : t}
+            </button>
+          ))}
+        </div>
+
         {/* Content */}
-        <div ref={chatRef} className="flex-1 overflow-y-auto p-4 space-y-4 text-xs">
+        <div ref={chatRef} style={{ flex: 1, overflow: "auto", padding: 16, display: "flex", flexDirection: "column", gap: 15 }}>
           {activeTab === "chat" && data && (
             <>
+              {/* User message */}
+              <div className="msg user">
+                <div className="av">SM</div>
+                <div className="bubble">{data.query || "Run analysis"}</div>
+              </div>
+
               {/* AI response */}
-              <div className="space-y-3">
-                <div className="flex items-center gap-2">
-                  <div className="w-5 h-5 rounded-md bg-gradient-to-tr from-cyan-400 to-blue-500 flex items-center justify-center text-slate-950 font-bold text-[9px] shadow-[0_0_8px_rgba(6,182,212,0.5)]">
-                    <svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24"><polygon points="12 2 2 7 12 12 22 7 12 2" /></svg>
-                  </div>
-                  <span className="font-semibold text-cyan-300">SatQuery AI</span>
-                </div>
-                <div className="p-3.5 rounded-xl bg-[#091524] border border-[#162c46] space-y-3 leading-relaxed text-slate-300">
-                  <p>{data.answer || "Analysis in progress..."}</p>
+              <div className="msg ai">
+                <div className="av">◈</div>
+                <div className="bubble">
+                  <p>{data.answer || "Analysis complete."}</p>
+
+                  {/* Confidence meter */}
                   {data.confidence != null && (
-                    <div className="p-2 rounded-lg bg-[#0e172a] border border-[#1b2b46]">
-                      <div className="flex items-center justify-between text-[11px] mb-1.5">
-                        <span className="text-slate-400">Confidence</span>
-                        <span className="font-bold text-cyan-400 font-mono">{(data.confidence * 100).toFixed(0)}%</span>
-                      </div>
-                      <div className="h-1.5 w-full bg-[#16233b] rounded-full overflow-hidden">
-                        <div className="h-full bg-gradient-to-r from-teal-400 to-cyan-400 rounded-full" style={{ width: `${data.confidence * 100}%` }} />
-                      </div>
+                    <div className="meter" style={{ margin: "12px 0 0" }}>
+                      <span style={{ fontFamily: "var(--font-mono)", fontSize: 11.5, color: "#64748b", width: 66, flex: "none" }}>Confidence</span>
+                      <span className="track"><span className="fill" style={{ width: `${data.confidence * 100}%` }} /></span>
+                      <span className="val">{data.confidence.toFixed(2)}</span>
                     </div>
                   )}
-                  {/* Key findings */}
-                  {stats && (
-                    <div className="rounded-lg bg-[#0c1c2e]/70 border border-[#1b3552] p-2.5 space-y-1.5">
-                      <div className="flex items-center gap-1.5 text-cyan-400 font-semibold text-[11px]">Key Findings</div>
-                      <ul className="space-y-1 text-slate-300 pl-2 text-[11px]">
-                        {stats.region_count > 0 && <li className="flex items-center gap-1.5"><span className="w-1 h-1 rounded-full bg-cyan-400" />Regions detected: <strong className="text-white">{stats.region_count}</strong></li>}
-                        {stats.changed_pixels > 0 && <li className="flex items-center gap-1.5"><span className="w-1 h-1 rounded-full bg-cyan-400" />Changed pixels: <strong className="text-white">{stats.changed_pixels.toLocaleString()}</strong></li>}
-                        {stats.estimated_area_sq_m && <li className="flex items-center gap-1.5"><span className="w-1 h-1 rounded-full bg-cyan-400" />Area: <strong className="text-white">{stats.estimated_area_sq_m.toLocaleString()} m²</strong></li>}
-                      </ul>
+
+                  {/* Execution trace */}
+                  {steps.length > 0 && (
+                    <div className="trace" data-open={traceOpen ? "true" : "false"}>
+                      <button className="trace-h" onClick={() => setTraceOpen(!traceOpen)}>
+                        <span className="chip chip-accent chip-mono" style={{ padding: "3px 7px" }}>{steps.length} steps</span>
+                        Execution summary
+                        <span className="caret">▾</span>
+                      </button>
+                      <div className="trace-b">
+                        {steps.map((s, i) => (
+                          <div key={i} className="step">
+                            <span className={`idx ${s.status === "success" ? "done" : s.status === "running" ? "run" : ""}`}>
+                              {s.status === "success" ? "✓" : i + 1}
+                            </span>
+                            <div className="body">
+                              <b>{s.step.replace(/_/g, " ")}</b>
+                              <span>{s.model || ""}{s.duration_ms != null ? ` · ${s.duration_ms}ms` : ""}</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
                     </div>
                   )}
                 </div>
@@ -183,71 +213,59 @@ export default function AnalysisJobPage() {
           )}
 
           {activeTab === "analysis" && data && (
-            <div className="space-y-3">
-              <div className="p-3 rounded-lg bg-[#0b1428] border border-[#172744]">
-                <h4 className="text-[11px] font-semibold text-slate-300 mb-2">Results Summary</h4>
-                <div className="flex items-center gap-3 mb-3">
-                  <ConfidenceRing value={Math.round((data.confidence ?? 0) * 100)} status={data.status === "COMPLETED" ? "completed" : data.status === "FAILED" ? "failed" : "processing"} />
-                  <div>
-                    <span className="text-xs text-slate-300 font-medium">Confidence</span>
-                    <StatusBadge status={data.status === "COMPLETED" ? "completed" : data.status === "FAILED" ? "failed" : "processing"} className="mt-0.5" />
-                  </div>
+            <div style={{ fontSize: 13, color: "#9aa8b9" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 16 }}>
+                <ConfidenceRing value={Math.round((data.confidence ?? 0) * 100)} status={data.status === "COMPLETED" ? "completed" : data.status === "FAILED" ? "failed" : "processing"} />
+                <div>
+                  <div style={{ fontSize: 12, color: "#e2e8f0", fontWeight: 500 }}>Confidence</div>
+                  <StatusBadge status={data.status === "COMPLETED" ? "completed" : data.status === "FAILED" ? "failed" : "processing"} />
                 </div>
-                {stats && (
-                  <div className="grid grid-cols-3 gap-2 pt-2 border-t border-[#142c4b]">
-                    {stats.region_count > 0 && <div className="bg-[#0d1728] border border-[#1a2b45] p-2 rounded-lg text-center"><div className="text-[10px] text-slate-400">Regions</div><div className="text-xs font-bold text-cyan-300 mt-1">{stats.region_count}</div></div>}
-                    {stats.changed_pixels > 0 && <div className="bg-[#0d1728] border border-[#1a2b45] p-2 rounded-lg text-center"><div className="text-[10px] text-slate-400">Changed</div><div className="text-xs font-bold text-cyan-300 mt-1">{(stats.changed_pixels / 1000).toFixed(1)}k</div></div>}
-                    {stats.estimated_area_sq_m && <div className="bg-[#0d1728] border border-[#1a2b45] p-2 rounded-lg text-center"><div className="text-[10px] text-slate-400">Area</div><div className="text-xs font-bold text-cyan-300 mt-1">{(stats.estimated_area_sq_m / 1000).toFixed(1)} km²</div></div>}
-                  </div>
-                )}
               </div>
-              {/* Models used */}
-              {data.models_used?.length > 0 && (
-                <div className="p-3 rounded-lg bg-[#0a1222] border border-[#18263e]">
-                  <span className="text-[11px] font-semibold text-slate-300">Models Executed</span>
-                  <div className="mt-2 space-y-1">
-                    {data.models_used.map((m) => (
-                      <div key={m} className="flex items-center gap-2 text-[11px]"><span className="text-emerald-400">✓</span><span className="text-slate-300">{m}</span></div>
-                    ))}
-                  </div>
+              {stats && (
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8, paddingTop: 12, borderTop: "1px solid #1e252f" }}>
+                  {stats.region_count > 0 && <div style={{ background: "#0d1728", border: "1px solid #1a2b45", padding: 8, borderRadius: 10, textAlign: "center" }}><div style={{ fontSize: 10, color: "#64748b" }}>Regions</div><div style={{ fontSize: 13, fontWeight: 600, color: "#2dd4bf", marginTop: 4 }}>{stats.region_count}</div></div>}
+                  {stats.changed_pixels > 0 && <div style={{ background: "#0d1728", border: "1px solid #1a2b45", padding: 8, borderRadius: 10, textAlign: "center" }}><div style={{ fontSize: 10, color: "#64748b" }}>Changed</div><div style={{ fontSize: 13, fontWeight: 600, color: "#2dd4bf", marginTop: 4 }}>{(stats.changed_pixels / 1000).toFixed(1)}k</div></div>}
+                  {stats.estimated_area_sq_m && <div style={{ background: "#0d1728", border: "1px solid #1a2b45", padding: 8, borderRadius: 10, textAlign: "center" }}><div style={{ fontSize: 10, color: "#64748b" }}>Area</div><div style={{ fontSize: 13, fontWeight: 600, color: "#2dd4bf", marginTop: 4 }}>{(stats.estimated_area_sq_m / 1000).toFixed(1)} km²</div></div>}
                 </div>
               )}
             </div>
           )}
 
           {activeTab === "trace" && (
-            <div className="space-y-1.5 text-[10px]">
+            <div style={{ fontSize: 11.5 }}>
               {steps.map((s, i) => (
-                <div key={i} className="flex items-center justify-between text-slate-300 py-1">
-                  <span className="flex items-center gap-1.5">
-                    <span className={s.status === "success" ? "text-emerald-400" : s.status === "error" ? "text-red-400" : "text-amber-400"}>
-                      {s.status === "success" ? "✓" : s.status === "error" ? "✗" : "⟳"}
-                    </span>
-                    {s.step.replace(/_/g, " ")}
+                <div key={i} style={{ display: "flex", gap: 10, padding: "7px 0", borderTop: i > 0 ? "1px dashed #1e252f" : "none" }}>
+                  <span style={{ color: s.status === "success" ? "#34d399" : s.status === "error" ? "#ef4444" : "#f59e0b", width: 17, height: 17, borderRadius: 5, display: "grid", placeItems: "center", fontSize: 9.5, fontFamily: "var(--font-mono)", background: s.status === "success" ? "#0f2a1c" : "#11302e", flex: "none" }}>
+                    {s.status === "success" ? "✓" : i + 1}
                   </span>
-                  {s.duration_ms != null && <span className="text-slate-500 font-mono">{s.duration_ms}ms</span>}
+                  <div style={{ minWidth: 0 }}>
+                    <b style={{ display: "block", fontWeight: 500, color: "#e2e8f0", fontSize: 12 }}>{s.step.replace(/_/g, " ")}</b>
+                    <span style={{ color: "#64748b", fontFamily: "var(--font-mono)", fontSize: 10.5 }}>{s.model || ""}{s.duration_ms != null ? ` · ${s.duration_ms}ms` : ""}</span>
+                  </div>
                 </div>
               ))}
-              {steps.length === 0 && <p className="text-slate-400 text-center py-4">No execution trace available yet.</p>}
+              {steps.length === 0 && <p style={{ color: "#64748b", textAlign: "center", padding: "24px 0" }}>No execution trace available.</p>}
             </div>
           )}
         </div>
 
-        {/* Follow-up input */}
-        <div className="p-3 border-t border-[#15253b] bg-[#070e19] shrink-0">
-          <div className="flex items-center gap-2">
-            <button className="p-2 rounded-lg bg-[#0b1625] border border-[#1b3452] text-slate-400 hover:text-white transition">
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48" /></svg>
-            </button>
-            <input
-              value={followUp}
-              onChange={(e) => setFollowUp(e.target.value)}
-              className="flex-1 h-9 px-3 bg-[#0b1625] border border-[#1b3452] rounded-lg text-xs text-slate-200 placeholder-slate-400 focus:outline-none focus:border-cyan-500 transition"
-              placeholder="Ask a follow-up question..."
-            />
-            <button className="w-7 h-7 rounded-lg bg-cyan-500 hover:bg-cyan-400 text-slate-950 flex items-center justify-center font-bold shadow-md shadow-cyan-500/25 transition">
-              <svg className="w-3.5 h-3.5 rotate-45 -mr-0.5 mb-0.5" fill="currentColor" viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" /></svg>
-            </button>
+        {/* Follow-up composer */}
+        <div className="composer">
+          <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
+            <button className="chip">Quantify the change</button>
+            <button className="chip">Export the mask</button>
+          </div>
+          <div className="box">
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <button style={{ background: "none", border: "none", color: "#64748b", cursor: "pointer", padding: 4 }}>＋</button>
+              <input
+                value={followUp}
+                onChange={(e) => setFollowUp(e.target.value)}
+                placeholder="Ask a follow-up question…"
+                style={{ flex: 1, background: "transparent", border: "none", outline: "none", color: "#e2e8f0", fontFamily: "var(--font-sans)", fontSize: 13 }}
+              />
+              <button className="send">➤</button>
+            </div>
           </div>
         </div>
       </aside>
