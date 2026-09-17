@@ -35,7 +35,14 @@
       "Shell(node fix-colors-v2.js)",
       "Shell(powershell -Command \"(Get-Content 'D:\\SATQuery-AI\\SATQuery-AI-backend\\frontend-v2\\src\\app\\analysis\\[jobId]\\page.tsx') -replace 'bg-\\[#1c2c47\\]', 'bg-[var(--border)]' | Set-Content 'D:\\SATQuery-AI\\SATQuery-AI-backend\\frontend-v2\\src\\app\\analysis\\[jobId]\\page.tsx'\")",
       "Shell(powershell -Command Get-Content 'src/app/analysis/\\[jobId\\]/page.tsx' | ForEach-Object { -replace 'bg-\\[#1c2c47\\]', 'bg-[var(--border)]' } | Set-Content 'src/app/analysis/\\[jobId\\]/page.tsx')",
-      "Shell(node -e const fs=require('fs');const p='src/app/analysis/[jobId]/page.tsx';let c=fs.readFileSync(p,'utf8');c=c.replace('bg-[#1c2c47]','bg-[var(--border)]');fs.writeFileSync(p,c);console.log('done');)"
+      "Shell(node -e const fs=require('fs');const p='src/app/analysis/[jobId]/page.tsx';let c=fs.readFileSync(p,'utf8');c=c.replace('bg-[#1c2c47]','bg-[var(--border)]');fs.writeFileSync(p,c);console.log('done');)",
+      "Shell(rm:*)",
+      "Shell(cd \"D:\\SATQuery-AI\\SATQuery-AI-backend\\frontend-v2\" && rmdir /s /q .next 2>nul & npm run build)",
+      "Shell(dir:*)",
+      "Shell(cd \"D:\\SATQuery-AI\\SATQuery-AI-backend\\frontend-v2\" && rmdir /s /q node_modules 2>nul & del package-lock.json 2>nul & npm install)",
+      "Shell(cd \"D:\\SATQuery-AI\\SATQuery-AI-backend\\frontend-v2\" && dir node_modules\\@tailwindcss\\postcss\\package.json 2>nul)",
+      "Shell(node -e require('@tailwindcss/postcss') 2 >& 1)",
+      "Shell(cd \"D:\\SATQuery-AI\\SATQuery-AI-backend\\frontend-v2\" && taskkill /f /im node.exe 2>nul & rmdir /s /q node_modules 2>nul & rmdir /s /q .next 2>nul & del package-lock.json 2>nul)"
     ],
     "deny": [],
     "defaultMode": "default"
