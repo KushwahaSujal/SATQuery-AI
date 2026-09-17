@@ -27,7 +27,15 @@
       "Shell(kill:*)",
       "Shell(findstr:*)",
       "Shell(copy \"D:\\SATQuery-AI\\SATQuery-AI-backend\\frontend-v2\\src\\app\\analysis\\[jobId]\\page.tsx\" \"%TEMP%\\jobpage.tsx\" >nul && echo copied)",
-      "Shell(copy \"%TEMP%\\jobpage.tsx\" \"D:\\SATQuery-AI\\SATQuery-AI-backend\\frontend-v2\\src\\app\\analysis\\[jobId]\\page.tsx\" /Y >nul && echo done)"
+      "Shell(copy \"%TEMP%\\jobpage.tsx\" \"D:\\SATQuery-AI\\SATQuery-AI-backend\\frontend-v2\\src\\app\\analysis\\[jobId]\\page.tsx\" /Y >nul && echo done)",
+      "Shell(tasklist /fi \"imagename eq node.exe\" /fo csv /nh 2>nul | findstr /i \"next\")",
+      "Shell(npx next dev -p 3000 2 >& 1)",
+      "Shell(node fix-colors.js)",
+      "Shell(del:*)",
+      "Shell(node fix-colors-v2.js)",
+      "Shell(powershell -Command \"(Get-Content 'D:\\SATQuery-AI\\SATQuery-AI-backend\\frontend-v2\\src\\app\\analysis\\[jobId]\\page.tsx') -replace 'bg-\\[#1c2c47\\]', 'bg-[var(--border)]' | Set-Content 'D:\\SATQuery-AI\\SATQuery-AI-backend\\frontend-v2\\src\\app\\analysis\\[jobId]\\page.tsx'\")",
+      "Shell(powershell -Command Get-Content 'src/app/analysis/\\[jobId\\]/page.tsx' | ForEach-Object { -replace 'bg-\\[#1c2c47\\]', 'bg-[var(--border)]' } | Set-Content 'src/app/analysis/\\[jobId\\]/page.tsx')",
+      "Shell(node -e const fs=require('fs');const p='src/app/analysis/[jobId]/page.tsx';let c=fs.readFileSync(p,'utf8');c=c.replace('bg-[#1c2c47]','bg-[var(--border)]');fs.writeFileSync(p,c);console.log('done');)"
     ],
     "deny": [],
     "defaultMode": "default"

@@ -1,10 +1,10 @@
 import { cn } from "@/lib/utils";
 
 const stateConfig = {
-  success: "text-[#4ade80]",
-  warning: "text-[#fbbf24]",
-  error:   "text-[#f87171]",
-  neutral: "text-[#737373]",
+  success: "text-[var(--green)]",
+  warning: "text-[var(--warning)]",
+  error:   "text-[var(--error)]",
+  neutral: "text-[var(--text-3)]",
 } as const;
 
 type BadgeState = keyof typeof stateConfig;

@@ -9,6 +9,44 @@ interface SidebarProps {
   className?: string;
 }
 
+const recentHistory = [
+  {
+    id: "job_001",
+    title: "Urban Expansion Analysis",
+    type: "Change Detection",
+    time: "2 hours ago",
+    status: "completed",
+  },
+  {
+    id: "job_002",
+    title: "River Detection & Mapping",
+    type: "VQA",
+    time: "5 hours ago",
+    status: "completed",
+  },
+  {
+    id: "job_003",
+    title: "Crop Health Assessment",
+    type: "Optical + SAR",
+    time: "Yesterday",
+    status: "completed",
+  },
+  {
+    id: "job_004",
+    title: "Flood Impact Analysis",
+    type: "Change Detection",
+    time: "Yesterday",
+    status: "completed",
+  },
+  {
+    id: "job_005",
+    title: "Deforestation Monitoring",
+    type: "VQA",
+    time: "2 days ago",
+    status: "completed",
+  },
+];
+
 export default function Sidebar({ hideBrand = false, activeItem, className = "" }: SidebarProps) {
   const pathname = usePathname();
 
@@ -23,15 +61,15 @@ export default function Sidebar({ hideBrand = false, activeItem, className = "" 
 
   return (
     <aside
-      className={`w-64 min-w-[16rem] max-w-[16rem] bg-[#070c17]/95 border-r border-[#162033] flex flex-col justify-between p-4 shrink-0 z-20 overflow-y-auto select-none ${className}`}
+      className={`w-64 min-w-[16rem] max-w-[16rem] bg-[var(--sidebar-bg)]/95 border-r border-[var(--sidebar-border)] flex flex-col justify-between p-4 shrink-0 z-20 overflow-y-auto select-none ${className}`}
       data-purpose="sidebar"
     >
       <div>
         {/* Brand Logo Header (shown when header is not full-width top) */}
         {!hideBrand && (
           <div className="flex items-center gap-3 px-2 py-3 mb-4">
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-[#00d5be] to-[#0077b6] flex items-center justify-center shadow-lg shadow-teal-500/20 text-slate-950 font-bold shrink-0">
-              <svg className="w-5 h-5 text-slate-950" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
+            <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-[var(--cyan)] to-[var(--primary)] flex items-center justify-center shadow-lg shadow-teal-500/20 font-bold shrink-0">
+              <svg className="w-5 h-5 text-[var(--canvas)]" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
                 <circle cx="12" cy="12" r="9" />
                 <line x1="12" y1="2" x2="12" y2="6" />
                 <line x1="12" y1="18" x2="12" y2="22" />
@@ -41,10 +79,10 @@ export default function Sidebar({ hideBrand = false, activeItem, className = "" 
             </div>
             <div>
               <div className="flex items-center gap-1.5 leading-none">
-                <span className="text-lg font-bold text-white tracking-tight">SatQuery</span>
-                <span className="text-xs font-bold px-1.5 py-0.5 rounded bg-teal-500/20 text-[#00d5be] border border-teal-500/30">AI</span>
+                <span className="text-lg font-bold text-[var(--sidebar-text)] tracking-tight">SatQuery</span>
+                <span className="text-xs font-bold px-1.5 py-0.5 rounded bg-[var(--cyan-glow)] text-[var(--cyan)] border border-[var(--cyan)]/30">AI</span>
               </div>
-              <p className="text-[10px] text-slate-400 font-medium tracking-wide mt-1">Remote Sensing · Vision · Intelligence</p>
+              <p className="text-[10px] text-[var(--sidebar-muted)] font-medium tracking-wide mt-1">Remote Sensing · Vision · Intelligence</p>
             </div>
           </div>
         )}
@@ -55,8 +93,8 @@ export default function Sidebar({ hideBrand = false, activeItem, className = "" 
             href="/"
             className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all text-xs ${
               current === "home"
-                ? "bg-[#0d222b] text-[#00d5be] border border-teal-500/30 font-semibold shadow-[0_0_12px_rgba(0,213,190,0.15)]"
-                : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/40"
+                ? "bg-[var(--sidebar-active-bg)] text-[var(--sidebar-active-text)] border border-[var(--cyan)]/30 font-semibold"
+                : "text-[var(--sidebar-icon)] hover:text-[var(--sidebar-text)] hover:bg-[var(--surface-hover)]"
             }`}
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
@@ -69,8 +107,8 @@ export default function Sidebar({ hideBrand = false, activeItem, className = "" 
             href="/analysis"
             className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all text-xs ${
               current === "analysis"
-                ? "bg-[#0d222b] text-[#00d5be] border border-teal-500/30 font-semibold shadow-[0_0_12px_rgba(0,213,190,0.15)]"
-                : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/40"
+                ? "bg-[var(--sidebar-active-bg)] text-[var(--sidebar-active-text)] border border-[var(--cyan)]/30 font-semibold"
+                : "text-[var(--sidebar-icon)] hover:text-[var(--sidebar-text)] hover:bg-[var(--surface-hover)]"
             }`}
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
@@ -80,27 +118,27 @@ export default function Sidebar({ hideBrand = false, activeItem, className = "" 
             <span>New Analysis</span>
           </Link>
 
-          <Link
-            href="/history"
-            className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all text-xs ${
-              current === "history"
-                ? "bg-[#0d222b] text-[#00d5be] border border-teal-500/30 font-semibold shadow-[0_0_12px_rgba(0,213,190,0.15)]"
-                : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/40"
-            }`}
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-              <circle cx="12" cy="12" r="9" />
-              <polyline points="12 6 12 12 16 14" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-            <span>History</span>
-          </Link>
+          {/*<Link*/}
+          {/*  href="/history"*/}
+          {/*  className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all text-xs ${*/}
+          {/*    current === "history"*/}
+          {/*      ? "bg-[var(--sidebar-active-bg)] text-[var(--sidebar-active-text)] border border-[var(--cyan)]/30 font-semibold"*/}
+          {/*      : "text-[var(--sidebar-icon)] hover:text-[var(--sidebar-text)] hover:bg-[var(--surface-hover)]"*/}
+          {/*  }`}*/}
+          {/*>*/}
+          {/*  <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">*/}
+          {/*    <circle cx="12" cy="12" r="9" />*/}
+          {/*    <polyline points="12 6 12 12 16 14" strokeLinecap="round" strokeLinejoin="round" />*/}
+          {/*  </svg>*/}
+          {/*  <span>History</span>*/}
+          {/*</Link>*/}
 
           <Link
             href="/datasets"
             className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all text-xs ${
               current === "datasets"
-                ? "bg-[#0d222b] text-[#00d5be] border border-teal-500/30 font-semibold shadow-[0_0_12px_rgba(0,213,190,0.15)]"
-                : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/40"
+                ? "bg-[var(--sidebar-active-bg)] text-[var(--sidebar-active-text)] border border-[var(--cyan)]/30 font-semibold"
+                : "text-[var(--sidebar-icon)] hover:text-[var(--sidebar-text)] hover:bg-[var(--surface-hover)]"
             }`}
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
@@ -115,8 +153,8 @@ export default function Sidebar({ hideBrand = false, activeItem, className = "" 
             href="/reports"
             className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all text-xs ${
               current === "reports"
-                ? "bg-[#0d222b] text-[#00d5be] border border-teal-500/30 font-semibold shadow-[0_0_12px_rgba(0,213,190,0.15)]"
-                : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/40"
+                ? "bg-[var(--sidebar-active-bg)] text-[var(--sidebar-active-text)] border border-[var(--cyan)]/30 font-semibold"
+                : "text-[var(--sidebar-icon)] hover:text-[var(--sidebar-text)] hover:bg-[var(--surface-hover)]"
             }`}
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
@@ -126,88 +164,64 @@ export default function Sidebar({ hideBrand = false, activeItem, className = "" 
           </Link>
         </nav>
 
-        {/* Analysis Tools Section */}
-        <div className="mt-7">
-          <p className="px-3 text-[10px] font-bold text-slate-500 tracking-wider uppercase mb-2">Analysis Tools</p>
-          <nav className="space-y-1 text-xs">
-            <Link
-              href="/analysis?tool=assistant"
-              className="flex items-center gap-3 px-3 py-2 text-slate-400 hover:text-slate-200 hover:bg-slate-800/40 rounded-lg transition-all"
-            >
-              <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                <path d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-              <span>AI Assistant</span>
+        {/* Recent History Section */}
+        <div className="mt-6">
+          <div className="flex items-center justify-between px-3 mb-2">
+            <p className="text-[10px] font-bold text-[var(--sidebar-muted)] tracking-wider uppercase">Recent Analysis</p>
+            <Link href="/history" className="text-[10px] font-medium text-[var(--cyan)] hover:text-[var(--cyan)]/80 transition-colors">
+              View all
             </Link>
-            <Link
-              href="/analysis?tool=vqa"
-              className="flex items-center gap-3 px-3 py-2 text-slate-400 hover:text-slate-200 hover:bg-slate-800/40 rounded-lg transition-all"
-            >
-              <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                <path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" strokeLinecap="round" strokeLinejoin="round" />
-                <path d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-              <span>VQA</span>
-            </Link>
-            <Link
-              href="/analysis?tool=grounding"
-              className="flex items-center gap-3 px-3 py-2 text-slate-400 hover:text-slate-200 hover:bg-slate-800/40 rounded-lg transition-all"
-            >
-              <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                <circle cx="12" cy="12" r="3" />
-                <circle cx="12" cy="12" r="8" strokeDasharray="3 3" />
-                <line x1="12" y1="2" x2="12" y2="5" />
-                <line x1="12" y1="19" x2="12" y2="22" />
-                <line x1="2" y1="12" x2="5" y2="12" />
-                <line x1="19" y1="12" x2="22" y2="12" />
-              </svg>
-              <span>Grounding</span>
-            </Link>
-            <Link
-              href="/analysis?tool=change"
-              className="flex items-center gap-3 px-3 py-2 text-slate-400 hover:text-slate-200 hover:bg-slate-800/40 rounded-lg transition-all"
-            >
-              <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                <path d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-              <span>Change Analysis</span>
-            </Link>
-            <Link
-              href="/analysis?tool=fusion"
-              className="flex items-center gap-3 px-3 py-2 text-slate-400 hover:text-slate-200 hover:bg-slate-800/40 rounded-lg transition-all"
-            >
-              <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                <polygon points="12 2 2 7 12 12 22 7 12 2" />
-                <polyline points="2 17 12 22 22 17" />
-                <polyline points="2 12 12 17 22 12" />
-              </svg>
-              <span>Optical + SAR Fusion</span>
-            </Link>
-          </nav>
+          </div>
+          <div className="space-y-1">
+            {recentHistory.map((item) => (
+              <Link
+                key={item.id}
+                href={`/analysis/${item.id}`}
+                className="flex items-start gap-2.5 px-3 py-2 rounded-lg hover:bg-[var(--surface-hover)] transition-all group"
+              >
+                <div className="w-6 h-6 rounded-md bg-[var(--cyan-glow)] border border-[var(--cyan)]/30 flex items-center justify-center shrink-0 mt-0.5">
+                  <svg className="w-3 h-3 text-[var(--cyan)]" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                    <path d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-[11px] font-medium text-[var(--sidebar-text)] truncate group-hover:text-[var(--cyan)] transition-colors">
+                    {item.title}
+                  </p>
+                  <div className="flex items-center gap-1.5 mt-0.5">
+                    <span className="w-1.5 h-1.5 rounded-full bg-[var(--green)]" />
+                    <span className="text-[9px] text-[var(--sidebar-muted)]">{item.type}</span>
+                    <span className="text-[9px] text-[var(--sidebar-muted)]">·</span>
+                    <span className="text-[9px] text-[var(--sidebar-muted)]">{item.time}</span>
+                  </div>
+                </div>
+              </Link>
+            ))}
+          </div>
         </div>
 
         {/* Resources Section */}
-        <div className="mt-7">
-          <p className="px-3 text-[10px] font-bold text-slate-500 tracking-wider uppercase mb-2">Resources</p>
+        <div className="mt-6">
+          <p className="px-3 text-[10px] font-bold text-[var(--sidebar-muted)] tracking-wider uppercase mb-2">Resources</p>
           <nav className="space-y-1 text-xs">
             <Link
               href="/documentation"
               className={`flex items-center gap-3 px-3 py-2 rounded-lg transition-all ${
                 current === "documentation"
-                  ? "bg-[#0d222b] text-[#00d5be] border border-teal-500/30 font-semibold"
-                  : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/40"
+                  ? "bg-[var(--sidebar-active-bg)] text-[var(--sidebar-active-text)] border border-[var(--cyan)]/30 font-semibold"
+                  : "text-[var(--sidebar-icon)] hover:text-[var(--sidebar-text)] hover:bg-[var(--surface-hover)]"
               }`}
             >
-              <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+              <svg className="w-4 h-4 text-[var(--sidebar-icon)]" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
                 <path d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" strokeLinecap="round" strokeLinejoin="round" />
               </svg>
               <span>Documentation</span>
             </Link>
             <Link
               href="/documentation#support"
-              className="flex items-center gap-3 px-3 py-2 text-slate-400 hover:text-slate-200 hover:bg-slate-800/40 rounded-lg transition-all"
+              className="flex items-center gap-3 px-3 py-2 text-[var(--sidebar-icon)] hover:text-[var(--sidebar-text)] hover:bg-[var(--surface-hover)] rounded-lg transition-all"
             >
-              <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+              <svg className="w-4 h-4 text-[var(--sidebar-icon)]" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
                 <circle cx="12" cy="12" r="9" />
                 <path d="M9.09 9a3 3 0 015.83 1c0 2-3 3-3 3m.08 4h.01" strokeLinecap="round" strokeLinejoin="round" />
               </svg>
@@ -218,18 +232,18 @@ export default function Sidebar({ hideBrand = false, activeItem, className = "" 
       </div>
 
       {/* Sidebar Bottom Card: Sustainability / Mission */}
-      <div className="mt-6 p-3.5 rounded-xl bg-gradient-to-b from-[#09181c] to-[#0b1b22] border border-teal-500/20 relative overflow-hidden group">
-        <div className="absolute inset-0 opacity-15 bg-[radial-gradient(#00d5be_1px,transparent_1px)] [background-size:12px_12px] pointer-events-none"></div>
+      <div className="mt-6 p-3.5 rounded-xl bg-gradient-to-b from-[var(--surface-2)] to-[var(--surface-3)] border border-[var(--cyan)]/20 relative overflow-hidden group">
+        <div className="absolute inset-0 opacity-15 bg-[radial-gradient(var(--cyan)_1px,transparent_1px)] [background-size:12px_12px] pointer-events-none"></div>
         <div className="relative z-10 flex items-start gap-2.5">
-          <div className="w-7 h-7 rounded-lg bg-teal-500/20 border border-teal-400/30 flex items-center justify-center shrink-0 mt-0.5">
-            <svg className="w-4 h-4 text-[#00d5be]" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+          <div className="w-7 h-7 rounded-lg bg-[var(--cyan-glow)] border border-[var(--cyan)]/30 flex items-center justify-center shrink-0 mt-0.5">
+            <svg className="w-4 h-4 text-[var(--cyan)]" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
               <path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10Z" />
               <path d="M2 21c0-3 1.85-5.36 5.08-6C9.5 14.52 12 13 13 12" />
             </svg>
           </div>
           <div>
-            <p className="text-xs font-semibold text-white leading-snug">Better insights <br /><span className="text-slate-300 font-normal">for a healthier planet</span></p>
-            <p className="text-[10px] text-slate-400 leading-tight mt-1">AI-powered remote sensing for a sustainable future.</p>
+            <p className="text-xs font-semibold text-[var(--heading)] leading-snug">Better insights <br /><span className="text-[var(--text-2)] font-normal">for a healthier planet</span></p>
+            <p className="text-[10px] text-[var(--text-3)] leading-tight mt-1">AI-powered remote sensing for a sustainable future.</p>
           </div>
         </div>
       </div>

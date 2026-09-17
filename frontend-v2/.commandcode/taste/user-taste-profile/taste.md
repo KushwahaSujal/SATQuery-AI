@@ -15,5 +15,7 @@
 - Prefers rounded but not excessively rounded corners — uses a stepped radius system (4px→6px→8px→12px→16px→20px). Pills only for status/dataset type badges. Confidence: 0.85
 - Prefers Lucide-style outline icons (1.8–2px stroke) for the icon system. Confidence: 0.8
 - Provides extremely detailed visual specifications with exact hex values, usage context, and hierarchy descriptions when communicating design requirements. Confidence: 0.95
+- When using `next-themes`, applies the mounted-state hydration guard pattern: `const [mounted, setMounted] = useState(false); useEffect(() => setMounted(true), []);` then conditionally applies theme-dependent styles, plus `suppressHydrationWarning` on theme-toggle buttons. Confidence: 0.9
+- Expects design token values to match specifications exactly — audits hex values against the spec and flags any deviation, no matter how minor. Confidence: 0.9
 - Uses Windows (D:\ paths, cmd commands). Confidence: 0.9
 - Builds Next.js 16+ projects with Turbopack, React Query, and TypeScript. Confidence: 0.9

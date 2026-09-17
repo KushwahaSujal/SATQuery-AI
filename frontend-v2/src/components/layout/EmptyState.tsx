@@ -7,8 +7,8 @@ export default function EmptyState({
 }) {
   return (
     <div className="max-w-md text-center p-6">
-      <h3 className="text-sm font-semibold text-slate-200">{title}</h3>
-      <p className="mt-2 text-sm text-slate-400">{description}</p>
+      <h3 className="text-sm font-semibold text-[var(--text)]">{title}</h3>
+      <p className="mt-2 text-sm text-[var(--text-3)]">{description}</p>
     </div>
   );
 }

@@ -180,7 +180,7 @@ export default function ReportsPage() {
   });
 
   return (
-    <div className="bg-[#050911] text-slate-200 antialiased font-sans h-screen overflow-hidden flex flex-col selection:bg-cyan-500 selection:text-black">
+    <div className="bg-[var(--canvas)] text-[var(--text)] antialiased font-sans h-screen overflow-hidden flex flex-col selection:bg-cyan-500 selection:text-[var(--canvas)]">
       {/* Top Header */}
       <TopBar
         showBrand={true}
@@ -194,18 +194,18 @@ export default function ReportsPage() {
         <Sidebar hideBrand={true} activeItem="reports" className="h-full" />
 
         {/* Center Main Section: Reports Management */}
-        <main className="flex-1 overflow-y-auto p-6 space-y-5 bg-[#050a14]" data-purpose="reports-management-section">
+        <main className="flex-1 overflow-y-auto p-6 space-y-5 bg-[var(--canvas)]" data-purpose="reports-management-section">
           {/* Reports Page Header */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div className="flex items-start gap-3.5">
-              <div className="w-10 h-10 rounded-xl bg-cyan-950/60 border border-cyan-500/30 flex items-center justify-center text-cyan-400 mt-0.5 shadow-[0_0_15px_rgba(6,182,212,0.15)]">
+              <div className="w-10 h-10 rounded-xl bg-cyan-950/60 border border-[var(--cyan)]/30 flex items-center justify-center text-[var(--cyan)] mt-0.5 shadow-[0_0_15px_rgba(6,182,212,0.15)]">
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
                   <path d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" strokeLinecap="round" strokeLinejoin="round" />
                 </svg>
               </div>
               <div>
-                <h1 className="text-xl font-bold text-white tracking-tight">Reports</h1>
-                <p className="text-xs text-slate-400 mt-0.5">
+                <h1 className="text-xl font-bold text-[var(--heading)] tracking-tight">Reports</h1>
+                <p className="text-xs text-[var(--text-3)] mt-0.5">
                   View, manage and download your analysis reports. Each report includes detailed insights, visualizations and export options.
                 </p>
               </div>
@@ -214,7 +214,7 @@ export default function ReportsPage() {
             {/* Generate Report Button */}
             <Link
               href="/analysis?action=generate-report"
-              className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-cyan-600 to-teal-500 hover:from-cyan-500 hover:to-teal-400 text-white font-medium text-xs shadow-[0_0_20px_rgba(6,182,212,0.3)] transition-all shrink-0"
+              className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-cyan-600 to-teal-500 hover:from-cyan-500 hover:to-teal-400 text-[var(--heading)] font-medium text-xs shadow-[0_0_20px_rgba(6,182,212,0.3)] transition-all shrink-0"
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
                 <path d="M12 4v16m8-8H4" strokeLinecap="round" strokeLinejoin="round" />
@@ -224,7 +224,7 @@ export default function ReportsPage() {
           </div>
 
           {/* Filter Tabs */}
-          <div className="flex items-center gap-2 border-b border-[#15243e] pb-3 text-xs font-semibold">
+          <div className="flex items-center gap-2 border-b border-[var(--border)] pb-3 text-xs font-semibold">
             {[
               { label: "All Reports", count: 24 },
               { label: "Completed", count: 18 },
@@ -238,14 +238,14 @@ export default function ReportsPage() {
                   onClick={() => setSelectedTab(tab.label)}
                   className={`px-3 py-1.5 rounded-lg flex items-center gap-2 transition cursor-pointer ${
                     active
-                      ? "bg-cyan-950/70 border border-cyan-500/40 text-cyan-400 shadow-sm"
-                      : "text-slate-400 hover:text-slate-200 hover:bg-[#0d172c]"
+                      ? "bg-cyan-950/70 border border-[var(--cyan)]/40 text-[var(--cyan)] shadow-sm"
+                      : "text-[var(--text-3)] hover:text-[var(--text)] hover:bg-[var(--surface-hover)]"
                   }`}
                 >
                   <span>{tab.label}</span>
                   <span
                     className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
-                      active ? "bg-cyan-500/20 text-cyan-300" : "bg-[#16233b] text-slate-400"
+                      active ? "bg-cyan-500/20 text-[var(--cyan)]" : "bg-[var(--surface-hover)] text-[var(--text-3)]"
                     }`}
                   >
                     {tab.count}
@@ -258,27 +258,27 @@ export default function ReportsPage() {
           {/* Search and Filter Bar Row */}
           <div className="flex flex-wrap items-center gap-3 text-xs">
             <div className="relative flex-1 min-w-[200px]">
-              <svg className="absolute left-3 top-2.5 w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="absolute left-3 top-2.5 w-3.5 h-3.5 text-[var(--text-3)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <circle cx="11" cy="11" r="8" />
                 <line x1="21" x2="16.65" y1="21" y2="16.65" />
               </svg>
               <input
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full bg-[#0a1224] border border-[#162542] rounded-xl pl-9 pr-3 py-1.5 text-xs text-slate-200 placeholder-slate-400 focus:outline-none focus:border-cyan-500/40"
+                className="w-full bg-[var(--surface)] border border-[var(--border)] rounded-xl pl-9 pr-3 py-1.5 text-xs text-[var(--text)] placeholder-[var(--text-3)] focus:outline-none focus:border-[var(--cyan)]/40"
                 placeholder="Search reports..."
                 type="text"
               />
             </div>
 
-            <select className="bg-[#0a1224] border border-[#162542] text-slate-300 text-xs rounded-xl py-1.5 px-3 focus:outline-none focus:border-cyan-500/40 cursor-pointer">
+            <select className="bg-[var(--surface)] border border-[var(--border)] text-[var(--text-2)] text-xs rounded-xl py-1.5 px-3 focus:outline-none focus:border-[var(--cyan)]/40 cursor-pointer">
               <option>All Regions</option>
               <option>Asia</option>
               <option>South America</option>
               <option>Europe</option>
             </select>
 
-            <select className="bg-[#0a1224] border border-[#162542] text-slate-300 text-xs rounded-xl py-1.5 px-3 focus:outline-none focus:border-cyan-500/40 cursor-pointer">
+            <select className="bg-[var(--surface)] border border-[var(--border)] text-[var(--text-2)] text-xs rounded-xl py-1.5 px-3 focus:outline-none focus:border-[var(--cyan)]/40 cursor-pointer">
               <option>All Types</option>
               <option>Change Analysis</option>
               <option>Optical + SAR</option>
@@ -286,7 +286,7 @@ export default function ReportsPage() {
               <option>SAR</option>
             </select>
 
-            <select className="bg-[#0a1224] border border-[#162542] text-slate-300 text-xs rounded-xl py-1.5 px-3 focus:outline-none focus:border-cyan-500/40 cursor-pointer">
+            <select className="bg-[var(--surface)] border border-[var(--border)] text-[var(--text-2)] text-xs rounded-xl py-1.5 px-3 focus:outline-none focus:border-[var(--cyan)]/40 cursor-pointer">
               <option>Last 30 days</option>
               <option>Last 7 days</option>
               <option>Last 90 days</option>
@@ -295,11 +295,11 @@ export default function ReportsPage() {
           </div>
 
           {/* Reports Table */}
-          <div className="rounded-xl border border-[#15243e] bg-[#070e1c] overflow-hidden">
+          <div className="rounded-xl border border-[var(--border)] bg-[var(--surface)] overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse">
                 <thead>
-                  <tr className="border-b border-[#15243e] text-[10px] font-semibold text-slate-400 uppercase tracking-wider bg-[#0a1324]/50">
+                  <tr className="border-b border-[var(--border)] text-[10px] font-semibold text-[var(--text-3)] uppercase tracking-wider bg-[var(--surface)]/50">
                     <th className="py-3 px-4">Report Name</th>
                     <th className="py-3 px-3">Type</th>
                     <th className="py-3 px-3">Region</th>
@@ -315,18 +315,18 @@ export default function ReportsPage() {
                       <tr
                         key={report.id}
                         onClick={() => setSelectedId(report.id)}
-                        className={`hover:bg-[#101d36]/50 transition-colors cursor-pointer ${
-                          isSelected ? "bg-cyan-950/20 border-l-2 border-cyan-400" : ""
+                        className={`hover:bg-[var(--surface-hover)]/50 transition-colors cursor-pointer ${
+                          isSelected ? "bg-cyan-950/20 border-l-2 border-[var(--cyan)]" : ""
                         }`}
                       >
                         <td className="py-3 px-4">
                           <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-lg overflow-hidden shrink-0 border border-[#1c2e4d] bg-slate-900">
+                            <div className="w-10 h-10 rounded-lg overflow-hidden shrink-0 border border-[var(--border)] bg-[var(--surface-3)]">
                               <img alt={report.title} className="w-full h-full object-cover" src={report.imgUrl} />
                             </div>
                             <div>
-                              <div className="font-semibold text-white text-xs hover:text-cyan-300">{report.title}</div>
-                              <div className="text-[11px] text-slate-400">{report.subtitle}</div>
+                              <div className="font-semibold text-[var(--heading)] text-xs hover:text-[var(--cyan)]">{report.title}</div>
+                              <div className="text-[11px] text-[var(--text-3)]">{report.subtitle}</div>
                             </div>
                           </div>
                         </td>
@@ -335,14 +335,14 @@ export default function ReportsPage() {
                             {report.type}
                           </span>
                         </td>
-                        <td className="py-3 px-3 text-slate-300 whitespace-nowrap">{report.region}</td>
-                        <td className="py-3 px-3 text-slate-400 whitespace-nowrap">
-                          <div className="text-slate-300 font-medium">{report.date}</div>
-                          <div className="text-[10px] text-slate-500">{report.time}</div>
+                        <td className="py-3 px-3 text-[var(--text-2)] whitespace-nowrap">{report.region}</td>
+                        <td className="py-3 px-3 text-[var(--text-3)] whitespace-nowrap">
+                          <div className="text-[var(--text-2)] font-medium">{report.date}</div>
+                          <div className="text-[10px] text-[var(--text-3)]">{report.time}</div>
                         </td>
                         <td className="py-3 px-3 whitespace-nowrap">
                           {report.status === "Completed" && (
-                            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-medium bg-emerald-950/60 text-emerald-400 border border-emerald-800/40">
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-medium bg-[var(--green-bg)]/60 text-emerald-400 border border-emerald-800/40">
                               <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" /> Completed
                             </span>
                           )}
@@ -353,18 +353,18 @@ export default function ReportsPage() {
                           )}
                           {report.status === "Failed" && (
                             <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-medium bg-rose-950/60 text-rose-400 border border-rose-800/40">
-                              <span className="w-1.5 h-1.5 rounded-full bg-rose-500" /> Failed
+                              <span className="w-1.5 h-1.5 rounded-full bg-[var(--error)]" /> Failed
                             </span>
                           )}
                         </td>
                         <td className="py-3 px-4 text-right whitespace-nowrap">
-                          <div className="flex items-center justify-end gap-1 text-slate-400">
+                          <div className="flex items-center justify-end gap-1 text-[var(--text-3)]">
                             <button
                               onClick={(e) => {
                                 e.stopPropagation();
                                 alert(`Downloading ${report.title}`);
                               }}
-                              className="p-1.5 hover:text-cyan-400 hover:bg-[#152545] rounded-lg transition-colors"
+                              className="p-1.5 hover:text-[var(--cyan)] hover:bg-[var(--surface-hover)] rounded-lg transition-colors"
                               title="Download"
                             >
                               <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
@@ -373,7 +373,7 @@ export default function ReportsPage() {
                             </button>
                             <button
                               onClick={(e) => e.stopPropagation()}
-                              className="p-1.5 hover:text-slate-200 hover:bg-[#152545] rounded-lg transition-colors"
+                              className="p-1.5 hover:text-[var(--text)] hover:bg-[var(--surface-hover)] rounded-lg transition-colors"
                             >
                               <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
                                 <circle cx="12" cy="12" r="1" /><circle cx="12" cy="5" r="1" /><circle cx="12" cy="19" r="1" />
@@ -390,18 +390,18 @@ export default function ReportsPage() {
           </div>
 
           {/* Pagination Bar */}
-          <div className="flex items-center justify-between text-xs text-slate-400 pt-1">
-            <div>Showing <span className="text-slate-200 font-medium">1 - {filteredReports.length}</span> of <span className="text-slate-200 font-medium">24</span> reports</div>
+          <div className="flex items-center justify-between text-xs text-[var(--text-3)] pt-1">
+            <div>Showing <span className="text-[var(--text)] font-medium">1 - {filteredReports.length}</span> of <span className="text-[var(--text)] font-medium">24</span> reports</div>
             <div className="flex items-center gap-1.5">
-              <button className="p-1.5 rounded-lg border border-[#172744] hover:bg-[#101b33] text-slate-400 disabled:opacity-40" disabled>
+              <button className="p-1.5 rounded-lg border border-[var(--border)] hover:bg-[var(--surface-hover)] text-[var(--text-3)] disabled:opacity-40" disabled>
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
                   <polyline points="15 18 9 12 15 6" />
                 </svg>
               </button>
-              <button className="w-7 h-7 rounded-lg bg-cyan-600 text-white font-semibold flex items-center justify-center text-xs shadow-sm">1</button>
-              <button className="w-7 h-7 rounded-lg border border-[#172744] hover:bg-[#101b33] text-slate-300 flex items-center justify-center text-xs transition-colors">2</button>
-              <button className="w-7 h-7 rounded-lg border border-[#172744] hover:bg-[#101b33] text-slate-300 flex items-center justify-center text-xs transition-colors">3</button>
-              <button className="p-1.5 rounded-lg border border-[#172744] hover:bg-[#101b33] text-slate-300 transition-colors">
+              <button className="w-7 h-7 rounded-lg bg-[var(--cyan)] text-[var(--heading)] font-semibold flex items-center justify-center text-xs shadow-sm">1</button>
+              <button className="w-7 h-7 rounded-lg border border-[var(--border)] hover:bg-[var(--surface-hover)] text-[var(--text-2)] flex items-center justify-center text-xs transition-colors">2</button>
+              <button className="w-7 h-7 rounded-lg border border-[var(--border)] hover:bg-[var(--surface-hover)] text-[var(--text-2)] flex items-center justify-center text-xs transition-colors">3</button>
+              <button className="p-1.5 rounded-lg border border-[var(--border)] hover:bg-[var(--surface-hover)] text-[var(--text-2)] transition-colors">
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
                   <polyline points="9 18 15 12 9 6" />
                 </svg>
@@ -412,18 +412,18 @@ export default function ReportsPage() {
 
         {/* Right Details Drawer */}
         <aside
-          className="w-96 shrink-0 border-l border-[#15243e] bg-[#070e1c] overflow-y-auto p-5 flex flex-col space-y-5 select-none"
+          className="w-96 shrink-0 border-l border-[var(--border)] bg-[var(--surface)] overflow-y-auto p-5 flex flex-col space-y-5 select-none"
           data-purpose="report-details-drawer"
         >
           {/* Header */}
           <div className="flex items-center justify-between">
-            <span className="flex items-center gap-1.5 text-xs text-slate-400 font-medium">
+            <span className="flex items-center gap-1.5 text-xs text-[var(--text-3)] font-medium">
               <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
                 <line x1="19" x2="5" y1="12" y2="12" /><polyline points="12 19 5 12 12 5" />
               </svg>
               <span>Report Details</span>
             </span>
-            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-medium bg-emerald-950/70 text-emerald-400 border border-emerald-800/40">
+            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-medium bg-[var(--green-bg)]/70 text-emerald-400 border border-emerald-800/40">
               <svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
                 <polyline points="20 6 9 17 4 12" />
               </svg>
@@ -433,22 +433,22 @@ export default function ReportsPage() {
 
           {/* Title & Subtitle */}
           <div>
-            <h2 className="text-base font-bold text-white tracking-tight">{selectedReport.title}</h2>
-            <p className="text-xs text-slate-400 mt-0.5">{selectedReport.subtitle}</p>
+            <h2 className="text-base font-bold text-[var(--heading)] tracking-tight">{selectedReport.title}</h2>
+            <p className="text-xs text-[var(--text-3)] mt-0.5">{selectedReport.subtitle}</p>
           </div>
 
           {/* Meta tags row */}
-          <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-300">
-            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[#0d182e] border border-[#1b2b4b]">
-              <svg className="w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+          <div className="flex flex-wrap items-center gap-2 text-[11px] text-[var(--text-2)]">
+            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[var(--surface-2)] border border-[var(--border)]">
+              <svg className="w-3.5 h-3.5 text-[var(--text-3)]" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
                 <rect height="18" rx="2" ry="2" width="18" x="3" y="4" />
                 <line x1="16" x2="16" y1="2" y2="6" /><line x1="8" x2="8" y1="2" y2="6" />
                 <line x1="3" x2="21" y1="10" y2="10" />
               </svg>
               <span>{selectedReport.date} {selectedReport.time}</span>
             </div>
-            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[#0d182e] border border-[#1b2b4b]">
-              <svg className="w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[var(--surface-2)] border border-[var(--border)]">
+              <svg className="w-3.5 h-3.5 text-[var(--text-3)]" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
                 <path d="M12 21s-6-5.33-6-10a6 6 0 0112 0c0 4.67-6 10-6 10z" strokeLinecap="round" strokeLinejoin="round" />
               </svg>
               <span>{selectedReport.region}</span>
@@ -460,7 +460,7 @@ export default function ReportsPage() {
 
           {/* Split Comparison Satellite Image Viewer */}
           <div
-            className="relative w-full h-44 rounded-xl overflow-hidden border border-[#1a2d4f] shadow-md group cursor-ew-resize select-none"
+            className="relative w-full h-44 rounded-xl overflow-hidden border border-[var(--border)] shadow-md group cursor-ew-resize select-none"
             data-purpose="satellite-comparison-viewer"
             onMouseMove={(e) => {
               const rect = e.currentTarget.getBoundingClientRect();
@@ -495,10 +495,10 @@ export default function ReportsPage() {
 
             {/* Vertical Divider Slider with Drag Handle */}
             <div
-              className="absolute top-0 bottom-0 -ml-[1px] w-[2px] bg-cyan-400 shadow-[0_0_10px_#00e5ff] flex items-center justify-center pointer-events-none"
+              className="absolute top-0 bottom-0 -ml-[1px] w-[2px] bg-[var(--cyan)] shadow-[0_0_10px_#00e5ff] flex items-center justify-center pointer-events-none"
               style={{ left: `${sliderPos}%` }}
             >
-              <div className="w-6 h-6 rounded-full bg-[#070e1c] border-2 border-cyan-400 text-cyan-300 flex items-center justify-center shadow-lg">
+              <div className="w-6 h-6 rounded-full bg-[var(--surface)] border-2 border-[var(--cyan)] text-[var(--cyan)] flex items-center justify-center shadow-lg">
                 <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
                   <polyline points="8 15 5 12 8 9" />
                   <polyline points="16 9 19 12 16 15" />
@@ -507,87 +507,87 @@ export default function ReportsPage() {
             </div>
 
             {/* Corner Labels */}
-            <div className="absolute bottom-2 left-2 px-2 py-0.5 rounded bg-black/60 backdrop-blur text-[10px] text-white font-medium border border-white/10">
+            <div className="absolute bottom-2 left-2 px-2 py-0.5 rounded bg-[var(--scrim)] backdrop-blur text-[10px] text-[var(--heading)] font-medium border border-[var(--border)]">
               Before (2022)
             </div>
-            <div className="absolute bottom-2 right-2 px-2 py-0.5 rounded bg-black/60 backdrop-blur text-[10px] text-white font-medium border border-white/10">
+            <div className="absolute bottom-2 right-2 px-2 py-0.5 rounded bg-[var(--scrim)] backdrop-blur text-[10px] text-[var(--heading)] font-medium border border-[var(--border)]">
               After (2025)
             </div>
           </div>
 
           {/* Key Findings Section */}
           <div>
-            <h3 className="text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2.5 flex items-center gap-1.5">
-              <svg className="w-3.5 h-3.5 text-cyan-400" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+            <h3 className="text-xs font-semibold text-[var(--text-2)] uppercase tracking-wider mb-2.5 flex items-center gap-1.5">
+              <svg className="w-3.5 h-3.5 text-[var(--cyan)]" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
                 <path d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" strokeLinecap="round" strokeLinejoin="round" />
               </svg>
               <span>Key Findings</span>
             </h3>
             <div className="grid grid-cols-2 gap-2">
-              <div className="p-2.5 rounded-xl bg-[#0b1428] border border-[#172744]">
-                <div className="flex items-center gap-1.5 text-cyan-400 mb-1">
+              <div className="p-2.5 rounded-xl bg-[var(--surface-2)] border border-[var(--border)]">
+                <div className="flex items-center gap-1.5 text-[var(--cyan)] mb-1">
                   <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
                     <path d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" strokeLinecap="round" strokeLinejoin="round" />
                   </svg>
-                  <span className="text-sm font-bold text-white">{selectedReport.urbanGrowth || "+18.7%"}</span>
+                  <span className="text-sm font-bold text-[var(--heading)]">{selectedReport.urbanGrowth || "+18.7%"}</span>
                 </div>
-                <p className="text-[10px] text-slate-400 leading-tight">Urban expansion in target area</p>
+                <p className="text-[10px] text-[var(--text-3)] leading-tight">Urban expansion in target area</p>
               </div>
 
-              <div className="p-2.5 rounded-xl bg-[#0b1428] border border-[#172744]">
-                <div className="flex items-center gap-1.5 text-cyan-400 mb-1">
+              <div className="p-2.5 rounded-xl bg-[var(--surface-2)] border border-[var(--border)]">
+                <div className="flex items-center gap-1.5 text-[var(--cyan)] mb-1">
                   <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
                     <rect height="20" rx="2" ry="2" width="16" x="4" y="2" />
                     <line x1="9" x2="9" y1="6" y2="6.01" /><line x1="15" x2="15" y1="6" y2="6.01" />
                     <line x1="9" x2="9" y1="12" y2="12.01" /><line x1="15" x2="15" y1="12" y2="12.01" />
                   </svg>
-                  <span className="text-sm font-bold text-white">{selectedReport.builtUpArea || "12.4 km²"}</span>
+                  <span className="text-sm font-bold text-[var(--heading)]">{selectedReport.builtUpArea || "12.4 km²"}</span>
                 </div>
-                <p className="text-[10px] text-slate-400 leading-tight">New built-up area</p>
+                <p className="text-[10px] text-[var(--text-3)] leading-tight">New built-up area</p>
               </div>
 
-              <div className="p-2.5 rounded-xl bg-[#0b1428] border border-[#172744]">
+              <div className="p-2.5 rounded-xl bg-[var(--surface-2)] border border-[var(--border)]">
                 <div className="flex items-center gap-1.5 text-emerald-400 mb-1">
                   <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
                     <circle cx="12" cy="12" r="10" />
                     <path d="M12 8v8m-4-4h8" strokeLinecap="round" strokeLinejoin="round" />
                   </svg>
-                  <span className="text-sm font-bold text-white">{selectedReport.vegLoss || "-6.2%"}</span>
+                  <span className="text-sm font-bold text-[var(--heading)]">{selectedReport.vegLoss || "-6.2%"}</span>
                 </div>
-                <p className="text-[10px] text-slate-400 leading-tight">Vegetation loss</p>
+                <p className="text-[10px] text-[var(--text-3)] leading-tight">Vegetation loss</p>
               </div>
 
-              <div className="p-2.5 rounded-xl bg-[#0b1428] border border-[#172744]">
-                <div className="flex items-center gap-1.5 text-cyan-400 mb-1">
+              <div className="p-2.5 rounded-xl bg-[var(--surface-2)] border border-[var(--border)]">
+                <div className="flex items-center gap-1.5 text-[var(--cyan)] mb-1">
                   <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
                     <path d="M12 2.69l5.66 5.66a8 8 0 11-11.31 0z" strokeLinecap="round" strokeLinejoin="round" />
                   </svg>
-                  <span className="text-sm font-bold text-white">{selectedReport.roadGrowth || "+3.8%"}</span>
+                  <span className="text-sm font-bold text-[var(--heading)]">{selectedReport.roadGrowth || "+3.8%"}</span>
                 </div>
-                <p className="text-[10px] text-slate-400 leading-tight">Road network expansion</p>
+                <p className="text-[10px] text-[var(--text-3)] leading-tight">Road network expansion</p>
               </div>
             </div>
           </div>
 
           {/* Insights Section */}
           <div>
-            <h3 className="text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2 flex items-center gap-1.5">
-              <svg className="w-3.5 h-3.5 text-cyan-400" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+            <h3 className="text-xs font-semibold text-[var(--text-2)] uppercase tracking-wider mb-2 flex items-center gap-1.5">
+              <svg className="w-3.5 h-3.5 text-[var(--cyan)]" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
                 <path d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" strokeLinecap="round" strokeLinejoin="round" />
               </svg>
               <span>Insights</span>
             </h3>
-            <ul className="space-y-2 text-[11px] text-slate-300">
+            <ul className="space-y-2 text-[11px] text-[var(--text-2)]">
               <li className="flex items-start gap-2">
-                <span className="w-1 h-1 rounded-full bg-cyan-400 mt-1.5 shrink-0" />
+                <span className="w-1 h-1 rounded-full bg-[var(--cyan)] mt-1.5 shrink-0" />
                 <span>Significant urban growth detected in the eastern and southern sectors of the AOI.</span>
               </li>
               <li className="flex items-start gap-2">
-                <span className="w-1 h-1 rounded-full bg-cyan-400 mt-1.5 shrink-0" />
+                <span className="w-1 h-1 rounded-full bg-[var(--cyan)] mt-1.5 shrink-0" />
                 <span>New infrastructure and arterial transport networks are visible in the expanded footprint.</span>
               </li>
               <li className="flex items-start gap-2">
-                <span className="w-1 h-1 rounded-full bg-cyan-400 mt-1.5 shrink-0" />
+                <span className="w-1 h-1 rounded-full bg-[var(--cyan)] mt-1.5 shrink-0" />
                 <span>Vegetation conversion is concentrated primarily around newly mapped civil zones.</span>
               </li>
             </ul>
@@ -595,8 +595,8 @@ export default function ReportsPage() {
 
           {/* Download CTA Buttons */}
           <div>
-            <div className="text-[11px] font-semibold text-slate-300 uppercase tracking-wider mb-2 flex items-center gap-1.5">
-              <svg className="w-3.5 h-3.5 text-cyan-400" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+            <div className="text-[11px] font-semibold text-[var(--text-2)] uppercase tracking-wider mb-2 flex items-center gap-1.5">
+              <svg className="w-3.5 h-3.5 text-[var(--cyan)]" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
                 <path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" strokeLinecap="round" strokeLinejoin="round" />
               </svg>
               <span>Download Report</span>
@@ -604,7 +604,7 @@ export default function ReportsPage() {
             <div className="flex items-center gap-2">
               <button
                 onClick={() => alert(`Downloading full PDF report for ${selectedReport.title}`)}
-                className="flex-1 py-2.5 px-3 rounded-xl bg-gradient-to-r from-cyan-500 to-teal-400 hover:from-cyan-400 hover:to-teal-300 text-slate-950 font-bold text-xs flex items-center justify-center gap-2 shadow-[0_0_20px_rgba(6,182,212,0.35)] transition-all"
+                className="flex-1 py-2.5 px-3 rounded-xl bg-gradient-to-r from-cyan-500 to-teal-400 hover:from-cyan-400 hover:to-teal-300 text-[var(--canvas)] font-bold text-xs flex items-center justify-center gap-2 shadow-[0_0_20px_rgba(6,182,212,0.35)] transition-all"
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
                   <path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" strokeLinecap="round" strokeLinejoin="round" />
@@ -613,7 +613,7 @@ export default function ReportsPage() {
               </button>
               <button
                 onClick={() => alert("Report link copied to clipboard")}
-                className="p-2.5 rounded-xl border border-[#1a2c4e] bg-[#0c162b] text-slate-300 hover:text-white hover:border-slate-500 transition-colors"
+                className="p-2.5 rounded-xl border border-[var(--border)] bg-[var(--surface-2)] text-[var(--text-2)] hover:text-[var(--heading)] hover:border-[var(--border-strong)] transition-colors"
                 title="Share or Copy Link"
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
@@ -625,7 +625,7 @@ export default function ReportsPage() {
 
           {/* Related Files Section */}
           <div>
-            <div className="text-[11px] font-semibold text-slate-300 uppercase tracking-wider mb-2">Related Files</div>
+            <div className="text-[11px] font-semibold text-[var(--text-2)] uppercase tracking-wider mb-2">Related Files</div>
             <div className="space-y-1.5">
               {[
                 { name: "analysis_visualization.png", size: "2.4 MB" },
@@ -634,20 +634,20 @@ export default function ReportsPage() {
               ].map((file) => (
                 <div
                   key={file.name}
-                  className="flex items-center justify-between p-2 rounded-xl bg-[#0b1428] border border-[#152542] hover:border-[#213861] transition-colors"
+                  className="flex items-center justify-between p-2 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] hover:border-[var(--border-strong)] transition-colors"
                 >
                   <div className="flex items-center gap-2 min-w-0">
-                    <svg className="w-4 h-4 text-cyan-400 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                    <svg className="w-4 h-4 text-[var(--cyan)] shrink-0" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
                       <rect height="18" rx="2" ry="2" width="18" x="3" y="3" />
                       <circle cx="8.5" cy="8.5" r="1.5" /><polyline points="21 15 16 10 5 21" />
                     </svg>
-                    <span className="text-xs text-slate-300 truncate font-mono">{file.name}</span>
+                    <span className="text-xs text-[var(--text-2)] truncate font-mono">{file.name}</span>
                   </div>
                   <div className="flex items-center gap-2 pl-2 shrink-0">
-                    <span className="text-[10px] text-slate-500">{file.size}</span>
+                    <span className="text-[10px] text-[var(--text-3)]">{file.size}</span>
                     <button
                       onClick={() => alert(`Downloading ${file.name}`)}
-                      className="p-1 text-slate-400 hover:text-cyan-300 transition-colors"
+                      className="p-1 text-[var(--text-3)] hover:text-[var(--cyan)] transition-colors"
                     >
                       <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
                         <path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" strokeLinecap="round" strokeLinejoin="round" />

@@ -53,7 +53,7 @@
   --text:          #D5E2EE;
   --text-2:        #91A6BA;
   --text-3:        #60788E;
-  --text-4:        #4A6070;
+  --text-4:        #4A6070;  /* extra shade darker than spec's Text3 */
 
   /* ── Shadows ── */
   --shadow-sm:     0 0 0 1px var(--border);
