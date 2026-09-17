@@ -2289,3 +2289,87 @@ we say so in the record. What stops a wrong direction is the prompt, which gives
 ('decreased by 3.2 %') to rephrase, and the response carries that measured sentence in `answer_facts` next to the
 written one, so anyone can compare them. Sign-aware checking is the next step; we chose to accept correct
 restatements of negative changes rather than throw all of them away."
+
+---
+
+## Q-028 · Merge into `prototype`; Qwen3-VL beats BLIP on VRSBench (measured); answer-writer models replaced
+
+**Recorded** 2026-09-17. Merge commit `69290bd` (`prototype` 55f76b3 merged into `cloud-gpu`, then `prototype`
+fast-forwarded to it). Measurements on the RTX 3070 (8 GB), branch at `69290bd`. The writer model choice is
+configuration (`.env`, `deploy/.env.modal`), not a commit.
+
+### 1. Mechanism
+
+1. **Merge.** Only `project/qna.md` conflicted: `prototype` had recorded its own Q-021–Q-024 (LocateAnything
+   bring-up and removal, hard-prompt sweep). Those stay; the `cloud-gpu` entries became Q-025–Q-027 (IDs and
+   cross-references only — note inside Q-026). `a56eaeb` removed LocateAnything, which closes the cloud-fallback risk
+   Q-026 §3 left open (R10).
+2. **Scene-model decision (plan Task 6 step 6).** `scripts/eval_scene_vlm_vrsbench.py --n 200 --seed 0` for both
+   adapters; the script verified identical VQA questions and caption images across the two runs.
+   Rule fixed before measuring (Q-027 §1.8): keep `scene_vlm` only if strict VQA accuracy ≥ BLIP's **and** caption
+   ROUGE-L > BLIP's. Both met → `scene_vlm` stays enabled; with its checkpoint present it now answers VQA/captions
+   (locally already, since `checkpoints/` is shared).
+3. **Qwen checkpoint.** `scripts/prepare_scene_vlm.py`: Qwen/Qwen3-VL-4B-Instruct (8.3 GB HF snapshot) →
+   `checkpoints/scene_vlm_qwen3vl4b_nf4`, **2.7 GB** (`model.safetensors` 2,874,045,174 bytes), 24 s, peak RSS 5.1 GB.
+4. **Answer-writer models.** Live probes with the team's keys: `gemini-2.5-flash` → 404 "no longer available to new
+   users"; `meta/llama-3.3-70b-instruct` → 410 "end of life 2026-08-26". Most other NIM chat models on this account
+   → 404 (not available) or 503 (overloaded). Chosen, via env: `GEMINI_MODEL=gemini-3.5-flash-lite`,
+   `NVIDIA_MODEL=openai/gpt-oss-20b`. The code defaults in `writer.py` still name the dead models — anyone running
+   without these env vars gets the template answer.
+
+### 2. Measured (verbatim)
+
+| Same 200 VQA + 200 captions, seed 0 | BLIP (`general_rs_vlm`) | Qwen3-VL-4B NF4 (`scene_vlm`) |
+|---|---|---|
+| VQA accuracy, lenient | 0.240 | 0.420 |
+| VQA accuracy, strict (decision metric) | 0.235 | **0.420** |
+| Caption ROUGE-L | 0.0140 | **0.1882** |
+| Caption mean words | 1.145 | 64.33 |
+| Seconds per sample | 0.102 | 2.217 |
+| Errors (VQA / caption) | 0 / 0 | 0 / 0 |
+| Wall time / peak RSS | 52 s / 1.95 GB | 14 min 56 s / 3.7 GB |
+
+Strict VQA correct by question type (n): existence 37 → BLIP 13, Qwen 26; colour 29 → 10, 15; category 27 → 4, 9;
+position 25 → 3, 9; scene type 20 → 3, 9; **quantity 39 → BLIP 9, Qwen 5**; shape 7 → 0, 3; reasoning 4 → 0, 2.
+
+Answer-writer probes (real `write_answer`, 8 s timeout):
+- `gemini-3.5-flash-lite`: 1.0–1.4 s; "has any new building been constructed?" → written answer accepted;
+  "mask airplanes" → "Detected 3 airplane instances with masks covering 7.75% of the image." accepted;
+  "Were more than 50 new buildings built here?" → reply repeated "50" → **rejected → template** (Q-027 item 1 working).
+- `openai/gpt-oss-20b`: 5.3–8.1 s; one call exceeded 8 s (`error`); others accepted.
+- `gemini-3.6-flash`: 13.3 s — would exceed the 8 s timeout; not used.
+
+### 3. Blast radius
+
+- **Qwen is weaker at counting than BLIP on this sample** (5 vs 9 of 39). Part of it is the scorer: Qwen answers
+  "One"/"Five" and the strict metric compares against "1"/"5", so number words score wrong. Not corrected here; the
+  counts are reported as measured. Counting questions on stage should go through detection (Grounding DINO + SAM 2
+  instance counts), not the scene model.
+- Qwen is 22× slower per sample on the 3070 (2.2 s vs 0.10 s) and writes 64-word captions.
+- **Rejected prompt change (recorded because it is a guard weakness):** adding "never repeat a number from the
+  QUESTION… refer to it in words" made `gemini-3.5-flash-lite` answer "change detection confirmed that more than that
+  many new structures were built" (the evidence says nothing about a building count) and spell numbers as words
+  ("zero point eight one", "over one hundred thousand"), which the digit-only guard cannot check. Not adopted. The
+  guard remains blind to numbers written in words.
+- The NVIDIA fallback sits near its timeout; if Gemini is down, some answers will fall back to the template.
+- **Local environment change, not from this branch:** `rasterio` 1.4.4 appeared in the shared `.venv` on
+  2026-09-17 10:12 IST (installed with the segmentation-training packages). `backend/app/geo/raster.py` prefers
+  rasterio when importable, and 3 tests in `tests/unit/test_geotiff_georeferencing.py` then fail (nodata tag,
+  user-defined CRS, GeoJSON polygon in WGS84). Full `tests/unit` on the merged tree: **267 passed, 3 failed, 878 s**;
+  the same tests passed at `3ae4e41` before the install, and no geo code changed. The Modal image does not install
+  rasterio. Open.
+
+### 4. Verification
+
+- Result files: `results/evaluations/scene_vlm_vrsbench_general_rs_vlm_20260917.json`,
+  `…_scene_vlm_20260917.json` (gitignored); sample identity asserted when comparing.
+- Merge: `git merge-base --is-ancestor prototype cloud-gpu` true; `git merge --ff-only` in the main checkout left its
+  uncommitted `project/manual-tasks.md` and untracked training files untouched.
+
+### 5. Defence — "Your VLM can't even count."
+
+"On our 200-question sample it counted worse than BLIP — 5 against 9 of 39 — and we say so. Part of that is our
+scorer marking 'Five' wrong against '5', but we haven't corrected for it. Everywhere else it was better — 42 % against
+23.5 % overall, and captions went from one word to real descriptions. Counting in our pipeline is done by the
+detector and segmenter, which give an instance count with a mask per object; the scene model is for describing the
+scene, not for counting."
