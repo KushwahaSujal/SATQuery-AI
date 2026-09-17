@@ -17,7 +17,7 @@ import torch
 
 from backend.app.exceptions import InferenceError, InvalidInputError, ModelUnavailableError
 from backend.app.logging import logger
-from backend.app.ml.adapters.binary_segmenter import normalise, to_rgb_array
+from backend.app.ml.adapters.binary_segmenter import normalise, to_rgb_array, trainer_importable
 from backend.app.ml.base import BaseModelAdapter
 from backend.app.ml.device import warn_if_cpu_for_heavy_model
 from backend.app.schemas.models import ModelResult
@@ -31,6 +31,10 @@ class LandCoverSegmenterAdapter(BaseModelAdapter):
         self._classes: Optional[List[str]] = None
         self._arch: Optional[str] = None
         self._encoder: Optional[str] = None
+
+    def is_available(self) -> bool:
+        """Enabled, weights on disk, and the trainer module importable."""
+        return super().is_available() and trainer_importable()
 
     @property
     def classes(self) -> List[str]:

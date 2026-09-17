@@ -12,6 +12,7 @@ the measured range; see docs/models/trained_segmenters.md.
 
 Nothing routes to these adapters yet — the router and agent are unchanged (project/qna.md Q-031).
 """
+import importlib.util
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 
@@ -24,6 +25,21 @@ from backend.app.logging import logger
 from backend.app.ml.base import BaseModelAdapter
 from backend.app.ml.device import warn_if_cpu_for_heavy_model
 from backend.app.schemas.models import ModelResult
+
+
+def trainer_importable() -> bool:
+    """True when `training.segmentation` is on the path, which the segmenter adapters need.
+
+    The trainer is part of this repository but the backend can be deployed without it (the Modal
+    image ships `backend/` and `configs/` only), so availability is reported honestly instead of
+    failing at the first request. find_spec imports the empty package __init__ files, not the
+    trainer module itself, so this stays cheap.
+    """
+    try:
+        return (importlib.util.find_spec("training.segmentation.train_seg") is not None
+                and importlib.util.find_spec("training.segmentation.datasets") is not None)
+    except (ImportError, ValueError):
+        return False
 
 
 def to_rgb_array(image_input: Any) -> np.ndarray:
@@ -85,6 +101,10 @@ class BinarySegmenterAdapter(BaseModelAdapter):
         self._threshold: Optional[float] = None
         self._arch: Optional[str] = None
         self._encoder: Optional[str] = None
+
+    def is_available(self) -> bool:
+        """Enabled, weights on disk, and the trainer module importable."""
+        return super().is_available() and trainer_importable()
 
     @property
     def class_name(self) -> str:

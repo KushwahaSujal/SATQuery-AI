@@ -9,7 +9,9 @@ from PIL import Image
 
 from backend.app.config import settings
 from backend.app.exceptions import InvalidInputError, ModelUnavailableError
+from backend.app.ml.adapters import binary_segmenter as binary_module
 from backend.app.ml.adapters import crater_detector as crater_module
+from backend.app.ml.adapters import landcover_segmenter as landcover_module
 from backend.app.ml.adapters.binary_segmenter import (
     BinarySegmenterAdapter,
     BuildingSegmenterAdapter,
@@ -74,6 +76,15 @@ def test_crater_detector_config_thresholds():
     assert settings.models["crater_detector"].input_size == 832
     assert adapter.confidence_threshold == pytest.approx(0.25)
     assert adapter.LABEL == "crater"
+
+
+def test_segmenters_are_unavailable_without_the_trainer_module(monkeypatch):
+    """The adapters import training.segmentation; a deploy without it must report unavailable."""
+    monkeypatch.setattr(binary_module, "trainer_importable", lambda: False)
+    monkeypatch.setattr(landcover_module, "trainer_importable", lambda: False)
+    assert RoadSegmenterAdapter().is_available() is False
+    assert BuildingSegmenterAdapter().is_available() is False
+    assert LandCoverSegmenterAdapter().is_available() is False
 
 
 def test_ultralytics_is_not_imported_at_module_scope():
