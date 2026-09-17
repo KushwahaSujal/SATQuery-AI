@@ -1,0 +1,19 @@
+# User Taste Profile
+- Prefers dark-first design systems with light mode as the counterpart. Dark mode should be the default theme. Confidence: 0.95
+- Prefers deep navy (#020D19) over pure black for dark backgrounds, and near-white (#F7FAFD) over pure white for light backgrounds. Confidence: 0.9
+- Strongly prefers CSS custom properties (var(--token)) over hardcoded Tailwind color classes for theme-able components. Confidence: 0.95
+- Prefers comprehensive semantic token systems covering surfaces, borders, text, shadows, shape/radius, motion, and status colors — organized hierarchically (canvas → workspace → surface → surface-2 → surface-3 → hover). Confidence: 0.9
+- Prefers using `next-themes` with `attribute="class"` for dark/light mode switching in Next.js projects. Confidence: 0.9
+- Prefers electric blue (#168BFF dark / #087FF5 light) as the primary interaction color, cyan (#00C7D9 / #00AFC5) for AI/analysis accents. Confidence: 0.9
+- Uses semantic remote-sensing color coding: Blue=Optical, Violet=SAR, Green=Vegetation/Gain, Red=Change/Loss, Cyan=Water, Amber=Warning. Confidence: 0.95
+- Prefers subtle blue glow shadows in dark mode (rather than black shadows) and soft blue-tinted shadows in light mode. Confidence: 0.9
+- Prefers very subtle 1px borders with blue-gray tones rather than bold or high-contrast borders. Confidence: 0.9
+- Prefers Inter as the primary sans-serif font and Geist Mono for technical/numeric data display. Confidence: 0.9
+- Prefers dense but readable UI typography (13px base body, 10-12px for metadata, monospace for technical data). Not oversized. Confidence: 0.85
+- Prefers dense professional dashboards over chatbot-style interfaces. Satellite imagery should be the visual hero. Confidence: 0.9
+- Prefers gradient accents (e.g. brand gradient #00C9E8 → #087FF5 → #1758D8) restricted to important elements rather than used everywhere. Confidence: 0.85
+- Prefers rounded but not excessively rounded corners — uses a stepped radius system (4px→6px→8px→12px→16px→20px). Pills only for status/dataset type badges. Confidence: 0.85
+- Prefers Lucide-style outline icons (1.8–2px stroke) for the icon system. Confidence: 0.8
+- Provides extremely detailed visual specifications with exact hex values, usage context, and hierarchy descriptions when communicating design requirements. Confidence: 0.95
+- Uses Windows (D:\ paths, cmd commands). Confidence: 0.9
+- Builds Next.js 16+ projects with Turbopack, React Query, and TypeScript. Confidence: 0.9

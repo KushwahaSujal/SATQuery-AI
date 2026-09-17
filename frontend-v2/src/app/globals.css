@@ -385,3 +385,151 @@ body {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* ============================================================
+   UI DESIGN NEW — PROCEDURAL TEXTURES & GLOW EFFECTS
+   ============================================================ */
+
+/* Glow utilities */
+.glow-cyan-text {
+  text-shadow: 0 0 20px rgba(6, 240, 212, 0.45);
+}
+.glow-cyan-sm {
+  box-shadow: 0 0 20px -2px rgba(6, 182, 212, 0.35);
+}
+.hero-glow-overlay {
+  background: radial-gradient(circle at 80% 25%, rgba(0, 213, 190, 0.12) 0%, rgba(10, 17, 31, 0) 65%);
+}
+.active-nav-glow {
+  box-shadow: inset 0 0 15px rgba(6, 182, 212, 0.15), 0 0 10px rgba(6, 182, 212, 0.08);
+}
+.topo-gradient {
+  background: radial-gradient(circle at 100% 100%, rgba(6, 182, 212, 0.15) 0%, rgba(5, 10, 20, 0.8) 70%);
+}
+.contour-lines {
+  background-image: radial-gradient(#14b8a6 1px, transparent 1px), radial-gradient(#06b6d4 1px, transparent 1px);
+  background-size: 24px 24px;
+  background-position: 0 0, 12px 12px;
+  opacity: 0.15;
+}
+
+/* Synthetic Satellite Terrain Textures */
+.sat-preview-delhi-main {
+  background: linear-gradient(135deg, rgba(7, 43, 24, 0.45), rgba(15, 23, 42, 0.7)),
+    radial-gradient(circle at 60% 40%, rgba(34, 197, 94, 0.35), transparent 60%),
+    repeating-radial-gradient(circle at 50% 50%, #154030 0, #132a22 8px, #0b1a15 16px, #1d3326 24px);
+  background-size: cover;
+  position: relative;
+}
+.sat-preview-delhi-main::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: 
+    radial-gradient(ellipse at 70% 30%, rgba(56, 189, 248, 0.4) 0%, transparent 40%),
+    linear-gradient(65deg, rgba(6, 78, 59, 0.6) 0%, rgba(30, 41, 59, 0.2) 50%, rgba(13, 148, 136, 0.5) 100%),
+    repeating-linear-gradient(45deg, rgba(0,0,0,0.15) 0px, rgba(0,0,0,0.15) 2px, transparent 2px, transparent 6px);
+  mix-blend-mode: overlay;
+}
+.sat-crop-river {
+  background: 
+    radial-gradient(circle at 40% 60%, #0369a1 0%, transparent 45%),
+    linear-gradient(120deg, #14532d 0%, #166534 30%, #0f172a 70%, #15803d 100%);
+  position: relative;
+}
+.sat-crop-river::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(35deg, rgba(255,255,255,0.08) 0px, transparent 3px, transparent 15px);
+}
+.sat-crop-sar {
+  background: 
+    radial-gradient(circle at 50% 50%, #475569 0%, #0f172a 70%),
+    repeating-radial-gradient(circle at 30% 70%, #94a3b8 0, #334155 3px, #0f172a 7px);
+  filter: contrast(140%) brightness(90%);
+}
+.sat-crop-urban {
+  background: 
+    radial-gradient(circle at 70% 20%, #64748b 0%, transparent 50%),
+    repeating-linear-gradient(0deg, #1e293b 0px, #334155 1px, transparent 2px, transparent 8px),
+    repeating-linear-gradient(90deg, #1e293b 0px, #475569 1px, transparent 2px, transparent 8px);
+  background-color: #0f172a;
+}
+.sat-crop-coastal {
+  background: 
+    radial-gradient(circle at 20% 80%, #0284c7 0%, transparent 60%),
+    linear-gradient(135deg, #15803d 0%, #0369a1 40%, #0c4a6e 80%);
+}
+.sat-crop-amazon {
+  background: 
+    radial-gradient(circle at 30% 30%, #16a34a 0%, transparent 60%),
+    linear-gradient(160deg, #052e16 0%, #14532d 40%, #022c22 80%);
+}
+.sat-crop-water {
+  background: 
+    radial-gradient(circle at 80% 30%, #0ea5e9 0%, transparent 50%),
+    linear-gradient(110deg, #075985 0%, #0284c7 35%, #034870 70%, #0f172a 100%);
+}
+.sat-crop-delhi-main {
+  background: 
+    radial-gradient(circle at 50% 50%, #047857 0%, #0f172a 80%),
+    linear-gradient(45deg, #065f46, #0f172a);
+}
+
+/* History Thumbnails */
+.thumb-optical-1 {
+  background: radial-gradient(circle at 70% 30%, #2a9d8f 0%, #1e3d59 50%, #0d1b2a 100%),
+              repeating-linear-gradient(45deg, rgba(34, 197, 94, 0.15) 0px, rgba(34, 197, 94, 0.15) 2px, transparent 2px, transparent 4px);
+}
+.thumb-sar-1 {
+  background: radial-gradient(circle at 40% 60%, #cbd5e1 0%, #475569 40%, #0f172a 90%),
+              repeating-radial-gradient(circle at center, rgba(255,255,255,0.08) 0px, rgba(255,255,255,0.08) 1px, transparent 1px, transparent 3px);
+}
+.thumb-forest {
+  background: radial-gradient(circle at 50% 50%, #15803d 0%, #14532d 60%, #052e16 100%),
+              radial-gradient(circle at 20% 20%, rgba(234, 179, 8, 0.2) 0%, transparent 40%);
+}
+.thumb-change-red {
+  background: radial-gradient(circle at 60% 40%, #dc2626 0%, #7f1d1d 30%, #14532d 70%, #052e16 100%);
+}
+.hero-map-overlay {
+  background-image: 
+    radial-gradient(ellipse at 30% 40%, rgba(14, 165, 233, 0.45) 0%, transparent 50%),
+    radial-gradient(ellipse at 75% 35%, rgba(239, 68, 68, 0.6) 0%, transparent 45%),
+    radial-gradient(ellipse at 50% 70%, rgba(34, 197, 94, 0.55) 0%, transparent 60%),
+    linear-gradient(135deg, #0f172a 0%, #022c22 40%, #1e1b4b 100%);
+  background-blend-mode: screen, normal;
+}
+.topography-grid {
+  background-image: radial-gradient(circle, rgba(0, 229, 255, 0.1) 1px, transparent 1px);
+  background-size: 16px 16px;
+}
+
+/* Analysis Canvas Simulation */
+.satellite-bg-base {
+  background-color: #0b1d13;
+  background-image: 
+    radial-gradient(at 20% 30%, #15321f 0px, transparent 50%),
+    radial-gradient(at 80% 20%, #1e452a 0px, transparent 50%),
+    radial-gradient(at 40% 70%, #0d2617 0px, transparent 50%),
+    radial-gradient(at 90% 80%, #0a1f13 0px, transparent 50%);
+}
+.river-channel {
+  position: absolute;
+  inset: 0;
+  background-image: radial-gradient(circle at 50% 50%, transparent 20%, #0d1b11 90%);
+  pointer-events: none;
+}
+.urban-detection-layer {
+  background-image: 
+    radial-gradient(circle at 65% 35%, rgba(239, 68, 68, 0.15) 0%, transparent 60%),
+    repeating-linear-gradient(0deg, transparent, transparent 12px, rgba(239, 68, 68, 0.75) 12px, rgba(239, 68, 68, 0.75) 13px),
+    repeating-linear-gradient(90deg, transparent, transparent 15px, rgba(239, 68, 68, 0.75) 15px, rgba(239, 68, 68, 0.75) 16px);
+  mask-image: radial-gradient(ellipse 70% 60% at 75% 45%, black 40%, transparent 80%);
+  -webkit-mask-image: radial-gradient(ellipse 70% 60% at 75% 45%, black 40%, transparent 80%);
+}
+.topographic-lines {
+  background-image: repeating-radial-gradient(circle at 100% 100%, transparent 0, transparent 6px, rgba(6, 182, 212, 0.15) 7px, transparent 8px);
+}
+

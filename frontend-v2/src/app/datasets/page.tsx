@@ -1,164 +1,590 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
+import Sidebar from "@/components/layout/Sidebar";
+import TopBar from "@/components/layout/TopBar";
 
-type Filter = "All" | "Optical" | "SAR" | "Multispectral" | "Bi-temporal";
+interface DatasetItem {
+  id: string;
+  name: string;
+  source: string;
+  type: string;
+  resolution: string;
+  format: string;
+  years: string;
+  region: string;
+  size: string;
+  dateAdded: string;
+  cropClass: string;
+  typeColor: string;
+  bands?: string;
+  projection?: string;
+  files?: string;
+  license?: string;
+  desc?: string;
+}
 
-const FILTERS: { label: string; count: number }[] = [
-  { label: "All", count: 124 },
-  { label: "Optical", count: 68 },
-  { label: "SAR", count: 32 },
-  { label: "Multispectral", count: 18 },
-  { label: "Bi-temporal", count: 6 },
+const DATASETS: DatasetItem[] = [
+  {
+    id: "delhi-urban",
+    name: "Urban Area Detection (Delhi)",
+    source: "ESA · Sentinel-2",
+    type: "Optical",
+    resolution: "10 m",
+    format: "Tiff",
+    years: "2022 - 2025",
+    region: "Delhi, India",
+    size: "2.4 GB",
+    dateAdded: "Oct 12, 2025",
+    cropClass: "sat-crop-urban",
+    typeColor: "bg-sky-950 text-sky-400 border-sky-800/60",
+    bands: "B02, B03, B04, B08, B11, B12",
+    projection: "UTM Zone 44N (EPSG:32644)",
+    files: "12 GeoTIFF files",
+    license: "Open Data (CC BY 4.0)",
+    desc: "High-resolution optical imagery for urban area analysis and land use classification in Delhi region.",
+  },
+  {
+    id: "sentinel-india",
+    name: "Sentinel-2 Land Cover (India)",
+    source: "ESA · Sentinel-2",
+    type: "Optical",
+    resolution: "10 m",
+    format: "Tiff",
+    years: "2024 - 2025",
+    region: "India",
+    size: "3.8 GB",
+    dateAdded: "Oct 11, 2025",
+    cropClass: "sat-crop-river",
+    typeColor: "bg-sky-950 text-sky-400 border-sky-800/60",
+    bands: "B02, B03, B04, B08",
+    projection: "WGS 84 / UTM 43N",
+    files: "18 GeoTIFF files",
+    license: "Open Data (CC BY 4.0)",
+    desc: "Comprehensive multispectral optical data surveying diverse land cover classes across the Indian subcontinent.",
+  },
+  {
+    id: "risat-sar",
+    name: "RISAT-1 SAR (India)",
+    source: "ISRO · RISAT-1",
+    type: "SAR",
+    resolution: "25 m",
+    format: "Tiff",
+    years: "2023 - 2025",
+    region: "India",
+    size: "1.9 GB",
+    dateAdded: "Oct 05, 2025",
+    cropClass: "sat-crop-sar",
+    typeColor: "bg-purple-950 text-purple-300 border-purple-800/60",
+    bands: "C-band (HH, HV)",
+    projection: "LCC (ISRO Indian Grid)",
+    files: "8 GeoTIFF files",
+    license: "ISRO Open Science",
+    desc: "Active synthetic aperture radar imagery providing all-weather, day-and-night surface backscatter observation.",
+  },
+  {
+    id: "bangladesh-coast",
+    name: "Bangladesh Coastal Change",
+    source: "NASA · Sentinel-2",
+    type: "Bi-temporal",
+    resolution: "10 m",
+    format: "Tiff",
+    years: "2023 - 2025",
+    region: "Bangladesh",
+    size: "4.8 GB",
+    dateAdded: "Oct 10, 2025",
+    cropClass: "sat-crop-coastal",
+    typeColor: "bg-emerald-950 text-emerald-400 border-emerald-800/60",
+    bands: "B02, B03, B04, B08, NDVI",
+    projection: "UTM Zone 45N",
+    files: "14 GeoTIFF files",
+    license: "Open Data (CC BY 4.0)",
+    desc: "Multi-year coastal shoreline change detection and erosion tracking in the Bengal delta region.",
+  },
+  {
+    id: "amazon-forest",
+    name: "Forest Monitoring (Amazon)",
+    source: "ESA · Sentinel-2",
+    type: "Multispectral",
+    resolution: "10 m",
+    format: "Tiff",
+    years: "2021 - 2025",
+    region: "Amazon, Brazil",
+    size: "3.6 GB",
+    dateAdded: "Oct 08, 2025",
+    cropClass: "sat-crop-amazon",
+    typeColor: "bg-purple-950 text-purple-300 border-purple-800/60",
+    bands: "All 13 Sentinel-2 Bands",
+    projection: "UTM Zone 20S",
+    files: "24 GeoTIFF files",
+    license: "Copernicus Open Access",
+    desc: "Dense rainforest canopy observation and biomass disturbance tracking across the Brazilian Amazon basin.",
+  },
+  {
+    id: "ganges-water",
+    name: "Water Resources (Ganges Basin)",
+    source: "ISRO · RISAT + Sentinel-2",
+    type: "Optical + SAR",
+    resolution: "10 m / 25 m",
+    format: "Tiff",
+    years: "2023 - 2025",
+    region: "India",
+    size: "5.2 GB",
+    dateAdded: "Oct 02, 2025",
+    cropClass: "sat-crop-water",
+    typeColor: "bg-slate-800 text-cyan-300 border-cyan-800/60",
+    bands: "Optical RGB-NIR + SAR HH/HV",
+    projection: "UTM Zone 44N",
+    files: "16 GeoTIFF files",
+    license: "Joint Mission Research",
+    desc: "Fused optical and SAR telemetry monitoring hydrologic extent, flood plains, and riverbank dynamics.",
+  },
 ];
-
-const SAMPLE_DATASETS = [
-  { name: "Sentinel-2 Land Cover (India)", source: "ESA \u00b7 Sentinel-2", type: "Optical", resolution: "10 m", format: "Tiff", dateRange: "2024 - 2025", region: "India" },
-  { name: "RISAT-1 SAR (India)", source: "ISRO \u00b7 RISAT-1", type: "SAR", resolution: "25 m", format: "Tiff", dateRange: "2023 - 2025", region: "India" },
-  { name: "Bangladesh Coastal Change", source: "NASA \u00b7 Sentinel-2", type: "Optical", resolution: "10 m", format: "Tiff", dateRange: "2023 - 2025", region: "Bangladesh" },
-  { name: "Urban Expansion (Delhi)", source: "ESA \u00b7 Sentinel-2", type: "Optical", resolution: "10 m", format: "Tiff", dateRange: "2022 - 2025", region: "Delhi, India" },
-  { name: "Forest Monitoring (Amazon)", source: "ESA \u00b7 Sentinel-2", type: "Multispectral", resolution: "10 m", format: "Tiff", dateRange: "2021 - 2025", region: "Amazon, Brazil" },
-  { name: "Water Resources (Ganges Basin)", source: "ISRO \u00b7 RISAT + Sentinel-2", type: "Optical + SAR", resolution: "10 m / 25 m", format: "Tiff", dateRange: "2023 - 2025", region: "India" },
-];
-
-const typeStyles: Record<string, { bg: string; color: string }> = {
-  Optical: { bg: "var(--primary-glow)", color: "var(--primary)" },
-  SAR: { bg: "var(--violet-bg)", color: "var(--violet)" },
-  Multispectral: { bg: "var(--green-bg)", color: "var(--green)" },
-  "Optical + SAR": { bg: "var(--cyan-glow)", color: "var(--cyan)" },
-};
 
 export default function DatasetsPage() {
-  const [filter, setFilter] = useState<Filter>("All");
-  const [selectedIdx, setSelectedIdx] = useState(0);
+  const [selectedFilter, setSelectedFilter] = useState("All");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [selectedDataset, setSelectedDataset] = useState<DatasetItem>(DATASETS[0]);
+  const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
+  const [carouselIndex, setCarouselIndex] = useState(1);
 
-  const selected = SAMPLE_DATASETS[selectedIdx];
+  const filterCounts: Record<string, number> = {
+    All: 124,
+    Optical: 68,
+    SAR: 32,
+    Multispectral: 18,
+    "Bi-temporal": 6,
+  };
+
+  const filteredDatasets = DATASETS.filter((item) => {
+    const matchesFilter = selectedFilter === "All" || item.type.includes(selectedFilter);
+    const matchesSearch =
+      item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      item.region.toLowerCase().includes(searchQuery.toLowerCase());
+    return matchesFilter && matchesSearch;
+  });
 
   return (
-    <div className="flex h-[calc(100vh-64px)] overflow-hidden" style={{ background: "var(--canvas)" }}>
-      {/* Main */}
-      <main className="flex-1 overflow-y-auto px-6 py-5">
-        <div className="flex items-start justify-between mb-5">
-          <div>
-            <h1 className="text-2xl font-bold tracking-tight mb-1" style={{ color: "var(--heading)" }}>Datasets</h1>
-            <p className="text-xs" style={{ color: "var(--text-2)" }}>Browse and manage satellite imagery datasets. Use these datasets for your analysis or upload your own.</p>
+    <div className="bg-[#050911] text-slate-200 antialiased font-sans h-screen overflow-hidden flex flex-col selection:bg-cyan-500/30 selection:text-cyan-200">
+      {/* Full-width TopBar */}
+      <TopBar
+        showBrand={true}
+        searchPlaceholder="Search datasets, locations, or keywords..."
+        onSearch={(q) => setSearchQuery(q)}
+      />
+
+      {/* Main Body Layout */}
+      <div className="flex flex-1 overflow-hidden">
+        {/* Left Navigation Sidebar */}
+        <Sidebar hideBrand={true} activeItem="datasets" className="h-full" />
+
+        {/* Workspace Center Content */}
+        <main className="flex-1 overflow-y-auto px-6 py-5" data-purpose="datasets-workspace">
+          {/* Workspace Header */}
+          <div className="flex items-start justify-between mb-5">
+            <div>
+              <h1 className="text-2xl font-bold text-white tracking-tight mb-1">Datasets</h1>
+              <p className="text-xs text-slate-400">
+                Browse and manage satellite imagery datasets. Use these datasets for your analysis or upload your own.
+              </p>
+            </div>
+            <Link
+              href="/analysis?action=upload"
+              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-cyan-400 hover:bg-cyan-300 text-slate-950 text-xs font-semibold shadow-[0_0_15px_rgba(6,182,212,0.4)] transition"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
+                <path d="M12 4v16m8-8H4" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+              <span>Upload Dataset</span>
+            </Link>
           </div>
-          <button
-            className="flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold transition"
-            style={{ background: "var(--cyan)", color: "var(--canvas)", boxShadow: "0 0 15px var(--cyan-glow)" }}
-          >
-            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24"><path d="M12 4v16m8-8H4" strokeLinecap="round" strokeLinejoin="round" /></svg>
-            Upload Dataset
-          </button>
-        </div>
 
-        {/* Filters */}
-        <div className="flex items-center gap-2 mb-4 overflow-x-auto pb-1">
-          {FILTERS.map(({ label, count }) => (
-            <button
-              key={label}
-              onClick={() => setFilter(label as Filter)}
-              className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium transition"
-              style={filter === label ? {
-                background: "var(--cyan-glow)",
-                border: "1px solid var(--cyan)",
-                color: "var(--cyan)",
-              } : {
-                background: "var(--surface-2)",
-                border: "1px solid var(--border)",
-                color: "var(--text)",
-              }}
-            >
-              <span>{label}</span>
-              <span
-                className="text-[10px] px-1.5 py-0.2 rounded-full"
-                style={filter === label ? {
-                  background: "var(--cyan-glow)",
-                  color: "var(--cyan)",
-                } : {
-                  background: "var(--surface-3)",
-                  color: "var(--text-2)",
-                }}
-              >{count}</span>
-            </button>
-          ))}
-        </div>
+          {/* Filter Pills Row */}
+          <div className="flex items-center gap-2 mb-4 overflow-x-auto pb-1" data-purpose="category-filters">
+            {["All", "Optical", "SAR", "Multispectral", "Bi-temporal"].map((filter) => {
+              const active = selectedFilter === filter;
+              return (
+                <button
+                  key={filter}
+                  onClick={() => setSelectedFilter(filter)}
+                  className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium transition cursor-pointer ${
+                    active
+                      ? "bg-cyan-950/60 border border-cyan-500/50 text-[#00d5be] shadow-[0_0_10px_rgba(6,182,212,0.15)]"
+                      : "bg-[#0c1322] border border-[#1c283f] text-slate-300 hover:border-slate-700"
+                  }`}
+                >
+                  <span>{filter}</span>
+                  <span
+                    className={`text-[10px] px-1.5 py-0.2 rounded-full ${
+                      active ? "bg-cyan-500/20 text-cyan-300" : "bg-slate-800 text-slate-400"
+                    }`}
+                  >
+                    {filterCounts[filter] ?? 0}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
 
-        {/* Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-          {SAMPLE_DATASETS.map((ds, i) => (
-            <div
-              key={ds.name}
-              onClick={() => setSelectedIdx(i)}
-              className="rounded-xl overflow-hidden transition group flex flex-col cursor-pointer"
-              style={i === selectedIdx ? {
-                background: "var(--surface-2)",
-                border: "1px solid var(--cyan)",
-              } : {
-                background: "var(--surface-2)",
-                border: "1px solid var(--border)",
-              }}
-            >
-              <div className="h-32 relative overflow-hidden" style={{ background: "var(--surface-3)" }}>
-                <div className="absolute inset-0 bg-[radial-gradient(circle_at_60%_40%,var(--green-bg),transparent_60%)]" />
-                <span
-                  className="absolute bottom-2.5 left-2.5 px-2 py-0.5 rounded text-[10px] font-medium backdrop-blur"
-                  style={{ background: typeStyles[ds.type]?.bg || "var(--primary-glow)", color: typeStyles[ds.type]?.color || "var(--primary)" }}
-                >{ds.type}</span>
+          {/* Secondary Controls & Filter Dropdowns */}
+          <div className="flex flex-wrap items-center justify-between gap-3 mb-5" data-purpose="secondary-filter-bar">
+            {/* Sub Search Input */}
+            <div className="relative flex-1 min-w-[200px] max-w-xs">
+              <svg className="absolute left-3 top-2.5 w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <circle cx="11" cy="11" r="8" />
+                <line x1="21" x2="16.65" y1="21" y2="16.65" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+              <input
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full bg-[#0c1322] border border-[#1c283f] rounded-lg pl-9 pr-3 py-1.5 text-xs text-slate-200 placeholder-slate-400 focus:outline-none focus:border-cyan-500"
+                placeholder="Search datasets..."
+                type="text"
+              />
+            </div>
+
+            <div className="flex items-center gap-2.5">
+              {/* Dropdown: Regions */}
+              <button className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[#0c1322] border border-[#1c283f] text-xs text-slate-300 hover:border-slate-700">
+                <svg className="w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path d="M12 21s-6-5.33-6-10a6 6 0 0112 0c0 4.67-6 10-6 10z" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" />
+                </svg>
+                <span>All Regions</span>
+                <svg className="w-3 h-3 text-slate-400 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path d="M19 9l-7 7-7-7" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" />
+                </svg>
+              </button>
+
+              {/* Dropdown: Resolutions */}
+              <button className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[#0c1322] border border-[#1c283f] text-xs text-slate-300 hover:border-slate-700">
+                <svg className="w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <rect height="7" rx="1" width="7" x="3" y="3" />
+                  <rect height="7" rx="1" width="7" x="14" y="3" />
+                  <rect height="7" rx="1" width="7" x="14" y="14" />
+                  <rect height="7" rx="1" width="7" x="3" y="14" />
+                </svg>
+                <span>All Resolutions</span>
+                <svg className="w-3 h-3 text-slate-400 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path d="M19 9l-7 7-7-7" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" />
+                </svg>
+              </button>
+
+              {/* Dropdown: Sort */}
+              <button className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[#0c1322] border border-[#1c283f] text-xs text-slate-300 hover:border-slate-700">
+                <svg className="w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" />
+                </svg>
+                <span>Newest First</span>
+                <svg className="w-3 h-3 text-slate-400 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path d="M19 9l-7 7-7-7" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" />
+                </svg>
+              </button>
+
+              {/* View Switcher (Grid / List) */}
+              <div className="flex items-center rounded-lg bg-[#0c1322] border border-[#1c283f] p-0.5">
+                <button
+                  onClick={() => setViewMode("grid")}
+                  className={`p-1 rounded transition ${viewMode === "grid" ? "bg-slate-800 text-[#00d5be]" : "text-slate-400 hover:text-slate-200"}`}
+                  title="Grid View"
+                >
+                  <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
+                    <path d="M5 3a2 2 0 00-2 2v2a2 2 0 002 2h2a2 2 0 002-2V5a2 2 0 00-2-2H5zM5 11a2 2 0 00-2 2v2a2 2 0 002 2h2a2 2 0 002-2v-2a2 2 0 00-2-2H5zM11 5a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V5zM11 13a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
+                  </svg>
+                </button>
+                <button
+                  onClick={() => setViewMode("list")}
+                  className={`p-1 rounded transition ${viewMode === "list" ? "bg-slate-800 text-[#00d5be]" : "text-slate-400 hover:text-slate-200"}`}
+                  title="List View"
+                >
+                  <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M3 5a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 5a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 5a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z" clipRule="evenodd" />
+                  </svg>
+                </button>
               </div>
-              <div className="p-3.5 flex-1 flex flex-col justify-between">
-                <div>
-                  <h3 className="text-xs font-semibold transition" style={{ color: "var(--heading)" }}>{ds.name}</h3>
-                  <p className="text-[11px] mt-0.5" style={{ color: "var(--text-2)" }}>{ds.source}</p>
-                  <div className="flex items-center gap-3 text-[10px] mt-2.5" style={{ color: "var(--text-2)" }}>
-                    <span>{ds.resolution}</span>
-                    <span>{ds.format}</span>
-                    <span>{ds.dateRange}</span>
+            </div>
+          </div>
+
+          {/* Dataset Cards Grid */}
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 mb-8" data-purpose="dataset-card-grid">
+            {filteredDatasets.map((dataset) => {
+              const isSelected = selectedDataset.id === dataset.id;
+              return (
+                <div
+                  key={dataset.id}
+                  onClick={() => setSelectedDataset(dataset)}
+                  className={`rounded-xl bg-[#0c1322] border transition group flex flex-col cursor-pointer overflow-hidden ${
+                    isSelected ? "border-cyan-400 shadow-[0_0_15px_rgba(6,182,212,0.2)]" : "border-[#1c283f] hover:border-slate-600"
+                  }`}
+                >
+                  <div className={`h-32 ${dataset.cropClass} relative overflow-hidden`}>
+                    <span className="absolute bottom-2.5 left-2.5 px-2 py-0.5 rounded text-[10px] font-medium bg-sky-500/80 text-white backdrop-blur">
+                      {dataset.type}
+                    </span>
+                  </div>
+                  <div className="p-3.5 flex-1 flex flex-col justify-between">
+                    <div>
+                      <h3 className="text-xs font-semibold text-white group-hover:text-cyan-400 transition">{dataset.name}</h3>
+                      <p className="text-[11px] text-slate-400 mt-0.5">{dataset.source}</p>
+                      <div className="flex items-center gap-3 text-[10px] text-slate-400 mt-2.5">
+                        <span className="flex items-center gap-1">
+                          <svg className="w-3 h-3 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <circle cx="12" cy="12" r="10" />
+                            <polyline points="12 6 12 12 16 14" />
+                          </svg>
+                          {dataset.resolution}
+                        </span>
+                        <span className="flex items-center gap-1">
+                          <svg className="w-3 h-3 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" />
+                          </svg>
+                          {dataset.format}
+                        </span>
+                        <span className="flex items-center gap-1">
+                          <svg className="w-3 h-3 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <rect height="18" rx="2" width="18" x="3" y="4" />
+                            <line x1="16" x2="16" y1="2" y2="6" />
+                            <line x1="8" x2="8" y1="2" y2="6" />
+                            <line x1="3" x2="21" y1="10" y2="10" />
+                          </svg>
+                          {dataset.years}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="flex items-center justify-between mt-3 pt-2.5 border-t border-slate-800/80">
+                      <span className="text-[10px] px-2 py-0.5 rounded bg-slate-800 text-slate-300">{dataset.region}</span>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          alert(`Downloading metadata for ${dataset.name}`);
+                        }}
+                        className="p-1 text-slate-400 hover:text-white transition"
+                        title="Download"
+                      >
+                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" />
+                        </svg>
+                      </button>
+                    </div>
                   </div>
                 </div>
-                <div className="flex items-center justify-between mt-3 pt-2.5" style={{ borderTop: "1px solid var(--border)" }}>
-                  <span className="text-[10px] px-2 py-0.5 rounded" style={{ background: "var(--surface-3)", color: "var(--text)" }}>{ds.region}</span>
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      </main>
-
-      {/* Right Detail Panel */}
-      <aside
-        className="w-[360px] overflow-y-auto shrink-0 flex flex-col p-4"
-        style={{ borderLeft: "1px solid var(--border)", background: "var(--surface)" }}
-      >
-        <div className="relative rounded-xl overflow-hidden h-52 mb-4" style={{ background: "var(--surface-3)", border: "1px solid var(--border)" }}>
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_60%_40%,var(--green-bg),transparent_60%)]" />
-        </div>
-        <div className="mb-3">
-          <div className="flex items-start justify-between gap-2 mb-1">
-            <h2 className="text-sm font-bold leading-tight" style={{ color: "var(--heading)" }}>{selected.name}</h2>
-            <span
-              className="px-2 py-0.5 rounded text-[10px] font-medium shrink-0"
-              style={{ background: typeStyles[selected.type]?.bg || "var(--primary-glow)", color: typeStyles[selected.type]?.color || "var(--primary)" }}
-            >{selected.type}</span>
+              );
+            })}
           </div>
-          <p className="text-[11px]" style={{ color: "var(--text-2)" }}>{selected.source}</p>
-        </div>
-        <div className="space-y-2 mb-5">
-          <h3 className="text-[11px] font-bold uppercase tracking-wider mb-2" style={{ color: "var(--text)" }}>Dataset Information</h3>
-          {[["Source", selected.source.split(" \u00b7 ")[0]], ["Sensor", selected.source.split(" \u00b7 ")[1] || "\u2014"], ["Resolution", selected.resolution], ["Format", selected.format], ["Date Range", selected.dateRange], ["Region", selected.region]].map(([k, v]) => (
-            <div key={k} className="flex justify-between text-xs py-0.5" style={{ borderBottom: "1px solid var(--border)" }}>
-              <span style={{ color: "var(--text-2)" }}>{k}</span>
-              <span className="font-medium" style={{ color: "var(--text)" }}>{v}</span>
+
+          {/* Recent Datasets Table */}
+          <section className="rounded-xl bg-[#0c1322] border border-[#1c283f] p-4 mb-4" data-purpose="recent-datasets-section">
+            <div className="flex items-center justify-between mb-3.5">
+              <h2 className="text-xs font-semibold text-white tracking-wide">Recent Datasets</h2>
+              <button onClick={() => setSelectedFilter("All")} className="text-xs font-medium text-cyan-400 hover:text-cyan-300 transition">
+                View All
+              </button>
             </div>
-          ))}
-        </div>
-        <button
-          className="w-full flex items-center justify-center gap-2 py-2.5 rounded-lg font-semibold text-xs transition"
-          style={{ background: "var(--cyan)", color: "var(--canvas)", boxShadow: "0 0 15px var(--cyan-glow)" }}
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="border-b border-[#1c283f] text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
+                    <th className="py-2.5 px-3">Name</th>
+                    <th className="py-2.5 px-3">Type</th>
+                    <th className="py-2.5 px-3">Resolution</th>
+                    <th className="py-2.5 px-3">Region</th>
+                    <th className="py-2.5 px-3">Date Added</th>
+                    <th className="py-2.5 px-3">Size</th>
+                    <th className="py-2.5 px-3 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="text-xs divide-y divide-slate-800/60 font-normal">
+                  {DATASETS.map((ds) => (
+                    <tr
+                      key={ds.id}
+                      onClick={() => setSelectedDataset(ds)}
+                      className="hover:bg-slate-800/30 transition cursor-pointer"
+                    >
+                      <td className="py-3 px-3">
+                        <div className="flex items-center gap-2.5">
+                          <div className={`w-7 h-7 rounded ${ds.cropClass} shrink-0 border border-slate-700`} />
+                          <span className="font-medium text-slate-100">{ds.name}</span>
+                        </div>
+                      </td>
+                      <td className="py-3 px-3">
+                        <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-medium border ${ds.typeColor}`}>
+                          {ds.type}
+                        </span>
+                      </td>
+                      <td className="py-3 px-3 text-slate-300">{ds.resolution}</td>
+                      <td className="py-3 px-3 text-slate-300">{ds.region}</td>
+                      <td className="py-3 px-3 text-slate-400">{ds.dateAdded}</td>
+                      <td className="py-3 px-3 text-slate-300 font-mono text-[11px]">{ds.size}</td>
+                      <td className="py-3 px-3 text-right">
+                        <button className="text-slate-400 hover:text-white p-1">⋮</button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </main>
+
+        {/* Right Detail Panel */}
+        <aside
+          className="w-[360px] border-l border-[#1c283f] bg-[#070c17] overflow-y-auto shrink-0 flex flex-col p-4 select-none"
+          data-purpose="dataset-detail-panel"
         >
-          Open in Analysis
-        </button>
-      </aside>
+          {/* Preview Carousel Card */}
+          <div className="relative rounded-xl overflow-hidden h-52 sat-preview-delhi-main border border-[#1c283f] mb-4 group shadow-lg">
+            <div className="absolute top-2.5 right-2.5 z-10 px-2 py-0.5 rounded bg-black/60 backdrop-blur text-[10px] font-semibold text-white border border-white/10">
+              {carouselIndex}/4
+            </div>
+            <button
+              onClick={() => setCarouselIndex((prev) => (prev > 1 ? prev - 1 : 4))}
+              className="absolute left-2 top-1/2 -translate-y-1/2 z-10 w-6 h-6 rounded-full bg-black/60 hover:bg-black/80 flex items-center justify-center text-white border border-white/10 transition"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path d="M15 19l-7-7 7-7" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" />
+              </svg>
+            </button>
+            <button
+              onClick={() => setCarouselIndex((prev) => (prev < 4 ? prev + 1 : 1))}
+              className="absolute right-2 top-1/2 -translate-y-1/2 z-10 w-6 h-6 rounded-full bg-black/60 hover:bg-black/80 flex items-center justify-center text-white border border-white/10 transition"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path d="M9 5l7 7-7 7" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" />
+              </svg>
+            </button>
+          </div>
+
+          {/* Detail Header */}
+          <div className="mb-3">
+            <div className="flex items-start justify-between gap-2 mb-1">
+              <h2 className="text-sm font-bold text-white leading-tight">{selectedDataset.name}</h2>
+              <span className={`px-2 py-0.5 rounded text-[10px] font-medium border shrink-0 ${selectedDataset.typeColor}`}>
+                {selectedDataset.type}
+              </span>
+            </div>
+            <p className="text-[11px] text-slate-400">{selectedDataset.source}</p>
+          </div>
+
+          {/* Quick Specs Row */}
+          <div className="flex items-center gap-3 text-[11px] text-slate-300 pb-3 mb-3 border-b border-[#1c283f]">
+            <span className="flex items-center gap-1">
+              <svg className="w-3.5 h-3.5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <circle cx="12" cy="12" r="10" />
+                <polyline points="12 6 12 12 16 14" />
+              </svg>
+              {selectedDataset.resolution}
+            </span>
+            <span className="flex items-center gap-1">
+              <svg className="w-3.5 h-3.5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" />
+              </svg>
+              {selectedDataset.format}
+            </span>
+            <span className="text-slate-400">{selectedDataset.years}</span>
+          </div>
+
+          {/* Location Badge */}
+          <div className="mb-3">
+            <span className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded bg-slate-800/80 text-cyan-300 border border-slate-700">
+              <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path d="M12 21s-6-5.33-6-10a6 6 0 0112 0c0 4.67-6 10-6 10z" />
+              </svg>
+              {selectedDataset.region}
+            </span>
+          </div>
+
+          {/* Text Description */}
+          <p className="text-[11px] text-slate-400 leading-relaxed mb-4">
+            {selectedDataset.desc || "High-resolution optical imagery for remote sensing and land use classification."}
+          </p>
+
+          {/* Dataset Information List */}
+          <div className="space-y-2 mb-5">
+            <h3 className="text-[11px] font-bold text-slate-300 uppercase tracking-wider mb-2">Dataset Information</h3>
+            <div className="flex justify-between text-xs py-0.5 border-b border-slate-900">
+              <span className="text-slate-400">Source</span>
+              <span className="text-slate-200 font-medium">{selectedDataset.source.split("·")[0].trim()}</span>
+            </div>
+            <div className="flex justify-between text-xs py-0.5 border-b border-slate-900">
+              <span className="text-slate-400">Sensor</span>
+              <span className="text-slate-200 font-medium">{selectedDataset.source.split("·")[1]?.trim() || "Multi"}</span>
+            </div>
+            <div className="flex justify-between text-xs py-0.5 border-b border-slate-900">
+              <span className="text-slate-400">Bands</span>
+              <span className="text-slate-200 font-medium">{selectedDataset.bands || "Optical RGB-NIR"}</span>
+            </div>
+            <div className="flex justify-between text-xs py-0.5 border-b border-slate-900">
+              <span className="text-slate-400">Projection</span>
+              <span className="text-slate-200 font-medium">{selectedDataset.projection || "WGS 84 / UTM"}</span>
+            </div>
+            <div className="flex justify-between text-xs py-0.5 border-b border-slate-900">
+              <span className="text-slate-400">Size</span>
+              <span className="text-slate-200 font-medium font-mono">{selectedDataset.size}</span>
+            </div>
+            <div className="flex justify-between text-xs py-0.5 border-b border-slate-900">
+              <span className="text-slate-400">Files</span>
+              <span className="text-slate-200 font-medium">{selectedDataset.files || "12 files"}</span>
+            </div>
+            <div className="flex justify-between text-xs py-0.5">
+              <span className="text-slate-400">License</span>
+              <span className="text-slate-200 font-medium">{selectedDataset.license || "Open Data (CC BY 4.0)"}</span>
+            </div>
+          </div>
+
+          {/* Action Buttons */}
+          <div className="space-y-2 mb-6" data-purpose="detail-actions">
+            <Link
+              href={`/analysis?dataset=${encodeURIComponent(selectedDataset.id)}`}
+              className="w-full flex items-center justify-center gap-2 py-2.5 rounded-lg bg-cyan-400 hover:bg-cyan-300 text-slate-950 font-semibold text-xs transition shadow-[0_0_15px_rgba(6,182,212,0.3)]"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
+                <path d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+              <span>Open in Analysis</span>
+            </Link>
+            <button
+              onClick={() => alert(`Starting download for ${selectedDataset.name}`)}
+              className="w-full flex items-center justify-center gap-2 py-2.5 rounded-lg bg-[#0c1322] hover:bg-slate-800 border border-[#1c283f] text-slate-200 text-xs font-medium transition"
+            >
+              <svg className="w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" />
+              </svg>
+              <span>Download Dataset</span>
+            </button>
+          </div>
+
+          {/* Related Datasets Section */}
+          <div>
+            <h3 className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2.5">Related Datasets</h3>
+            <div className="space-y-2.5">
+              {DATASETS.filter((d) => d.id !== selectedDataset.id)
+                .slice(0, 3)
+                .map((rel) => (
+                  <div
+                    key={rel.id}
+                    onClick={() => setSelectedDataset(rel)}
+                    className="flex items-center justify-between p-2 rounded-lg bg-[#0c1322] border border-[#1c283f] hover:border-slate-700 transition cursor-pointer"
+                  >
+                    <div className="flex items-center gap-2.5">
+                      <div className={`w-10 h-10 rounded ${rel.cropClass} shrink-0 border border-slate-700`} />
+                      <div>
+                        <p className="text-xs font-medium text-slate-100">{rel.name}</p>
+                        <p className="text-[10px] text-slate-400 mt-0.5">
+                          {rel.resolution} · {rel.years}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <span className={`px-1.5 py-0.5 rounded text-[9px] font-medium border ${rel.typeColor}`}>
+                        {rel.type}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+            </div>
+          </div>
+        </aside>
+      </div>
     </div>
   );
 }
