@@ -1,0 +1,33 @@
+{
+  "experiment": "changeformer_v6_levir_upstream_adamw20_seed42",
+  "checkpoint": "C:\\SatQuery_CF\\ChangeFormer\\runs\\changeformer_v6_levir_upstream_adamw20_seed42\\checkpoints\\best.pt",
+  "checkpoint_epoch": 20,
+  "seed": 42,
+  "model": "ChangeFormerV6",
+  "embed_dim": 256,
+  "parameter_count": 41026674,
+  "image_size": 256,
+  "inference_output": "outputs[-1]",
+  "threshold_selection_dataset": "validation",
+  "selection_metric": "f1",
+  "selection_tie_breaker_1": "iou",
+  "selection_tie_breaker_2": "closest_to_0.5",
+  "threshold_grid": {
+    "start": 0.05,
+    "stop": 0.95,
+    "step": 0.005
+  },
+  "frozen_threshold": 0.4349999999999998,
+  "validation_metrics_at_frozen_threshold": {
+    "threshold": 0.4349999999999998,
+    "accuracy": 0.9877951890230179,
+    "precision": 0.8626584082816277,
+    "recall": 0.8434546834842547,
+    "f1": 0.8529484689190303,
+    "iou": 0.7436008285654092,
+    "tp": 2375386,
+    "tn": 63914427,
+    "fp": 378179,
+    "fn": 440872
+  }
+}

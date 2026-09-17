@@ -28,14 +28,11 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from backend.app.ml.adapters.grounding_dino import GroundingDINOAdapter
-from backend.app.ml.adapters.locate_anything import LocateAnythingAdapter
 from backend.app.ml.adapters.sam2 import SAM2Adapter
 from backend.app.workflows.grounding import run_grounding_pipeline
 
-# Per-model benchmark configuration. The default ("grounding_dino") is
-# unchanged for backward compatibility. "locate_anything" exercises the
-# LocateAnythingAdapter as a drop-in grounding adapter inside the production
-# pipeline (locate_anything.py emits the same xyxy/score/label schema).
+# Per-model benchmark configuration. (LocateAnything-3B was removed in 2026-09;
+# see project/qna.md Q-021..Q-023.)
 _MODEL_BENCH_CONFIG = {
     "grounding_dino": {
         "adapter_factory": GroundingDINOAdapter,
@@ -43,13 +40,6 @@ _MODEL_BENCH_CONFIG = {
         "models": ["IDEA-Research/grounding-dino-base", "facebook/sam2.1-hiera-small"],
         "detailed_name": None,   # timestamped default
         "summary_name": "vrsbench_grounding_summary.json",
-    },
-    "locate_anything": {
-        "adapter_factory": LocateAnythingAdapter,
-        "pipeline": "LocateAnything-3B + V4 Reasoning + SAM2",
-        "models": ["nvidia/LocateAnything-3B", "facebook/sam2.1-hiera-small"],
-        "detailed_name": "locate_anything_3b_metrics.json",
-        "summary_name": "locate_anything_3b_summary.json",
     },
 }
 
@@ -214,10 +204,6 @@ def evaluate_grounding_vrsbench(
 ) -> Dict[str, Any]:
     """
     Executes the production grounding pipeline over VRSBench records and computes metrics.
-
-    Pass ``model_name="locate_anything"`` to evaluate the LocateAnything-3B adapter
-    as a drop-in grounding detector (LocateAnything must have a CUDA GPU; the
-    default ``grounding_dino`` path is unchanged for backward compatibility).
     """
     if model_name not in _MODEL_BENCH_CONFIG:
         raise ValueError(f"Unknown --model '{model_name}'. Choose from {list(_MODEL_BENCH_CONFIG)}.")
@@ -444,8 +430,7 @@ def main():
         type=str,
         default="grounding_dino",
         choices=list(_MODEL_BENCH_CONFIG.keys()),
-        help="Grounding detector model to benchmark (default: grounding_dino). "
-        "Use 'locate_anything' to evaluate LocateAnything-3B (requires CUDA).",
+        help="Grounding detector model to benchmark (default: grounding_dino).",
     )
     parser.add_argument(
         "--max-samples",

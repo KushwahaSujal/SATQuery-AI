@@ -32,6 +32,34 @@ from backend.app.exceptions import InvalidInputError, InferenceError
 from backend.app.logging import logger
 
 
+
+def _mask_fits_box(mask: Any, box_2d: List[float], min_inside: float = 0.5, min_iou: float = 0.3) -> bool:
+    """True when a binary mask belongs to the object in ``box_2d`` ([ymin, xmin, ymax, xmax], normalised).
+
+    SAM 2 video propagation follows one object. A frame's propagated mask can therefore sit on a
+    different object than that frame's own detection box.
+    """
+    if mask is None:
+        return False
+    m = np.asarray(mask).squeeze() > 0
+    if m.ndim != 2 or not m.any():
+        return False
+    h, w = m.shape
+    ymin, xmin, ymax, xmax = box_2d
+    x1, y1 = max(0, int(xmin * w)), max(0, int(ymin * h))
+    x2, y2 = min(w, int(round(xmax * w))), min(h, int(round(ymax * h)))
+    if x2 <= x1 or y2 <= y1:
+        return False
+    inside = m[y1:y2, x1:x2].sum() / m.sum()
+    ys, xs = np.nonzero(m)
+    mx1, my1, mx2, my2 = xs.min(), ys.min(), xs.max() + 1, ys.max() + 1
+    ix = max(0, min(x2, mx2) - max(x1, mx1))
+    iy = max(0, min(y2, my2) - max(y1, my1))
+    inter = ix * iy
+    union = (x2 - x1) * (y2 - y1) + (mx2 - mx1) * (my2 - my1) - inter
+    return inside >= min_inside and union > 0 and inter / union >= min_iou
+
+
 class VideoAnalysisWorkflow:
     """
     Production workflow for video analysis and important-moment flagging.
@@ -322,19 +350,32 @@ class VideoAnalysisWorkflow:
                                     if pos in frame_by_pos
                                 }
                                 for det in detections:
-                                    if det.frame_index in by_frame:
-                                        res_dict = by_frame[det.frame_index]
+                                    res_dict = by_frame.get(det.frame_index)
+                                    # Attach the tracked object's mask only where it is this
+                                    # detection's object; otherwise the keyframe showed the box on
+                                    # one car and the outline on another (and the event score used
+                                    # the other object's SAM score).
+                                    if res_dict is not None and _mask_fits_box(res_dict.get("mask"), det.box_2d):
                                         det.mask = res_dict.get("mask")
                                         det.segmentation_score = float(res_dict.get("score", 0.90))
-                            else:
-                                # Documented fallback: apply SAM 2 image segmentation on peak anchor
+
+                            # Detections without a matching propagated mask (a different object, or
+                            # propagation failed): SAM 2 image segmentation on their own box.
+                            unmatched = [d for d in detections if d.mask is None and d.image is not None]
+                            for det in unmatched:
                                 img_res = sam2_adapter.predict({
-                                    "image_pil": anchor_det.image,
-                                    "boxes": [anchor_det.box_2d]
+                                    "image_pil": det.image,
+                                    "boxes": [det.box_2d]
                                 })
                                 if img_res.masks:
-                                    anchor_det.mask = img_res.masks[0].get("binary_mask")
-                                    anchor_det.segmentation_score = float(img_res.masks[0].get("score", 0.85))
+                                    det.mask = img_res.masks[0].get("binary_mask")
+                                    det.segmentation_score = float(img_res.masks[0].get("score", 0.85))
+                            if unmatched:
+                                add_trace(
+                                    "Segmented detections not covered by the tracked object",
+                                    model="sam2",
+                                    details=f"{len(unmatched)} of {len(detections)} detections segmented on their own box.",
+                                )
 
                         finally:
                             shutil.rmtree(temp_frames_dir, ignore_errors=True)

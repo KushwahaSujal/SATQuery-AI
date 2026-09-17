@@ -81,25 +81,6 @@ models:
     config_path: "checkpoints/sam2/sam2_hiera_b+.yaml"
     device: "auto"
 
-  locate_anything:
-    name: "LocateAnything"
-    version: "3B"
-    task: "grounding"
-    supported_tasks:
-      - "single_image_grounding"
-    supported_modalities:
-      - "optical"
-      - "multispectral"
-      - "sar"
-    input_count: 1
-    input_relationship: "single"
-    enabled: true
-    checkpoint_path: "checkpoints/locate_anything_3b"
-    model_id: "nvidia/LocateAnything-3B"
-    device: "auto"
-    box_threshold: 0.35
-    text_threshold: 0.25
-
   changeformer:
     name: "ChangeFormer"
     version: "v6"
@@ -114,7 +95,7 @@ models:
     input_relationship: "temporal"
     enabled: true
     checkpoint_path: "checkpoints/changeformer/changeformer_v6_levir_levircd256_epoch20_best.pt"
-    # Frozen on LEVIR-CD validation, never tuned on test (reports/frozen_validation_threshold.json).
+    # Frozen on LEVIR-CD validation, never tuned on test (docs/models/changeformer/reports/frozen_validation_threshold.json).
     threshold: 0.435
     # Scenes up to this side run in one native pass; larger ones are windowed at this size.
     max_native_side: 1024

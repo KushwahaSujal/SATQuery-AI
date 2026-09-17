@@ -11,7 +11,6 @@ from backend.app.ml.adapters.general_rs_vlm import GeneralRSVLMAdapter
 from backend.app.ml.adapters.scene_vlm import SceneVLMAdapter
 from backend.app.ml.adapters.remoteclip import RemoteCLIPAdapter
 from backend.app.ml.adapters.bigearthnet import BigEarthNetMultimodalAdapter
-from backend.app.ml.adapters.locate_anything import LocateAnythingAdapter
 from backend.app.schemas.models import ModelCapabilityInfo
 from backend.app.config import settings
 from backend.app.logging import logger
@@ -26,7 +25,6 @@ class ModelRegistry:
     ADAPTER_CLASSES: Dict[str, Type[BaseModelAdapter]] = {
         "grounding_dino": GroundingDINOAdapter,
         "sam2": SAM2Adapter,
-        "locate_anything": LocateAnythingAdapter,
         "changeformer": ChangeFormerAdapter,
         "cdvqa": CDVQAAdapter,
         "dofa": DOFAAdapter,
@@ -55,15 +53,6 @@ class ModelRegistry:
             "input_requirements": {"image": "RGB (H, W, 3)", "box": "[x1, y1, x2, y2]"},
             "output_schema": {"mask": "ndarray (H, W) bool", "score": "float"},
             "device_requirements": {"min_vram_gb": 3.0, "preferred": "cuda"},
-        },
-        "locate_anything": {
-            "family": "LocateAnything",
-            "source": "nvidia/LocateAnything-3B",
-            "license": "NVIDIA Research (non-commercial)",
-            "capabilities": ["open_vocabulary_grounding", "referring_expression_grounding", "multi_object_detection"],
-            "input_requirements": {"image": "RGB (H, W, 3)", "text_prompt": "natural-language query/string"},
-            "output_schema": {"boxes": "List[{xyxy:[x1,y1,x2,y2](px), box_2d:[ymin,xmin,ymax,xmax], score:float, label:str}]"},
-            "device_requirements": {"min_vram_gb": 8.0, "preferred": "cuda"},
         },
         "changeformer": {
             "family": "ChangeFormerV6",

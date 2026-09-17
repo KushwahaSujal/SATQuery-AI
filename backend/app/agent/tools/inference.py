@@ -80,14 +80,9 @@ def run_grounding(state: AgentState) -> None:
     from backend.app.schemas.models import ModelResult
 
     meta = state.metadata[0] if state.metadata else None
-    # Use "auto" mode: GroundingDINO first, LocateAnything fallback when empty.
-    grounding_model = "auto"
-    if "locate_anything" in state.selected_models:
-        grounding_model = "locate_anything"
     pipeline_res = run_grounding_pipeline(
         image=state.image_paths[0],
         query=state.query,
-        grounding_model=grounding_model,
         aoi_mask=state.aoi.mask if state.aoi is not None else None
     )
 

@@ -1,0 +1,103 @@
+{
+  "experiment": "changeformer_v6_levir_upstream_adamw20_seed42",
+  "checkpoint": "C:\\SatQuery_CF\\ChangeFormer\\runs\\changeformer_v6_levir_upstream_adamw20_seed42\\checkpoints\\best.pt",
+  "checkpoint_epoch": 20,
+  "model": "ChangeFormerV6",
+  "embed_dim": 256,
+  "parameter_count": 41026674,
+  "dataset": "LEVIR-CD-256",
+  "split": "test",
+  "threshold": 0.4349999999999998,
+  "threshold_source": "validation",
+  "test_threshold_optimization": false,
+  "selected_scenes": [
+    {
+      "category": "no_change",
+      "dataset_index": 0,
+      "ground_truth_changed_pixels": 0,
+      "predicted_changed_pixels": 0,
+      "max_probability": 0.11692385375499725,
+      "mean_probability": 0.0017787470715120435,
+      "metrics": {
+        "accuracy": 1.0,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "iou": 0.0,
+        "tp": 0,
+        "tn": 65536,
+        "fp": 0,
+        "fn": 0,
+        "gt_changed_pixels": 0,
+        "predicted_changed_pixels": 0
+      },
+      "figure": "C:\\SatQuery_CF\\ChangeFormer\\runs\\changeformer_v6_levir_upstream_adamw20_seed42\\qualitative_final\\scene_no_change.png"
+    },
+    {
+      "category": "large_change",
+      "dataset_index": 3,
+      "ground_truth_changed_pixels": 13189,
+      "predicted_changed_pixels": 12875,
+      "max_probability": 0.9999244213104248,
+      "mean_probability": 0.19473566114902496,
+      "metrics": {
+        "accuracy": 0.962432861328125,
+        "precision": 0.9165825242718446,
+        "recall": 0.8947607855030707,
+        "f1": 0.9055402087170041,
+        "iou": 0.8273855430133913,
+        "tp": 11801,
+        "tn": 51273,
+        "fp": 1074,
+        "fn": 1388,
+        "gt_changed_pixels": 13189,
+        "predicted_changed_pixels": 12875
+      },
+      "figure": "C:\\SatQuery_CF\\ChangeFormer\\runs\\changeformer_v6_levir_upstream_adamw20_seed42\\qualitative_final\\scene_large_change.png"
+    },
+    {
+      "category": "medium_change",
+      "dataset_index": 19,
+      "ground_truth_changed_pixels": 2553,
+      "predicted_changed_pixels": 2603,
+      "max_probability": 0.9993299245834351,
+      "mean_probability": 0.04282432049512863,
+      "metrics": {
+        "accuracy": 0.994964599609375,
+        "precision": 0.927007299270073,
+        "recall": 0.945162553858206,
+        "f1": 0.9359968968192396,
+        "iou": 0.8796937659496901,
+        "tp": 2413,
+        "tn": 62793,
+        "fp": 190,
+        "fn": 140,
+        "gt_changed_pixels": 2553,
+        "predicted_changed_pixels": 2603
+      },
+      "figure": "C:\\SatQuery_CF\\ChangeFormer\\runs\\changeformer_v6_levir_upstream_adamw20_seed42\\qualitative_final\\scene_medium_change.png"
+    },
+    {
+      "category": "small_change",
+      "dataset_index": 32,
+      "ground_truth_changed_pixels": 382,
+      "predicted_changed_pixels": 355,
+      "max_probability": 0.8953256011009216,
+      "mean_probability": 0.0053014205768704414,
+      "metrics": {
+        "accuracy": 0.9991607666015625,
+        "precision": 0.9605633802816902,
+        "recall": 0.8926701570680629,
+        "f1": 0.9253731343283582,
+        "iou": 0.8611111111111112,
+        "tp": 341,
+        "tn": 65140,
+        "fp": 14,
+        "fn": 41,
+        "gt_changed_pixels": 382,
+        "predicted_changed_pixels": 355
+      },
+      "figure": "C:\\SatQuery_CF\\ChangeFormer\\runs\\changeformer_v6_levir_upstream_adamw20_seed42\\qualitative_final\\scene_small_change.png"
+    }
+  ]
+}
