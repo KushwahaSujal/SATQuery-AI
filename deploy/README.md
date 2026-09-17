@@ -167,7 +167,11 @@ Switch back to a local GPU backend by entering `http://localhost:8000` with an e
 
 | Measurement | Value |
 |---|---|
-| Scene model folder size | _filled in during Task 6_ |
-| Volume total (`modal volume ls`) | _filled in during Task 7_ |
-| Cold start (health, after idle) | _filled in during Task 9_ |
-| Warm: mask airplanes / change question / find red car | _filled in during Task 9_ |
+| Scene model folder size | 2.7 GB (`model.safetensors` 2,874,045,174 bytes), 2026-09-17 |
+| Volume contents (`modal volume ls`) | 29 files under `/checkpoints` (Qwen 2.7 GiB, RemoteCLIP 577 MiB, ChangeFormer 470 MiB, DOFA 527 MiB, CDVQA 54 MiB, BigEarthNet 90 MiB, optical-SAR 29 MiB) + HF cache (Grounding DINO base, SAM 2.1 small); sizes checked against local copies |
+| Cold start (first `/api/health` after deploy) | 23.6 s, `device: cuda` (T4) |
+| First use of each model (container up, models not loaded) | mask airplanes 47.1 s · mask white houses 32.4 s · scene question 49.2 s · change question 115.0 s · find red car 105.4 s |
+| Warm: mask airplanes / mask white houses / scene question / change question / find red car | 22.8 s / 24.3 s / 20.9 s / 91.7 s / 110.4 s (includes upload from India and the result zip download: 1.3 / 1.6 / 1.0 / 15.6 / 2.4 MB) |
+| Warm `/api/health` | 2.2–2.4 s |
+
+Measured 2026-09-17 from the RTX 3070 machine with `CUDA_VISIBLE_DEVICES=""`, `scripts/cloud_smoke.py`; all written answers came from `gemini:gemini-3.5-flash-lite`.

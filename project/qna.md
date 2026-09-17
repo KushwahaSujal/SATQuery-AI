@@ -2373,3 +2373,73 @@ scorer marking 'Five' wrong against '5', but we haven't corrected for it. Everyw
 23.5 % overall, and captions went from one word to real descriptions. Counting in our pipeline is done by the
 detector and segmenter, which give an instance count with a mask per object; the scene model is for describing the
 scene, not for counting."
+
+---
+
+## Q-029 · SatQuery AI runs on a Modal T4: deployment, key check, and the five demo prompts end to end
+
+**Recorded** 2026-09-17, `prototype`/`cloud-gpu` at `a4f863e` (`scripts/cloud_smoke.py`), app
+`https://ushnik1p2h3d--satquery-ai-api.modal.run` (Modal workspace `ushnik1p2h3d`, app `satquery-ai`).
+All requests sent from the RTX 3070 machine with `CUDA_VISIBLE_DEVICES=""` — nothing ran on the local GPU.
+
+### 1. Mechanism
+
+1. Weights uploaded to volume `satquery-models` (`modal volume put`, 333 s for Qwen + BigEarthNet; the rest earlier).
+   An upload interrupted by the 11:02 machine freeze was re-sent with `--force` for the folder in flight
+   (BigEarthNet); Qwen had not started. Afterwards, sizes of all 29 files on the volume were compared with the local
+   copies (Modal reports rounded sizes; local sizes rounded the same way): 0 mismatches.
+2. `modal run deploy/modal_app.py::warm_hf_cache` downloaded Grounding DINO base and SAM 2.1 small into the volume's
+   HF cache. Two failed attempts first: local `python-dotenv` missing (needed by `Secret.from_dotenv`), then a
+   Modal-side "image build terminated due to external shut-down"; the third succeeded.
+3. `modal deploy deploy/modal_app.py` (5 s once the image existed). Secrets from `deploy/.env.modal` (gitignored):
+   six per-person `SATQUERY_API_KEYS`, Supabase `DATABASE_URL`, Gemini/NVIDIA keys and model names, `HF_TOKEN`, CORS.
+4. `scripts/cloud_smoke.py <url> <key>` uploads the demo files and runs: mask airplanes, mask white houses, "what is in
+   this image?", "has any new building been constructed?" (LEVIR pair), "find red car" (video); downloads each
+   result zip.
+
+### 2. Measured (verbatim)
+
+- `/api/health` first call after deploy: **200 in 23.6 s**, `device: cuda`, `database_connected: true`,
+  models available: all except `general_rs_vlm` (BLIP, not uploaded since Qwen won — Q-028); `scene_vlm: true`.
+- Auth: no key **401**, wrong key **401**, `?key=é` **401**, valid key → **404** for a non-existent job (2.4 s).
+- Demo prompts (seconds, all `COMPLETED`, all zips HTTP 200):
+
+| Case | first model use | warm | answer source | zip |
+|---|---|---|---|---|
+| mask airplanes | 47.1 | 22.8 | gemini:gemini-3.5-flash-lite | 1.26 MB |
+| mask white houses | 32.4 | 24.3 | gemini:gemini-3.5-flash-lite | 1.64 MB |
+| what is in this image? | 49.2 | 20.9 | gemini:gemini-3.5-flash-lite | 0.98 MB |
+| has any new building been constructed? | 115.0 | 91.7 | gemini:gemini-3.5-flash-lite | 15.6 MB |
+| find red car (video) | 105.4 | 110.4 | — (video path has no writer) | 2.44 MB |
+
+- Answers: airplanes — 9 instances, 13,795 px, mean SAM 2 score 0.876; white houses — 5 instances, 7,599 px, mean
+  0.942; scene — "aerial view of a residential neighborhood featuring houses, streets, and parked cars…"; change —
+  "Yes, building change is detected in the analysed area across 181 regions, covering 11.35% of the area.";
+  video — one flag 15.36–18.72 s (the expected event).
+- Warm `/api/health`: 2.2–2.4 s.
+
+### 3. Blast radius
+
+- **Slow for a live demo on a T4:** change 92 s and video 110 s warm. The times include the upload from India and
+  the result download (change zip 15.6 MB); the split between network and GPU time was not measured. An L4
+  (`SATQUERY_MODAL_GPU=L4`) was not tried.
+- Cold start after 5 idle minutes needs ~24 s before the first request, plus 30–70 s per model on first use —
+  demo day should use `SATQUERY_MIN_CONTAINERS=1` and one warm-up run of each prompt.
+- `max_containers=1`: all six people share one GPU container.
+- The five prompts are the only end-to-end cloud evidence so far; the browser UI against the cloud (plan Task 9
+  step 3) has **not** been run yet.
+- Local machine: the 11:02 hard freeze and a later kernel OOM kill (11:08:28, a 300 MB training process) happened
+  while a parallel session trained a road-segmentation model (≈5 GB RAM with 4 loader workers) on a 15 GB machine.
+  The Modal upload held 1.2 GB during the Qwen file. No cause for the freeze was logged.
+
+### 4. Verification
+
+- Result files: `results/evaluations/cloud_smoke_20260917_1123.json` (first use), `…_1128.json` (warm).
+- Modal run log: `https://modal.com/apps/ushnik1p2h3d/main/deployed/satquery-ai`.
+
+### 5. Defence — "Does this really run without a GPU on the laptop?"
+
+"Yes — every number here was measured from a machine with its GPU hidden from Python. The laptop only uploads the
+image and draws the result; detection, segmentation, change detection and the scene model run on a T4 in Modal. The
+honest cost is time: about 20–25 seconds for a mask or a scene question once warm, and a minute and a half to two
+minutes for change detection and video."
