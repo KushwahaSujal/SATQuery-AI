@@ -1,11 +1,11 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useTheme } from "next-themes";
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import { api } from "@/lib/api";
+import { useTheme } from "@/providers";
 
 interface TopBarProps {
   showBrand?: boolean;
@@ -22,7 +22,7 @@ export default function TopBar({
 }: TopBarProps) {
   const [query, setQuery] = useState("");
   const [focused, setFocused] = useState(false);
-  const { theme, setTheme } = useTheme();
+  const { mode, setMode } = useTheme();
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => { setMounted(true); }, []);
@@ -55,8 +55,8 @@ export default function TopBar({
       {showBrand && (
         <div className="flex items-center gap-3 w-56 shrink-0">
           <Link href="/" className="flex items-center gap-3 group">
-            <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-[var(--cyan)] to-[var(--primary)] flex items-center justify-center shadow-lg shadow-teal-500/20 shrink-0">
-              <svg className="w-4 h-4 text-[var(--canvas)]" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
+            <div className="w-8 h-8 rounded-lg bg-[var(--surface-2)] border border-[var(--border)] flex items-center justify-center shrink-0 group-hover:border-[var(--border-strong)] transition-colors">
+              <svg className="w-4 h-4 text-[var(--primary)]" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
                 <circle cx="12" cy="12" r="9" />
                 <line x1="12" y1="2" x2="12" y2="6" />
                 <line x1="12" y1="18" x2="12" y2="22" />
@@ -66,8 +66,8 @@ export default function TopBar({
             </div>
             <div>
               <div className="flex items-center gap-1.5 leading-none">
-                <span className="text-base font-bold text-[var(--heading)] tracking-tight group-hover:text-[var(--cyan)] transition-colors">SatQuery</span>
-                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-[var(--cyan-glow)] text-[var(--cyan)] border border-[var(--cyan)]/30">AI</span>
+                <span className="text-base font-bold text-[var(--heading)] tracking-tight group-hover:text-[var(--primary)] transition-colors">SatQuery</span>
+                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-[var(--primary-glow)] text-[var(--primary)] border border-[var(--primary)]/30">AI</span>
               </div>
               <p className="text-[9px] text-[var(--text-3)] font-medium tracking-wide mt-0.5">Remote Sensing · Vision</p>
             </div>
@@ -108,14 +108,14 @@ export default function TopBar({
 
       {/* Right Controls */}
       <div className="flex items-center gap-3 ml-auto shrink-0">
-        {/* AI Ready Pulse (real backend health) */}
+        {/* AI Ready Indicator */}
         <div className={`hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-full border ${
           isOnline
-            ? "bg-emerald-500/8 border-emerald-500/20"
-            : "bg-amber-500/8 border-amber-500/20"
+            ? "bg-[var(--green-bg)] border-[var(--green)]/30"
+            : "bg-[var(--amber-bg)] border-[var(--warning)]/30"
         }`}>
-          <span className={`w-1.5 h-1.5 rounded-full ${isOnline ? "bg-emerald-400 animate-pulse" : "bg-amber-400"}`} />
-          <span className={`text-[10px] font-medium ${isOnline ? "text-emerald-400" : "text-amber-400"}`}>
+          <span className={`w-1.5 h-1.5 rounded-full ${isOnline ? "bg-[var(--green)]" : "bg-[var(--warning)]"}`} />
+          <span className={`text-[10px] font-medium ${isOnline ? "text-[var(--green)]" : "text-[var(--warning)]"}`}>
             {isOnline
               ? `AI Ready${modelsTotal > 0 ? ` · ${modelsReady}/${modelsTotal}` : ""}`
               : "Backend offline"}
@@ -125,9 +125,9 @@ export default function TopBar({
         {/* Theme Toggle */}
         <div className="flex items-center bg-[var(--surface-2)] border border-[var(--border)] rounded-full p-0.5">
           <button
-            onClick={() => setTheme("light")}
+            onClick={() => setMode("light")}
             className={`p-1.5 rounded-full transition-all duration-150 ${
-              mounted && theme === "light"
+              mounted && mode === "light"
                 ? "bg-[var(--surface-3)] text-amber-400 shadow-sm"
                 : "text-[var(--text-3)] hover:text-[var(--heading)]"
             }`}
@@ -139,9 +139,9 @@ export default function TopBar({
             </svg>
           </button>
           <button
-            onClick={() => setTheme("dark")}
+            onClick={() => setMode("dark")}
             className={`p-1.5 rounded-full transition-all duration-150 ${
-              mounted && theme !== "light"
+              mounted && mode === "dark"
                 ? "bg-[var(--surface-3)] text-[var(--cyan)] shadow-sm"
                 : "text-[var(--text-3)] hover:text-[var(--heading)]"
             }`}

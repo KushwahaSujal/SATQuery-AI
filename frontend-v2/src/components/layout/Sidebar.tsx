@@ -142,8 +142,8 @@ export default function Sidebar({ hideBrand = false, activeItem, className = "" 
             transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] as [number, number, number, number] }}
             className="flex items-center gap-3 px-2 py-3 mb-3"
           >
-            <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-[var(--cyan)] to-[var(--primary)] flex items-center justify-center shadow-lg shadow-teal-500/20 shrink-0">
-              <svg className="w-4 h-4 text-[var(--canvas)]" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
+            <div className="w-8 h-8 rounded-lg bg-[var(--surface-2)] border border-[var(--border)] flex items-center justify-center shrink-0">
+              <svg className="w-4 h-4 text-[var(--primary)]" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
                 <circle cx="12" cy="12" r="9" />
                 <line x1="12" y1="2" x2="12" y2="6" />
                 <line x1="12" y1="18" x2="12" y2="22" />
@@ -154,7 +154,7 @@ export default function Sidebar({ hideBrand = false, activeItem, className = "" 
             <div>
               <div className="flex items-center gap-1.5 leading-none">
                 <span className="text-base font-bold text-[var(--sidebar-text)] tracking-tight">SatQuery</span>
-                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-[var(--cyan-glow)] text-[var(--cyan)] border border-[var(--cyan)]/30">AI</span>
+                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-[var(--primary-glow)] text-[var(--primary)] border border-[var(--primary)]/30">AI</span>
               </div>
               <p className="text-[9px] text-[var(--sidebar-muted)] font-medium tracking-wide mt-0.5">Remote Sensing · Vision</p>
             </div>
@@ -281,12 +281,11 @@ export default function Sidebar({ hideBrand = false, activeItem, className = "" 
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.5, duration: 0.4 }}
-        className="mt-4 p-3 rounded-xl bg-gradient-to-b from-[var(--surface-2)] to-[var(--surface-3)] border border-[var(--cyan)]/15 relative overflow-hidden"
+        className="mt-4 p-3 rounded-lg bg-[var(--surface-2)] border border-[var(--border)]"
       >
-        <div className="absolute inset-0 opacity-10 bg-[radial-gradient(var(--cyan)_1px,transparent_1px)] [background-size:10px_10px] pointer-events-none" />
-        <div className="relative z-10 flex items-start gap-2.5">
-          <div className="w-7 h-7 rounded-lg bg-[var(--cyan-glow)] border border-[var(--cyan)]/30 flex items-center justify-center shrink-0 mt-0.5">
-            <svg className="w-3.5 h-3.5 text-[var(--cyan)]" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+        <div className="flex items-start gap-2.5">
+          <div className="w-6 h-6 rounded-md bg-[var(--primary-glow)] border border-[var(--primary)]/20 flex items-center justify-center shrink-0 mt-0.5">
+            <svg className="w-3 h-3 text-[var(--primary)]" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
               <path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10Z" />
               <path d="M2 21c0-3 1.85-5.36 5.08-6C9.5 14.52 12 13 13 12" />
             </svg>

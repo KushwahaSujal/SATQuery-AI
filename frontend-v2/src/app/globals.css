@@ -4,95 +4,87 @@
 
 /* ============================================================
    SATQUERY AI — DESIGN TOKEN SYSTEM
-   Dark mode default, light mode via .light class
+   Refined professional design system for geospatial intelligence
    ============================================================ */
 
 :root {
   /* ── Surface hierarchy ── */
-  --canvas:        #020D19;
-  --workspace:     #00111F;
-  --surface:       #011629;
-  --surface-2:     #031C30;
-  --surface-3:     #06243A;
-  --surface-hover: #092E48;
+  --canvas:        #0a0f14;
+  --workspace:     #0d1219;
+  --surface:       #131a24;
+  --surface-2:     #1a2330;
+  --surface-3:     #222c3c;
+  --surface-hover: #2a3648;
 
   /* ── Border ── */
-  --border:        #123A55;
-  --border-strong: #155273;
-  --border-focus:  #168BFF;
+  --border:        #2a3442;
+  --border-strong: #3a4458;
+  --border-focus:  #4a9eff;
 
   /* ── Brand / Interaction ── */
-  --primary:       #168BFF;
-  --primary-bright:#0AA9FF;
-  --primary-pressed:#0668CE;
-  --primary-glow:  rgba(22, 139, 255, 0.18);
+  --primary:       #4a9eff;
+  --primary-bright:#6bb3ff;
+  --primary-pressed:#3a7fd4;
+  --primary-glow:  rgba(74, 158, 255, 0.12);
 
-  /* ── AI / Cyan ── */
-  --cyan:          #00C7D9;
-  --cyan-glow:     rgba(0, 199, 217, 0.12);
-
-  /* ── Teal ── */
-  --teal:          #18C7B5;
-
-  /* ── SAR / Violet ── */
-  --violet:        #7957FF;
-  --violet-bg:     rgba(121, 87, 255, 0.12);
+  /* ── Accent ── */
+  --accent:        #00c2a8;
+  --accent-glow:   rgba(0, 194, 168, 0.12);
 
   /* ── Semantic ── */
-  --green:         #28C98A;
-  --green-bg:      rgba(40, 201, 138, 0.12);
-  --water:         #00C7D9;
-  --water-bg:      rgba(0, 199, 217, 0.10);
-  --warning:       #F5A623;
-  --warning-bg:    rgba(245, 166, 35, 0.12);
-  --error:         #FF4D55;
-  --error-bg:      rgba(255, 77, 85, 0.12);
+  --green:         #34c78b;
+  --green-bg:      rgba(52, 199, 139, 0.10);
+  --amber:         #e8a33d;
+  --amber-bg:      rgba(232, 163, 61, 0.10);
+  --error:         #e05a5a;
+  --error-bg:      rgba(224, 90, 90, 0.10);
 
   /* ── Text ── */
-  --heading:       #F5F9FD;
-  --text:          #D5E2EE;
-  --text-2:        #91A6BA;
-  --text-3:        #60788E;
-  --text-4:        #4A6070;  /* extra shade darker than spec's Text3 */
+  --heading:       #f0f4f9;
+  --text:          #d5dfea;
+  --text-2:        #9aabbc;
+  --text-3:        #6a7a8c;
+  --text-4:        #4a5568;
 
   /* ── Shadows ── */
-  --shadow-sm:     0 0 0 1px var(--border);
-  --shadow-md:     0 0 0 1px var(--border), 0 0 12px rgba(0, 199, 217, 0.06);
-  --shadow-lg:     0 0 0 1px var(--border), 0 0 20px rgba(0, 199, 217, 0.08);
+  --shadow-sm:     0 1px 2px rgba(0, 0, 0, 0.2);
+  --shadow-md:     0 2px 8px rgba(0, 0, 0, 0.25);
+  --shadow-lg:     0 4px 16px rgba(0, 0, 0, 0.3);
+  --shadow-xl:     0 8px 32px rgba(0, 0, 0, 0.35);
 
   /* ── Status badges ── */
-  --status-completed-bg:   #073A31;
-  --status-completed-text: #45D6A1;
-  --status-completed-dot:  #28C98A;
-  --status-processing-bg:  #3A2B0A;
-  --status-processing-text:#F5B94B;
-  --status-processing-dot: #F5A623;
-  --status-failed-bg:      #3B151A;
-  --status-failed-text:    #FF7B82;
-  --status-failed-dot:     #FF4D55;
+  --status-completed-bg:   #0d2f1f;
+  --status-completed-text: #34c78b;
+  --status-completed-dot:  #34c78b;
+  --status-processing-bg:  #2f2208;
+  --status-processing-text:#e8a33d;
+  --status-processing-dot: #e8a33d;
+  --status-failed-bg:      #2f1515;
+  --status-failed-text:    #e05a5a;
+  --status-failed-dot:     #e05a5a;
 
   /* ── Sidebar ── */
-  --sidebar-bg:    #011629;
-  --sidebar-border:#123A55;
-  --sidebar-text:  #D5E2EE;
-  --sidebar-muted: #7891A8;
-  --sidebar-icon:  #9BB2C6;
-  --sidebar-active-bg:   #063B56;
-  --sidebar-active-text: #00C7D9;
+  --sidebar-bg:    #0d1219;
+  --sidebar-border:#1a2330;
+  --sidebar-text:  #d5dfea;
+  --sidebar-muted: #6a7a8c;
+  --sidebar-icon:  #9aabbc;
+  --sidebar-active-bg:   #1a2330;
+  --sidebar-active-text: #4a9eff;
 
   /* ── Topbar ── */
-  --topbar-bg:     #01111F;
-  --input-bg:      #031C30;
-  --input-border:  #123A55;
-  --kbd-bg:        #06243A;
+  --topbar-bg:     #0d1219;
+  --input-bg:      #131a24;
+  --input-border:  #2a3442;
+  --kbd-bg:        #1a2330;
 
   /* ── Chat ── */
-  --chat-user-bg:  #06243A;
-  --chat-user-bd:  #123A55;
+  --chat-user-bg:  #1a2330;
+  --chat-user-bd:  #2a3442;
 
   /* ── Image viewer ── */
-  --viewer-toolbar:#031C30;
-  --viewer-ctrl:   #06243A;
+  --viewer-toolbar:#131a24;
+  --viewer-ctrl:   #1a2330;
 
   /* ── Font ── */
   --font-sans: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
@@ -104,7 +96,6 @@
   --r-md: 8px;
   --r-lg: 12px;
   --r-xl: 16px;
-  --r-2xl: 20px;
   --r-full: 999px;
 
   /* ── Motion ── */
@@ -114,16 +105,10 @@
   --ease: cubic-bezier(.2,.8,.2,1);
 
   /* ── Overlay ── */
-  --scrim: rgba(2, 13, 25, 0.72);
+  --scrim: rgba(10, 15, 20, 0.72);
 
   /* ============================================================
      SHORTHAND TOKEN ALIASES
-     Map the short-form primitive tokens (--s1/--b0/--t0/--accent)
-     onto the canonical long-form system so the primitive UI library
-     (Button, Card, Badge, Tabs, Separator, AppHeader, Rail) and
-     visual-effect components (GlowCard, AnimatedGradientText,
-     ParticleBackground, BorderBeam) render correctly without
-     duplication.
      ============================================================ */
 
   /* Surfaces */
@@ -147,7 +132,6 @@
   --tx3: var(--text-2);
 
   /* Accent / brand */
-  --accent: var(--primary);
   --accent-text: var(--heading);
   --accent-dim: var(--primary-glow);
 
@@ -156,8 +140,8 @@
   --red-dim: var(--error-bg);
   --green: var(--green);
   --green-dim: var(--green-bg);
-  --amber: var(--warning);
-  --amber-dim: var(--warning-bg);
+  --warning: var(--amber);
+  --warning-bg: var(--amber-bg);
 }
 
 /* ============================================================
@@ -166,130 +150,109 @@
 
 .light {
   /* ── Surface hierarchy ── */
-  --canvas:        #F7FAFD;
-  --workspace:     #F5F9FD;
-  --surface:       #FFFFFF;
-  --surface-2:     #F5F9FD;
-  --surface-3:     #EEF6FF;
-  --surface-hover: #E7F2FF;
+  --canvas:        #f7f9fc;
+  --workspace:     #f2f5f9;
+  --surface:       #ffffff;
+  --surface-2:     #f2f5f9;
+  --surface-3:     #e8edf4;
+  --surface-hover: #dfe6f0;
 
   /* ── Border ── */
-  --border:        #DCEAF5;
-  --border-strong: #C8DFF0;
-  --border-focus:  #087FF5;
+  --border:        #d1dae4;
+  --border-strong: #b8c4d4;
+  --border-focus:  #4a9eff;
 
   /* ── Brand / Interaction ── */
-  --primary:       #087FF5;
-  --primary-bright:#168BFF;
-  --primary-pressed:#0668CE;
-  --primary-glow:  rgba(8, 127, 245, 0.12);
+  --primary:       #3a7fd4;
+  --primary-bright:#4a9eff;
+  --primary-pressed:#2a6ab8;
+  --primary-glow:  rgba(74, 158, 255, 0.10);
 
-  /* ── AI / Cyan ── */
-  --cyan:          #00AFC5;
-  --cyan-glow:     rgba(0, 175, 197, 0.10);
-
-  /* ── Teal ── */
-  --teal:          #12BFA5;
-
-  /* ── SAR / Violet ── */
-  --violet:        #7356E8;
-  --violet-bg:     #F0ECFF;
+  /* ── Accent ── */
+  --accent:        #00a08c;
+  --accent-glow:   rgba(0, 160, 140, 0.10);
 
   /* ── Semantic ── */
-  --green:         #20B77A;
-  --green-bg:      #E9FAF3;
-  --water:         #00B8D4;
-  --water-bg:      #E8FAFD;
-  --warning:       #F0A51A;
-  --warning-bg:    #FFF7E5;
-  --error:         #EF4D56;
-  --error-bg:      #FFF0F1;
+  --green:         #22a06b;
+  --green-bg:      rgba(34, 160, 107, 0.08);
+  --amber:         #d4880f;
+  --amber-bg:      rgba(212, 136, 15, 0.08);
+  --error:         #d04a4a;
+  --error-bg:      rgba(208, 74, 74, 0.08);
 
   /* ── Text ── */
-  --heading:       #092B61;
-  --text:          #123B70;
-  --text-2:        #52739A;
-  --text-3:        #7B94AE;
-  --text-4:        #A9BBCB;
+  --heading:       #0a1628;
+  --text:          #1a2c42;
+  --text-2:        #4a5c72;
+  --text-3:        #6a7a8c;
+  --text-4:        #9aabbc;
 
   /* ── Shadows ── */
-  --shadow-sm:     0 4px 16px rgba(20, 73, 120, 0.06);
-  --shadow-md:     0 8px 30px rgba(20, 73, 120, 0.08);
-  --shadow-lg:     0 8px 24px rgba(20, 73, 120, 0.10);
+  --shadow-sm:     0 1px 2px rgba(0, 0, 0, 0.04);
+  --shadow-md:     0 2px 8px rgba(0, 0, 0, 0.06);
+  --shadow-lg:     0 4px 16px rgba(0, 0, 0, 0.08);
+  --shadow-xl:     0 8px 32px rgba(0, 0, 0, 0.10);
 
   /* ── Status badges ── */
-  --status-completed-bg:   #E9FAF3;
-  --status-completed-text: #159B69;
-  --status-completed-dot:  #20B77A;
-  --status-processing-bg:  #FFF7E5;
-  --status-processing-text:#B47700;
-  --status-processing-dot: #F0A51A;
-  --status-failed-bg:      #FFF0F1;
-  --status-failed-text:    #C93540;
-  --status-failed-dot:     #EF4D56;
+  --status-completed-bg:   #e8f7f0;
+  --status-completed-text: #22a06b;
+  --status-completed-dot:  #22a06b;
+  --status-processing-bg:  #fdf3e0;
+  --status-processing-text:#d4880f;
+  --status-processing-dot: #d4880f;
+  --status-failed-bg:      #fbeaea;
+  --status-failed-text:    #d04a4a;
+  --status-failed-dot:     #d04a4a;
 
   /* ── Sidebar ── */
-  --sidebar-bg:    #FFFFFF;
-  --sidebar-border:#DCEAF5;
-  --sidebar-text:  #123B70;
-  --sidebar-muted: #6684A3;
-  --sidebar-icon:  #52739A;
-  --sidebar-active-bg:   #E7F2FF;
-  --sidebar-active-text: #087FF5;
+  --sidebar-bg:    #ffffff;
+  --sidebar-border:#d1dae4;
+  --sidebar-text:  #1a2c42;
+  --sidebar-muted: #6a7a8c;
+  --sidebar-icon:  #4a5c72;
+  --sidebar-active-bg:   #e8edf4;
+  --sidebar-active-text: #3a7fd4;
 
   /* ── Topbar ── */
-  --topbar-bg:     #FFFFFF;
-  --input-bg:      #F8FBFE;
-  --input-border:  #DCEAF5;
-  --kbd-bg:        #EEF6FF;
+  --topbar-bg:     #ffffff;
+  --input-bg:      #f7f9fc;
+  --input-border:  #d1dae4;
+  --kbd-bg:        #e8edf4;
 
   /* ── Chat ── */
-  --chat-user-bg:  #EEF6FF;
-  --chat-user-bd:  #DCEAF5;
+  --chat-user-bg:  #e8edf4;
+  --chat-user-bd:  #d1dae4;
 
   /* ── Image viewer ── */
-  --viewer-toolbar:#FFFFFF;
-  --viewer-ctrl:   #F5F9FD;
+  --viewer-toolbar:#ffffff;
+  --viewer-ctrl:   #f2f5f9;
 
   /* ── Overlay ── */
-  --scrim: rgba(15, 23, 42, 0.4);
+  --scrim: rgba(10, 22, 40, 0.4);
 
-  /* ============================================================
-     SHORTHAND TOKEN ALIASES (LIGHT)
-     ============================================================ */
-
-  /* Surfaces */
+  /* Shorthand aliases */
   --s1: var(--surface);
   --s2: var(--surface-2);
   --s3: var(--surface-3);
   --raised: var(--surface-2);
-
-  /* Borders */
   --b0: var(--border);
   --b1: var(--border);
   --b2: var(--border-strong);
   --b3: var(--border-focus);
-
-  /* Text */
   --t0: var(--heading);
   --t1: var(--text);
   --t2: var(--text);
   --t3: var(--text-2);
   --t4: var(--text-3);
   --tx3: var(--text-2);
-
-  /* Accent / brand */
-  --accent: var(--primary);
   --accent-text: var(--heading);
   --accent-dim: var(--primary-glow);
-
-  /* Status */
   --red: var(--error);
   --red-dim: var(--error-bg);
   --green: var(--green);
   --green-dim: var(--green-bg);
-  --amber: var(--warning);
-  --amber-dim: var(--warning-bg);
+  --warning: var(--amber);
+  --warning-bg: var(--amber-bg);
 }
 
 /* ============================================================
@@ -346,24 +309,6 @@ body {
 }
 
 /* ============================================================
-   GLOW UTILITIES
-   ============================================================ */
-
-.glow-primary { box-shadow: 0 0 15px -3px var(--primary-glow); }
-.glow-primary-active { box-shadow: 0 0 20px -2px var(--primary-glow); }
-.glow-primary-text { text-shadow: 0 0 20px var(--primary-glow); }
-.glow-cyan-sm { box-shadow: 0 0 15px -3px var(--cyan-glow); }
-
-.hero-glow-overlay {
-  background: radial-gradient(circle at 80% 25%, var(--cyan-glow) 0%, transparent 65%);
-}
-
-.active-nav-glow {
-  background: linear-gradient(90deg, var(--primary-glow) 0%, transparent 100%);
-  border-left: 3px solid var(--primary);
-}
-
-/* ============================================================
    PANEL PRIMITIVES
    ============================================================ */
 
@@ -400,7 +345,7 @@ body {
 .status-dot-green { background: var(--green); }
 .status-dot-amber { background: var(--warning); }
 .status-dot-red { background: var(--error); }
-.status-dot-cyan { background: var(--cyan); }
+.status-dot-accent { background: var(--accent); }
 .status-dot-muted { background: var(--text-4); }
 
 .status-pill {
@@ -416,24 +361,15 @@ body {
   text-transform: uppercase;
   border: 1px solid transparent;
 }
-.status-pill-green { color: var(--green); background: var(--green-bg); border-color: rgba(32, 183, 122, 0.18); }
-.status-pill-amber { color: var(--warning); background: var(--warning-bg); border-color: rgba(240, 165, 26, 0.18); }
-.status-pill-red { color: var(--error); background: var(--error-bg); border-color: rgba(239, 77, 86, 0.18); }
-.status-pill-cyan { color: var(--cyan); background: var(--cyan-glow); border-color: rgba(0, 175, 197, 0.18); }
+.status-pill-green { color: var(--green); background: var(--green-bg); border-color: rgba(52, 199, 139, 0.15); }
+.status-pill-amber { color: var(--warning); background: var(--warning-bg); border-color: rgba(232, 163, 61, 0.15); }
+.status-pill-red { color: var(--error); background: var(--error-bg); border-color: rgba(224, 90, 90, 0.15); }
+.status-pill-accent { color: var(--accent); background: var(--accent-glow); border-color: rgba(0, 194, 168, 0.15); }
 
 /* ============================================================
    ANIMATIONS
    ============================================================ */
 
-@keyframes pulse-dot {
-  0%, 100% { opacity: 1; transform: scale(1); }
-  50% { opacity: 0.4; transform: scale(0.85); }
-}
-@keyframes pulse-ring {
-  0% { box-shadow: 0 0 0 0 var(--cyan-glow); }
-  70% { box-shadow: 0 0 0 6px transparent; }
-  100% { box-shadow: 0 0 0 0 transparent; }
-}
 @keyframes fade-in {
   from { opacity: 0; transform: translateY(4px); }
   to { opacity: 1; transform: translateY(0); }
@@ -446,55 +382,18 @@ body {
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
 }
-@keyframes shimmer-slide {
-  0% { transform: translateX(-100%); }
-  100% { transform: translateX(100%); }
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
 }
-@property --angle {
-  syntax: "<angle>";
-  initial-value: 0deg;
-  inherits: false;
-}
-@keyframes border-beam {
-  from { --angle: 0deg; }
-  to { --angle: 360deg; }
-}
-@keyframes gradient-x {
-  0%, 100% { background-position: 0% 50%; }
-  50% { background-position: 100% 50%; }
-}
-@keyframes float-y {
-  0%, 100% { transform: translateY(0px); }
-  50% { transform: translateY(-8px); }
-}
-@keyframes ticker-in {
-  from { opacity: 0; transform: translateY(12px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-@keyframes aurora-shift {
-  0%, 100% { background-position: 0% 50%; }
-  50% { background-position: 100% 50%; }
-}
-@keyframes marquee-scroll {
-  from { transform: translateX(0); }
-  to { transform: translateX(calc(-100% - var(--gap))); }
-}
-
 
 .animate-fade-in { animation: fade-in 0.18s ease; }
 .animate-slide-down { animation: slide-down 0.15s cubic-bezier(0.16, 1, 0.3, 1); }
-.animate-pulse-dot { animation: pulse-dot 2s ease-in-out infinite; }
-.animate-pulse-ring { animation: pulse-ring 1.8s ease-out infinite; }
 .animate-spin-smooth { animation: spin-smooth 0.7s linear infinite; }
-.animate-shimmer { animation: shimmer-slide 2s linear infinite; }
-.animate-gradient-x { animation: gradient-x 4s ease infinite; background-size: 200% 200%; }
-.animate-float { animation: float-y 4s ease-in-out infinite; }
-.animate-marquee { animation: marquee-scroll var(--marquee-duration, 30s) linear infinite; }
+.animate-pulse-dot { animation: pulse-dot 2s ease-in-out infinite; }
 
 /* ============================================================
    SHADCN-COMPATIBLE DATA-STATE ANIMATIONS
-   Provides tailwindcss-animate-style classes for Radix UI primitives
-   (Dialog, Tooltip, Select, etc.) without needing the plugin.
    ============================================================ */
 
 @keyframes tw-fade-in  { from { opacity: 0 } to { opacity: 1 } }
@@ -536,7 +435,6 @@ body {
 .data-\[state\=open\]\:slide-in-from-left-1\/2[data-state="open"]      { animation-name: tw-slide-in-from-left-2; }
 .data-\[state\=open\]\:slide-in-from-top-\[48\%\][data-state="open"]     { animation-name: tw-slide-in-from-top-2; }
 
-
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 0.01ms !important;
@@ -546,31 +444,8 @@ body {
 }
 
 /* ============================================================
-   UI DESIGN NEW — PROCEDURAL TEXTURES & GLOW EFFECTS
+   SATELLITE TEXTURE UTILITIES
    ============================================================ */
-
-/* Glow utilities */
-.glow-cyan-text {
-  text-shadow: 0 0 20px rgba(6, 240, 212, 0.45);
-}
-.glow-cyan-sm {
-  box-shadow: 0 0 20px -2px rgba(6, 182, 212, 0.35);
-}
-.hero-glow-overlay {
-  background: radial-gradient(circle at 80% 25%, rgba(0, 213, 190, 0.12) 0%, rgba(10, 17, 31, 0) 65%);
-}
-.active-nav-glow {
-  box-shadow: inset 0 0 15px rgba(6, 182, 212, 0.15), 0 0 10px rgba(6, 182, 212, 0.08);
-}
-.topo-gradient {
-  background: radial-gradient(circle at 100% 100%, rgba(6, 182, 212, 0.15) 0%, rgba(5, 10, 20, 0.8) 70%);
-}
-.contour-lines {
-  background-image: radial-gradient(#14b8a6 1px, transparent 1px), radial-gradient(#06b6d4 1px, transparent 1px);
-  background-size: 24px 24px;
-  background-position: 0 0, 12px 12px;
-  opacity: 0.15;
-}
 
 /* Synthetic Satellite Terrain Textures */
 .sat-preview-delhi-main {
@@ -652,18 +527,6 @@ body {
 .thumb-change-red {
   background: radial-gradient(circle at 60% 40%, #dc2626 0%, #7f1d1d 30%, #14532d 70%, #052e16 100%);
 }
-.hero-map-overlay {
-  background-image: 
-    radial-gradient(ellipse at 30% 40%, rgba(14, 165, 233, 0.45) 0%, transparent 50%),
-    radial-gradient(ellipse at 75% 35%, rgba(239, 68, 68, 0.6) 0%, transparent 45%),
-    radial-gradient(ellipse at 50% 70%, rgba(34, 197, 94, 0.55) 0%, transparent 60%),
-    linear-gradient(135deg, #0f172a 0%, #022c22 40%, #1e1b4b 100%);
-  background-blend-mode: screen, normal;
-}
-.topography-grid {
-  background-image: radial-gradient(circle, rgba(0, 229, 255, 0.1) 1px, transparent 1px);
-  background-size: 16px 16px;
-}
 
 /* Analysis Canvas Simulation */
 .satellite-bg-base {
@@ -688,7 +551,3 @@ body {
   mask-image: radial-gradient(ellipse 70% 60% at 75% 45%, black 40%, transparent 80%);
   -webkit-mask-image: radial-gradient(ellipse 70% 60% at 75% 45%, black 40%, transparent 80%);
 }
-.topographic-lines {
-  background-image: repeating-radial-gradient(circle at 100% 100%, transparent 0, transparent 6px, rgba(6, 182, 212, 0.15) 7px, transparent 8px);
-}
-

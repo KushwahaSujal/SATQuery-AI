@@ -4,6 +4,7 @@
 - Strongly prefers CSS custom properties (var(--token)) over hardcoded Tailwind color classes for theme-able components. Confidence: 0.95
 - Prefers comprehensive semantic token systems covering surfaces, borders, text, shadows, shape/radius, motion, and status colors — organized hierarchically (canvas → workspace → surface → surface-2 → surface-3 → hover). Confidence: 0.9
 - Prefers using `next-themes` with `attribute="class"` for dark/light mode switching in Next.js projects. Confidence: 0.9
+- In the frontend-v2 codebase, theme state is owned by a custom provider (`src/providers.tsx`) whose `useTheme()` returns `{ mode, setMode }` — not `next-themes`' `{ theme, setTheme }`. Components must import the theme hook from `@/providers`; importing `useTheme` from `next-themes` instead compiles fine but silently breaks light/dark switching. Confidence: 0.85
 - Prefers electric blue (#168BFF dark / #087FF5 light) as the primary interaction color, cyan (#00C7D9 / #00AFC5) for AI/analysis accents. Confidence: 0.9
 - Uses semantic remote-sensing color coding: Blue=Optical, Violet=SAR, Green=Vegetation/Gain, Red=Change/Loss, Cyan=Water, Amber=Warning. Confidence: 0.95
 - Prefers subtle blue glow shadows in dark mode (rather than black shadows) and soft blue-tinted shadows in light mode. Confidence: 0.9
@@ -44,3 +45,4 @@
 - Expects list/history views to support checkbox-based multi-select with bulk delete (select individual items or all, then delete selected) — considers this a baseline "professional" UX pattern for any data management table. Confidence: 0.85
 - Prefers rich dropdown/menu styling with SVG icons, category section headers, and active-item checkmarks over minimal compact designs with colored dots and terse labels. Will revert redesigns that strip visual richness in favor of minimalism, even if the minimal version matches a reference implementation. Confidence: 0.85
 - When studying v1 as a reference for v2 migration, wants only the functional/backend integration patterns replicated — not v1's visual styling. v2 should retain its own design identity (icons, categories, richer components) even when v1 used a simpler approach. Confidence: 0.85
+- When requesting a visual redesign or UI overhaul, explicitly expects all existing functionality and branding to be preserved intact — the work should change look and feel only (colors, typography, themes, interactions), never drop features, break wiring, or alter brand identity. Confidence: 0.8
