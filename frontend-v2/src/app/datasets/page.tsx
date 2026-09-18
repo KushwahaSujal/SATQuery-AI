@@ -2,8 +2,13 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { motion } from "framer-motion";
 import Sidebar from "@/components/layout/Sidebar";
 import TopBar from "@/components/layout/TopBar";
+import { SpotlightCard } from "@/components/ui/spotlight-card";
+
+const stagger = { hidden: {}, show: { transition: { staggerChildren: 0.07, delayChildren: 0.05 } } };
+const cardVariant = { hidden: { opacity: 0, y: 16, scale: 0.97 }, show: { opacity: 1, y: 0, scale: 1, transition: { duration: 0.4, ease: [0.22, 1, 0.36, 1] as [number, number, number, number] } } };
 
 interface DatasetItem {
   id: string;
@@ -166,7 +171,7 @@ export default function DatasetsPage() {
   });
 
   return (
-    <div className="bg-[var(--canvas)] text-[var(--text)] antialiased font-sans h-screen overflow-hidden flex flex-col selection:bg-cyan-500/30 selection:text-[var(--cyan)]">
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.35 }} className="bg-[var(--canvas)] text-[var(--text)] antialiased font-sans h-screen overflow-hidden flex flex-col selection:bg-cyan-500/30 selection:text-[var(--cyan)]">
       {/* Full-width TopBar */}
       <TopBar
         showBrand={true}
@@ -306,14 +311,21 @@ export default function DatasetsPage() {
           </div>
 
           {/* Dataset Cards Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 mb-8" data-purpose="dataset-card-grid">
+          <motion.div
+            variants={stagger}
+            initial="hidden"
+            animate="show"
+            className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 mb-8"
+            data-purpose="dataset-card-grid"
+          >
             {filteredDatasets.map((dataset) => {
               const isSelected = selectedDataset.id === dataset.id;
               return (
-                <div
-                  key={dataset.id}
+                <motion.div key={dataset.id} variants={cardVariant}>
+                <SpotlightCard
+                  spotlightColor="rgba(0, 199, 217, 0.06)"
                   onClick={() => setSelectedDataset(dataset)}
-                  className={`rounded-xl bg-[var(--surface-2)] border transition group flex flex-col cursor-pointer overflow-hidden ${
+                  className={`rounded-xl bg-[var(--surface-2)] border transition-all duration-150 group flex flex-col cursor-pointer overflow-hidden ${
                     isSelected ? "border-[var(--cyan)] shadow-[0_0_15px_rgba(6,182,212,0.2)]" : "border-[var(--border)] hover:border-[var(--border-strong)]"
                   }`}
                 >
@@ -367,10 +379,11 @@ export default function DatasetsPage() {
                       </button>
                     </div>
                   </div>
-                </div>
+                </SpotlightCard>
+                </motion.div>
               );
             })}
-          </div>
+          </motion.div>
 
           {/* Recent Datasets Table */}
           <section className="rounded-xl bg-[var(--surface-2)] border border-[var(--border)] p-4 mb-4" data-purpose="recent-datasets-section">
@@ -585,6 +598,6 @@ export default function DatasetsPage() {
           </div>
         </aside>
       </div>
-    </div>
+    </motion.div>
   );
 }

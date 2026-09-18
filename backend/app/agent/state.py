@@ -21,6 +21,7 @@ class AgentState:
     
     status: JobStatus = JobStatus.QUEUED
     task: Optional[TaskType] = None
+    override_task: Optional[str] = None
     workflow_id: Optional[str] = None
     reason: Optional[str] = None  # Observable concise workflow selection reason
     selected_models: List[str] = field(default_factory=list)

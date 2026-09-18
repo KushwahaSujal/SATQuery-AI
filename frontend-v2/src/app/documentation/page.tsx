@@ -2,8 +2,14 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { motion } from "framer-motion";
 import Sidebar from "@/components/layout/Sidebar";
 import TopBar from "@/components/layout/TopBar";
+import { SpotlightCard } from "@/components/ui/spotlight-card";
+import { BorderBeam } from "@/components/ui/border-beam";
+
+const stagger = { hidden: {}, show: { transition: { staggerChildren: 0.08, delayChildren: 0.1 } } };
+const cardVariant = { hidden: { opacity: 0, y: 12 }, show: { opacity: 1, y: 0, transition: { duration: 0.4, ease: [0.22, 1, 0.36, 1] as [number, number, number, number] } } };
 
 export default function DocumentationPage() {
   const [activeTab, setActiveTab] = useState("Getting Started");
@@ -13,7 +19,12 @@ export default function DocumentationPage() {
   const tabs = ["Getting Started", "Guides", "API Reference", "Tutorials", "Examples", "Advanced"];
 
   return (
-    <div className="bg-[var(--canvas)] text-[var(--text)] font-sans antialiased h-screen overflow-hidden flex flex-col selection:bg-[var(--cyan)]/30 selection:text-[var(--canvas)]">
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={{ duration: 0.35 }}
+      className="bg-[var(--canvas)] text-[var(--text)] font-sans antialiased h-screen overflow-hidden flex flex-col selection:bg-[var(--cyan)]/30 selection:text-[var(--canvas)]"
+    >
       {/* Full-width TopBar */}
       <TopBar
         showBrand={true}
@@ -38,6 +49,7 @@ export default function DocumentationPage() {
                   className="relative rounded-2xl border border-[var(--border)] bg-gradient-to-r from-[var(--surface-2)] via-[var(--surface-3)] to-[var(--surface)] overflow-hidden p-6 lg:p-8 shadow-xl"
                   data-purpose="documentation-hero"
                 >
+                  <BorderBeam duration={8} size={300} colorFrom="#00d5be" colorTo="#7957ff" delay={2} />
                   {/* Satellite Orbit & Glow Background Art */}
                   <div className="absolute inset-0 pointer-events-none overflow-hidden">
                     <div className="absolute -right-24 -bottom-48 w-[460px] h-[460px] rounded-full border border-[var(--cyan)]/30 bg-gradient-to-t from-cyan-600/20 via-blue-700/10 to-transparent blur-sm" />
@@ -101,8 +113,15 @@ export default function DocumentationPage() {
                   </div>
 
                   {/* Hero 4 Quick Action Cards */}
-                  <div className="relative z-10 grid grid-cols-2 sm:grid-cols-4 gap-3 mt-6 pt-5 border-t border-[var(--border)]/80">
-                    <button
+                  <motion.div
+                    variants={stagger}
+                    initial="hidden"
+                    animate="show"
+                    className="relative z-10 grid grid-cols-2 sm:grid-cols-4 gap-3 mt-6 pt-5 border-t border-[var(--border)]/80"
+                  >
+                    <motion.div variants={cardVariant}>
+                    <SpotlightCard
+                      spotlightColor="rgba(0, 199, 217, 0.07)"
                       onClick={() => setActiveTab("Getting Started")}
                       className="p-3 rounded-xl bg-[var(--surface-2)]/80 border border-[var(--border)] hover:border-[var(--cyan)]/50 hover:bg-[var(--surface-hover)] transition flex items-start gap-2.5 group text-left cursor-pointer"
                     >
@@ -115,9 +134,12 @@ export default function DocumentationPage() {
                         <h3 className="text-xs font-semibold text-[var(--heading)] group-hover:text-[var(--cyan)]">Quick Start</h3>
                         <p className="text-[10px] text-[var(--text-3)] mt-0.5 leading-snug">Get up and running in minutes</p>
                       </div>
-                    </button>
+                    </SpotlightCard>
+                    </motion.div>
 
-                    <button
+                    <motion.div variants={cardVariant}>
+                    <SpotlightCard
+                      spotlightColor="rgba(0, 199, 217, 0.07)"
                       onClick={() => setActiveTab("API Reference")}
                       className="p-3 rounded-xl bg-[var(--surface-2)]/80 border border-[var(--border)] hover:border-[var(--cyan)]/50 hover:bg-[var(--surface-hover)] transition flex items-start gap-2.5 group text-left cursor-pointer"
                     >
@@ -130,9 +152,12 @@ export default function DocumentationPage() {
                         <h3 className="text-xs font-semibold text-[var(--heading)] group-hover:text-[var(--cyan)]">API Reference</h3>
                         <p className="text-[10px] text-[var(--text-3)] mt-0.5 leading-snug">Explore all endpoints</p>
                       </div>
-                    </button>
+                    </SpotlightCard>
+                    </motion.div>
 
-                    <button
+                    <motion.div variants={cardVariant}>
+                    <SpotlightCard
+                      spotlightColor="rgba(0, 199, 217, 0.07)"
                       onClick={() => setActiveTab("Tutorials")}
                       className="p-3 rounded-xl bg-[var(--surface-2)]/80 border border-[var(--border)] hover:border-[var(--cyan)]/50 hover:bg-[var(--surface-hover)] transition flex items-start gap-2.5 group text-left cursor-pointer"
                     >
@@ -145,9 +170,12 @@ export default function DocumentationPage() {
                         <h3 className="text-xs font-semibold text-[var(--heading)] group-hover:text-[var(--cyan)]">Tutorials</h3>
                         <p className="text-[10px] text-[var(--text-3)] mt-0.5 leading-snug">Step-by-step guides</p>
                       </div>
-                    </button>
+                    </SpotlightCard>
+                    </motion.div>
 
-                    <button
+                    <motion.div variants={cardVariant}>
+                    <SpotlightCard
+                      spotlightColor="rgba(0, 199, 217, 0.07)"
                       onClick={() => setActiveTab("Examples")}
                       className="p-3 rounded-xl bg-[var(--surface-2)]/80 border border-[var(--border)] hover:border-[var(--cyan)]/50 hover:bg-[var(--surface-hover)] transition flex items-start gap-2.5 group text-left cursor-pointer"
                     >
@@ -160,8 +188,9 @@ export default function DocumentationPage() {
                         <h3 className="text-xs font-semibold text-[var(--heading)] group-hover:text-[var(--cyan)]">Examples</h3>
                         <p className="text-[10px] text-[var(--text-3)] mt-0.5 leading-snug">Real use cases &amp; workflows</p>
                       </div>
-                    </button>
-                  </div>
+                    </SpotlightCard>
+                    </motion.div>
+                  </motion.div>
                 </section>
 
                 {/* Navigation Tabs */}
@@ -461,6 +490,6 @@ export default function DocumentationPage() {
           </div>
         </main>
       </div>
-    </div>
+    </motion.div>
   );
 }

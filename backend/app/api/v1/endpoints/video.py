@@ -85,7 +85,7 @@ from pydantic import BaseModel
 from PIL import Image
 import numpy as np
 
-router = APIRouter(prefix="/api", tags=["SatQuery AI"])
+router = APIRouter(tags=["SatQuery AI"])
 
 router = APIRouter(tags=["SatQuery AI"])
 

@@ -40,6 +40,47 @@ async function http<T>(path: string, init?: RequestInit): Promise<T> {
   return response.json() as Promise<T>;
 }
 
+function httpWithProgress<T>(
+  path: string,
+  init: RequestInit,
+  onProgress?: (percent: number) => void,
+): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", `${API_BASE}${path}`);
+    xhr.setRequestHeader("Accept", "application/json");
+
+    xhr.upload.addEventListener("progress", (e) => {
+      if (e.lengthComputable && onProgress) {
+        onProgress(Math.round((e.loaded / e.total) * 100));
+      }
+    });
+
+    xhr.addEventListener("load", () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        resolve(JSON.parse(xhr.responseText) as T);
+      } else {
+        let message = `Request failed (${xhr.status}): ${xhr.statusText}`;
+        try {
+          const errJson = JSON.parse(xhr.responseText);
+          if (errJson.error?.message) message = errJson.error.message;
+          else if (errJson.detail) message = typeof errJson.detail === "string" ? errJson.detail : JSON.stringify(errJson.detail);
+        } catch {}
+        reject(new Error(message));
+      }
+    });
+
+    xhr.addEventListener("error", () => reject(new Error("Network error")));
+    xhr.addEventListener("abort", () => reject(new Error("Upload aborted")));
+
+    if (init.body instanceof FormData) {
+      xhr.send(init.body);
+    } else {
+      reject(new Error("httpWithProgress only supports FormData bodies"));
+    }
+  });
+}
+
 export const api = {
   health: async (): Promise<HealthResponse> => {
     const raw = await http<Record<string, unknown>>(endpoints.health);
@@ -152,6 +193,89 @@ export const api = {
     return { video };
   },
 
+  uploadRastersWithProgress: async (
+    files: File[],
+    onProgress?: (percent: number) => void,
+  ): Promise<{ rasters: UploadedRaster[] }> => {
+    const formData = new FormData();
+    for (const file of files) {
+      formData.append("files", file);
+    }
+
+    const res = await httpWithProgress<Record<string, unknown>>(
+      endpoints.upload,
+      { method: "POST", body: formData },
+      onProgress,
+    );
+
+    const requestId = (res.request_id || res.job_id) as string;
+    if (!requestId) {
+      throw new Error("Backend did not return request_id");
+    }
+
+    const metadataList = (res.metadata || []) as Record<string, unknown>[];
+
+    const rasters: UploadedRaster[] = files.map((file, i) => {
+      const meta = metadataList[i] || {};
+      const preview = meta.preview_url
+        ? (meta.preview_url as string).startsWith("http")
+          ? (meta.preview_url as string)
+          : `${API_BASE}${meta.preview_url}`
+        : undefined;
+
+      return {
+        id: `${requestId}-${i}`,
+        request_id: requestId,
+        filename: (meta.filename as string) || file.name,
+        width: meta.width as number,
+        height: meta.height as number,
+        bands: meta.bands as number,
+        dtype: meta.dtype as string,
+        crs: meta.crs as string,
+        bounds: meta.bounds as [number, number, number, number],
+        transform: meta.transform as number[],
+        resolution: meta.resolution as [number, number],
+        modality: meta.detected_modality as string,
+        modality_confidence: meta.modality_confidence as number,
+        preview_url: preview,
+        georeferenced: Boolean(meta.crs),
+        valid_raster: true,
+      };
+    });
+
+    return { rasters };
+  },
+
+  uploadVideoWithProgress: async (
+    file: File,
+    onProgress?: (percent: number) => void,
+  ): Promise<{ video: UploadedVideo }> => {
+    const formData = new FormData();
+    formData.append("file", file);
+
+    const res = await httpWithProgress<Record<string, unknown>>(
+      endpoints.videoUpload,
+      { method: "POST", body: formData },
+      onProgress,
+    );
+
+    const meta = (res.video_metadata || {}) as Record<string, unknown>;
+    const video: UploadedVideo = {
+      id: res.job_id as string,
+      request_id: res.job_id as string,
+      filename: (res.filename as string) || file.name,
+      duration_sec: meta.duration_sec as number,
+      fps: meta.fps as number,
+      width: meta.width as number,
+      height: meta.height as number,
+      frames: meta.frame_count as number,
+      codec: meta.codec as string,
+      preview_url: `${API_BASE}${res.video_url || endpoints.videoStream(res.job_id as string)}`,
+    };
+
+    return { video };
+  },
+
   analyze: async (payload: AnalyzeRequest): Promise<{ job_id: string }> => {
     const image_filenames = payload.image_filenames || payload.raster_ids || [];
     const body: Record<string, unknown> = {
@@ -160,7 +284,7 @@ export const api = {
       parameters: payload.params || {},
     };
     if (payload.request_id) body.request_id = payload.request_id;
-    if (payload.task && payload.task !== "unsupported") body.override_task = payload.task;
+    if (payload.task) body.override_task = payload.task;
 
     const res = await http<Record<string, unknown>>(endpoints.analyze, {
       method: "POST",
@@ -258,5 +382,9 @@ export const api = {
 
   clearJobs: async (): Promise<{ status: string }> => {
     return http<{ status: string }>(endpoints.jobs, { method: "DELETE" });
+  },
+
+  deleteJob: async (jobId: string): Promise<{ status: string }> => {
+    return http<{ status: string }>(endpoints.job(jobId), { method: "DELETE" });
   },
 };

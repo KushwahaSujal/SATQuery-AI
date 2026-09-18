@@ -1,46 +1,128 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
+import { useParams } from "next/navigation";
 import Link from "next/link";
-import { useParams, useRouter } from "next/navigation";
-import { TopBar } from "@/components/layout/TopBar";
-import { Sidebar } from "@/components/layout/Sidebar";
+import { useMemo, useRef, useState, useEffect } from "react";
 import { useJob, useAnalysisResult, useLayers } from "@/hooks/useSystem";
 import { api } from "@/lib/api";
+import { Sidebar } from "@/components/layout/Sidebar";
+import { TopBar } from "@/components/layout/TopBar";
+import { BlurFade } from "@/components/ui/blur-fade";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+  Badge,
+  Progress,
+  Skeleton,
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui";
+import {
+  AlertCircle,
+  ArrowLeft,
+  ArrowLeftRight,
+  CheckCircle2,
+  ChevronRight,
+  Clock,
+  Cpu,
+  Download,
+  Eye,
+  FileText,
+  Layers,
+  Loader2,
+  MapPin,
+  Maximize2,
+  Send,
+  Sparkles,
+  Target,
+} from "lucide-react";
+import type { JobStatus } from "@/lib/types";
+
+const STATUS_LABEL: Record<JobStatus, string> = {
+  CREATED: "Created",
+  UPLOADED: "Uploaded",
+  QUEUED: "Queued",
+  VALIDATING: "Validating",
+  PLANNING: "Planning",
+  RUNNING: "Running",
+  GENERATING_EVIDENCE: "Generating evidence",
+  COMPLETED: "Completed",
+  FAILED: "Failed",
+};
+
+const STATUS_DOT: Record<JobStatus, string> = {
+  CREATED: "bg-[var(--text-4)]",
+  UPLOADED: "bg-[var(--text-4)]",
+  QUEUED: "bg-[var(--text-4)]",
+  VALIDATING: "bg-[var(--cyan)]",
+  PLANNING: "bg-[var(--cyan)]",
+  RUNNING: "bg-[var(--cyan)] animate-pulse-dot",
+  GENERATING_EVIDENCE: "bg-[var(--cyan)] animate-pulse-dot",
+  COMPLETED: "bg-[var(--green)]",
+  FAILED: "bg-[var(--error)]",
+};
+
+const STATUS_PILL: Record<JobStatus, string> = {
+  CREATED: "status-pill",
+  UPLOADED: "status-pill",
+  QUEUED: "status-pill",
+  VALIDATING: "status-pill-cyan",
+  PLANNING: "status-pill-cyan",
+  RUNNING: "status-pill-cyan",
+  GENERATING_EVIDENCE: "status-pill-cyan",
+  COMPLETED: "status-pill-green",
+  FAILED: "status-pill-red",
+};
+
+function formatTime(ms?: number) {
+  if (!ms) return "—";
+  if (ms < 1000) return `${ms}ms`;
+  return `${(ms / 1000).toFixed(1)}s`;
+}
 
 export default function AnalysisJobPage() {
-  const { jobId } = useParams<{ jobId: string }>();
-  const router = useRouter();
+  const params = useParams<{ jobId: string }>();
+  const jobId = params.jobId;
+
   const job = useJob(jobId);
-  const status = job.data?.status ?? "UNKNOWN";
-  const result = useAnalysisResult(jobId, status === "COMPLETED");
+  const result = useAnalysisResult(jobId, job.data?.status === "COMPLETED");
   const layersQuery = useLayers(jobId);
-  const data = result.data;
-  
+
   const [activeTab, setActiveTab] = useState<"chat" | "analysis" | "trace">("chat");
   const [followUp, setFollowUp] = useState("");
-  const [layerSelect, setLayerSelect] = useState("Natural Color (RGB)");
-  const [modeSelect, setModeSelect] = useState<"compare" | "change_map" | "overlay">("compare");
-  const [opacity, setOpacity] = useState(70);
+  const [activeLayerId, setActiveLayerId] = useState<string | null>(null);
   const [splitPos, setSplitPos] = useState(50);
   const [isDragging, setIsDragging] = useState(false);
-  
-  const [layerTab, setLayerTab] = useState<"images" | "layers">("images");
-  const [layersToggle, setLayersToggle] = useState({
-    changeDetection: true,
-    urbanArea: false,
-    vegetation: false,
-    waterBodies: false,
-  });
-
-  const [t1Visible, setT1Visible] = useState(true);
-  const [t2Visible, setT2Visible] = useState(true);
-  const [activeLayer, setActiveLayer] = useState("true_color");
   const containerRef = useRef<HTMLDivElement>(null);
-  const chatRef = useRef<HTMLDivElement>(null);
+
+  const status: JobStatus = (job.data?.status as JobStatus) || "QUEUED";
+  const isFailed = status === "FAILED";
+  const isRunning =
+    status === "RUNNING" ||
+    status === "VALIDATING" ||
+    status === "PLANNING" ||
+    status === "GENERATING_EVIDENCE";
+  const isCompleted = status === "COMPLETED";
 
   const layers = layersQuery.data?.layers ?? [];
-  const stats = data?.evidence?.spatial?.statistics;
+  const currentLayer = useMemo(() => {
+    if (activeLayerId) return layers.find((l) => l.id === activeLayerId) || layers[0];
+    return layers[0];
+  }, [layers, activeLayerId]);
+
+  const data = result.data;
+  const evidence = data?.evidence;
+  const spatial = evidence?.spatial;
+  const statistics = spatial?.statistics;
+  const trace = data?.trace || data?.execution_trace || [];
 
   // Splitter dragging logic
   const handleMouseDown = () => setIsDragging(true);
@@ -66,375 +148,483 @@ export default function AnalysisJobPage() {
   }, [isDragging]);
 
   return (
-    <div className="h-screen w-full flex flex-col bg-[var(--canvas)] text-[var(--text-2)] font-sans overflow-hidden select-none antialiased">
-      {/* TopBar */}
-      <TopBar showBrand={true} />
+    <TooltipProvider delayDuration={120}>
+      <div className="h-screen w-full flex flex-col bg-[var(--canvas)] text-[var(--text)] font-sans overflow-hidden antialiased">
+        <TopBar showBrand={true} />
 
-      {/* Main Interface Wrapper */}
-      <div className="flex-1 flex overflow-hidden">
-        {/* Left Sidebar */}
-        <Sidebar hideBrand={true} />
+        <div className="flex-1 flex overflow-hidden">
+          <Sidebar hideBrand={true} />
 
-        {/* Center Workspace */}
-        <main className="flex-1 flex flex-col bg-[var(--surface)] overflow-hidden border-r border-[var(--border)]">
-          {/* Sub-header & Breadcrumb Navigation */}
-          <div className="px-5 py-3 border-b border-[var(--border)] bg-[var(--surface)] flex flex-col gap-2 shrink-0">
-            <div className="flex items-center justify-between">
-              <div>
+          <main className="flex-1 flex flex-col min-w-0 overflow-hidden">
+            {/* Sub-header */}
+            <div className="border-b border-[var(--border)] bg-[var(--surface)] px-6 py-3 flex items-center justify-between gap-4 shrink-0">
+              <div className="flex items-center gap-3 min-w-0">
                 <Link
-                  href="/analysis"
-                  className="inline-flex items-center gap-1.5 text-xs text-[var(--text-3)] hover:text-[var(--cyan)] transition"
+                  href="/history"
+                  className="w-7 h-7 rounded-md border border-[var(--border)] bg-[var(--surface-2)] flex items-center justify-center text-[var(--text-2)] hover:text-[var(--heading)] hover:border-[var(--border-strong)] transition"
                 >
-                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path d="M10 19l-7-7m0 0l7-7m-7 7h18" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" />
-                  </svg>
-                  <span>Back to New Analysis</span>
+                  <ArrowLeft className="w-3.5 h-3.5" />
                 </Link>
-                <div className="flex items-center gap-2.5 mt-1">
-                  <h1 className="text-lg font-bold text-[var(--heading)] tracking-tight">
-                    {data?.task ? data.task.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()) : "Urban Expansion Analysis"}
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2 text-[11px] text-[var(--text-3)] font-mono-data">
+                    <span>analysis</span>
+                    <ChevronRight className="w-3 h-3" />
+                    <span className="text-[var(--text-2)] truncate max-w-[180px]">{jobId}</span>
+                  </div>
+                  <h1 className="text-sm font-semibold text-[var(--heading)] truncate mt-0.5">
+                    {data?.query || job.data?.query || "Untitled analysis"}
                   </h1>
-                  <button className="text-[var(--text-3)] hover:text-[var(--heading)] transition">
-                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                      <path d="M12 20h9" />
-                      <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
-                    </svg>
-                  </button>
                 </div>
               </div>
-              {/* Action Buttons */}
-              <div className="flex items-center gap-2">
-                <button className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[var(--border)] bg-[var(--surface-3)] hover:bg-[var(--surface-hover)] text-xs font-medium text-[var(--text)] transition">
-                  <svg className="w-3.5 h-3.5 text-[var(--text-3)]" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                    <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
-                    <polyline points="17 21 17 13 7 13 7 21" />
-                    <polyline points="7 3 7 8 15 8" />
-                  </svg>
-                  <span>Save</span>
-                </button>
+
+              <div className="flex items-center gap-2 shrink-0">
+                <span className={`status-dot ${STATUS_DOT[status]}`} />
+                <span className={`${STATUS_PILL[status]} text-[10px]`}>
+                  {STATUS_LABEL[status]}
+                </span>
+                {data?.confidence != null && (
+                  <Badge variant="success" className="font-mono-data">
+                    {Math.round(data.confidence * 100)}% confidence
+                  </Badge>
+                )}
                 <a
                   href={api.downloadUrl(jobId)}
                   target="_blank"
                   rel="noreferrer"
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[var(--border)] bg-[var(--surface-3)] hover:bg-[var(--surface-hover)] text-xs font-medium text-[var(--text)] transition"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-[var(--border)] bg-[var(--surface-2)] hover:bg-[var(--surface-hover)] text-xs font-medium text-[var(--text)] transition"
                 >
-                  <svg className="w-3.5 h-3.5 text-[var(--text-3)]" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                    <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8" />
-                    <polyline points="16 6 12 2 8 6" />
-                    <line x1="12" x2="12" y1="2" y2="15" />
-                  </svg>
-                  <span>Export</span>
+                  <Download className="w-3.5 h-3.5 text-[var(--text-3)]" />
+                  Export
                 </a>
               </div>
             </div>
-            {/* Badges Info Row */}
-            <div className="flex items-center gap-3 text-xs text-[var(--text-3)]">
-              <div className="flex items-center gap-1.5 px-2 py-0.5 rounded bg-[var(--surface-3)] border border-[var(--border)] text-[var(--text-2)]">
-                <svg className="w-3 h-3 text-[var(--cyan)]" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                  <rect height="18" rx="2" ry="2" width="18" x="3" y="3" />
-                  <line x1="9" x2="9" y1="3" y2="21" />
-                </svg>
-                <span>Bi-temporal</span>
-              </div>
-              <div className="flex items-center gap-1.5 px-2 py-0.5 rounded bg-[var(--surface-3)] border border-[var(--border)] text-[var(--text-2)]">
-                <svg className="w-3 h-3 text-[var(--cyan)]" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                  <circle cx="12" cy="12" r="10" />
-                  <line x1="2" x2="22" y1="12" y2="12" />
-                </svg>
-                <span>Optical</span>
-              </div>
-              <div className="flex items-center gap-1.5 px-2 py-0.5 rounded bg-[var(--surface-3)] border border-[var(--border)] text-[var(--text-2)]">
-                <span className="w-2 h-2 rounded-full bg-emerald-400" />
-                <span>{status}</span>
-              </div>
-            </div>
-          </div>
 
-          {/* Satellite View Controls Bar */}
-          <div className="h-11 px-4 border-b border-[var(--border)] bg-[var(--surface)] flex items-center justify-between text-xs shrink-0">
-            <div className="flex items-center gap-3">
-              <div className="flex items-center gap-2">
-                <span className="text-[var(--text-3)]">Layer</span>
-                <div className="relative">
-                  <select
-                    value={layerSelect}
-                    onChange={(e) => setLayerSelect(e.target.value)}
-                    className="bg-[var(--surface-3)] text-[var(--text)] text-xs py-1 pl-2.5 pr-7 rounded border border-[var(--border)] focus:outline-none focus:border-[var(--cyan)] appearance-none cursor-pointer"
-                  >
-                    <option>Natural Color (RGB)</option>
-                    <option>False Color (Infrared)</option>
-                    <option>NDVI Difference</option>
-                  </select>
-                  <svg className="w-3 h-3 text-[var(--text-3)] absolute right-2 top-2 pointer-events-none" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                    <path d="M6 9l6 6 6-6" />
-                  </svg>
-                </div>
-              </div>
-
-              {/* Mode Switches */}
-              <div className="flex items-center bg-[var(--surface-2)] p-0.5 rounded-lg border border-[var(--border)]">
-                <button
-                  onClick={() => setModeSelect("compare")}
-                  className={`px-2.5 py-1 rounded flex items-center gap-1.5 transition ${
-                    modeSelect === "compare"
-                      ? "bg-cyan-900/60 border border-cyan-600/40 text-[var(--cyan)] font-medium shadow-sm"
-                      : "text-[var(--text-3)] hover:text-[var(--text)]"
-                  }`}
-                >
-                  <span>Compare</span>
-                </button>
-                <button
-                  onClick={() => setModeSelect("change_map")}
-                  className={`px-2.5 py-1 rounded flex items-center gap-1.5 transition ${
-                    modeSelect === "change_map"
-                      ? "bg-cyan-900/60 border border-cyan-600/40 text-[var(--cyan)] font-medium shadow-sm"
-                      : "text-[var(--text-3)] hover:text-[var(--text)]"
-                  }`}
-                >
-                  <span>Change Map</span>
-                </button>
-              </div>
-
-              {/* Opacity Slider */}
-              <div className="flex items-center gap-2 pl-2">
-                <span className="text-[var(--text-3)]">Opacity</span>
-                <input
-                  type="range"
-                  min="10"
-                  max="100"
-                  value={opacity}
-                  onChange={(e) => setOpacity(Number(e.target.value))}
-                  className="w-20 h-1 bg-[var(--border)] accent-[var(--cyan)] rounded cursor-pointer"
-                />
-                <span className="text-[11px] text-[var(--text-2)] font-mono">{opacity}%</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Main Satellite Canvas */}
-          <div ref={containerRef} className="relative flex-1 bg-[var(--scrim)] overflow-hidden flex select-none">
-            {/* Split Screen Canvas */}
-            <div className="relative w-full h-full flex overflow-hidden">
-              {/* LEFT SIDE */}
-              <div
-                style={{ width: `${splitPos}%`, opacity: t1Visible ? 1 : 0.2 }}
-                className="relative h-full overflow-hidden border-r border-[var(--cyan)]/30 transition-opacity"
-              >
-                <div className="absolute inset-0 satellite-bg-base">
-                  <svg className="absolute inset-0 w-full h-full pointer-events-none opacity-85" preserveAspectRatio="none" viewBox="0 0 500 500">
-                    <path d="M 120 -10 C 260 120, 210 280, 360 520" fill="none" stroke="#122c3f" strokeLinecap="round" strokeWidth="52" />
-                    <path d="M 120 -10 C 260 120, 210 280, 360 520" fill="none" stroke="#1a3d54" strokeWidth="44" />
-                  </svg>
-                  <div className="absolute inset-0 opacity-40 mix-blend-overlay" style={{ backgroundImage: "radial-gradient(#6ee7b7 1px, transparent 1px)", backgroundSize: "24px 24px" }} />
-                </div>
-                <div className="absolute top-3 left-6 bg-[var(--surface)]/80 backdrop-blur border border-[var(--border)] px-2.5 py-1 rounded text-[11px] font-medium text-[var(--text)] z-10 shadow-md">
-                  Baseline (T1)
-                </div>
-              </div>
-
-              {/* RIGHT SIDE */}
-              <div
-                style={{ width: `${100 - splitPos}%`, opacity: t2Visible ? opacity / 100 : 0.2 }}
-                className="relative h-full overflow-hidden transition-opacity"
-              >
-                <div className="absolute inset-0 satellite-bg-base">
-                  <svg className="absolute inset-0 w-full h-full pointer-events-none opacity-85" preserveAspectRatio="none" viewBox="0 0 500 500">
-                    <path d="M -140 -10 C 0 120, -50 280, 100 520" fill="none" stroke="#122c3f" strokeLinecap="round" strokeWidth="52" />
-                    <path d="M -140 -10 C 0 120, -50 280, 100 520" fill="none" stroke="#1a3d54" strokeWidth="44" />
-                  </svg>
-                  {layersToggle.changeDetection && <div className="absolute inset-0 urban-detection-layer" />}
-                  <svg className="absolute inset-0 w-full h-full pointer-events-none" viewBox="0 0 500 500">
-                    <g fill="rgba(239, 68, 68, 0.22)" stroke="#ef4444" strokeWidth="1.5">
-                      <rect height="18" rx="1" width="22" x="260" y="70" />
-                      <rect height="20" rx="1" width="30" x="290" y="65" />
-                      <rect height="28" rx="1" width="25" x="330" y="80" />
-                      <polygon points="275,100 310,105 305,130 265,120" />
-                      <polygon points="320,115 365,120 355,150 315,140" />
-                      <rect height="30" width="35" x="375" y="100" />
-                      <rect height="35" width="40" x="390" y="150" />
-                    </g>
-                    <path d="M 250 80 L 440 140 M 270 140 L 430 220" fill="none" stroke="#ef4444" strokeDasharray="3,3" strokeWidth="1.8" />
-                  </svg>
-                </div>
-                <div className="absolute top-3 right-4 bg-[var(--surface)]/80 backdrop-blur border border-[var(--border)] px-2.5 py-1 rounded text-[11px] font-medium text-[var(--text)] z-10 shadow-md">
-                  Current (T2)
-                </div>
-              </div>
-
-              {/* Draggable Divider */}
-              <div
-                onMouseDown={handleMouseDown}
-                style={{ left: `${splitPos}%` }}
-                className="absolute top-0 bottom-0 -translate-x-1/2 w-1 bg-[var(--cyan)] shadow-[0_0_12px_rgba(6,182,212,0.8)] z-30 flex items-center justify-center cursor-ew-resize"
-              >
-                <div className="w-8 h-8 rounded-full bg-[var(--surface)] border-2 border-[var(--cyan)] flex items-center justify-center text-[var(--cyan)] shadow-xl hover:scale-110 transition-transform">
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
-                    <polyline points="9 18 3 12 9 6" />
-                    <polyline points="15 6 21 12 15 18" />
-                  </svg>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Bottom Filmstrip */}
-          <div className="h-20 border-t border-[var(--border)] bg-[var(--surface)] px-4 flex items-center gap-3 shrink-0">
-            <div className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-[var(--surface-2)] border border-[var(--cyan)]/70/60 shadow-md cursor-pointer">
-              <div className="w-14 h-12 rounded bg-[var(--green-bg)] border border-emerald-600/40 relative overflow-hidden shrink-0">
-                <div className="w-full h-full satellite-bg-base scale-125" />
-              </div>
-              <div>
-                <div className="text-xs font-semibold text-[var(--text)]">T1 - 2023-01-15</div>
-                <div className="text-[10px] text-[var(--text-3)]">Optical (Sentinel-2)</div>
-              </div>
-            </div>
-            <div className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-[var(--surface-2)] border border-[var(--border)] hover:border-[var(--border-strong)] shadow-md cursor-pointer transition">
-              <div className="w-14 h-12 rounded bg-[var(--green-bg)] border border-red-500/50 relative overflow-hidden shrink-0">
-                <div className="w-full h-full satellite-bg-base scale-125" />
-                <div className="absolute inset-0 bg-red-500/20" />
-              </div>
-              <div>
-                <div className="text-xs font-semibold text-[var(--text)]">T2 - 2025-01-18</div>
-                <div className="text-[10px] text-[var(--text-3)]">Optical (Sentinel-2)</div>
-              </div>
-            </div>
-          </div>
-        </main>
-
-        {/* Right Chat Drawer */}
-        <aside className="w-[420px] bg-[var(--surface)] flex flex-col shrink-0 select-text overflow-hidden">
-          <div className="h-11 px-4 border-b border-[var(--border)] bg-[var(--surface)] flex items-center justify-between shrink-0">
-            <div className="flex items-center gap-5 text-xs">
-              <button
-                onClick={() => setActiveTab("chat")}
-                className={`h-11 flex items-center px-1 font-semibold transition ${
-                  activeTab === "chat" ? "text-[var(--cyan)] border-b-2 border-[var(--cyan)]" : "text-[var(--text-3)] hover:text-[var(--text)]"
-                }`}
-              >
-                Chat
-              </button>
-              <button
-                onClick={() => setActiveTab("analysis")}
-                className={`h-11 flex items-center px-1 font-medium transition ${
-                  activeTab === "analysis" ? "text-[var(--cyan)] border-b-2 border-[var(--cyan)]" : "text-[var(--text-3)] hover:text-[var(--text)]"
-                }`}
-              >
-                Analysis
-              </button>
-              <button
-                onClick={() => setActiveTab("trace")}
-                className={`h-11 flex items-center px-1 font-medium transition ${
-                  activeTab === "trace" ? "text-[var(--cyan)] border-b-2 border-[var(--cyan)]" : "text-[var(--text-3)] hover:text-[var(--text)]"
-                }`}
-              >
-                Execution Trace
-              </button>
-            </div>
-          </div>
-
-          <div ref={chatRef} className="flex-1 overflow-y-auto p-4 space-y-4 text-xs">
-            {activeTab === "chat" && (
-              <>
-                <div className="flex items-start gap-2.5">
-                  <div className="w-6 h-6 rounded-full bg-[var(--surface-3)] flex items-center justify-center text-[10px] font-bold text-[var(--heading)] shrink-0 mt-0.5">
-                    SM
+            {/* Body */}
+            <div className="flex-1 grid grid-cols-1 lg:grid-cols-[1fr_400px] overflow-hidden">
+              {/* Center workspace */}
+              <div className="flex flex-col overflow-hidden bg-[var(--workspace)] border-r border-[var(--border)]">
+                {/* Layer toolbar */}
+                <div className="h-10 border-b border-[var(--border)] bg-[var(--surface)] flex items-center justify-between px-4 shrink-0">
+                  <div className="flex items-center gap-3 text-xs">
+                    <div className="flex items-center gap-1.5">
+                      <Layers className="w-3.5 h-3.5 text-[var(--cyan)]" />
+                      <span className="font-medium text-[var(--heading)]">Layer</span>
+                    </div>
+                    {isCompleted && layers.length > 0 ? (
+                      <div className="flex items-center gap-1.5">
+                        {layers.map((layer) => {
+                          const active = layer.id === currentLayer?.id;
+                          return (
+                            <button
+                              key={layer.id}
+                              onClick={() => setActiveLayerId(layer.id)}
+                              className={`px-2 py-1 rounded-md text-[11px] transition border ${
+                                active
+                                  ? "bg-[var(--cyan)]/10 border-[var(--cyan)]/40 text-[var(--cyan)] font-medium"
+                                  : "border-transparent text-[var(--text-2)] hover:text-[var(--heading)] hover:bg-[var(--surface-2)]"
+                              }`}
+                            >
+                              {layer.name}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <span className="text-[var(--text-3)] font-mono-data">
+                        {isCompleted ? "No layers" : "Awaiting completion"}
+                      </span>
+                    )}
                   </div>
-                  <div className="flex-1">
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="font-semibold text-[var(--text)]">You</span>
-                      <span className="text-[10px] text-[var(--text-3)] font-mono">11:42 AM</span>
-                    </div>
-                    <div className="bg-[var(--surface-3)] border border-[var(--border)] rounded-xl rounded-tl-sm p-3 text-[var(--text)] leading-relaxed shadow-sm">
-                      {data?.query || "What changes occurred between these two dates?"}
-                    </div>
+                  <div className="flex items-center gap-1">
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <button className="w-7 h-7 rounded-md hover:bg-[var(--surface-2)] text-[var(--text-3)] hover:text-[var(--heading)] transition flex items-center justify-center">
+                          <ArrowLeftRight className="w-3.5 h-3.5" />
+                        </button>
+                      </TooltipTrigger>
+                      <TooltipContent>Compare split</TooltipContent>
+                    </Tooltip>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <button className="w-7 h-7 rounded-md hover:bg-[var(--surface-2)] text-[var(--text-3)] hover:text-[var(--heading)] transition flex items-center justify-center">
+                          <Maximize2 className="w-3.5 h-3.5" />
+                        </button>
+                      </TooltipTrigger>
+                      <TooltipContent>Fullscreen</TooltipContent>
+                    </Tooltip>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <a
+                          href={currentLayer?.artifact_url ? api.exportUrl(jobId, currentLayer.id, "png") : "#"}
+                          target="_blank"
+                          rel="noopener"
+                          className="w-7 h-7 rounded-md hover:bg-[var(--surface-2)] text-[var(--text-3)] hover:text-[var(--heading)] transition flex items-center justify-center"
+                        >
+                          <Download className="w-3.5 h-3.5" />
+                        </a>
+                      </TooltipTrigger>
+                      <TooltipContent>Download layer</TooltipContent>
+                    </Tooltip>
                   </div>
                 </div>
 
-                <div className="flex items-start gap-2.5">
-                  <div className="w-6 h-6 rounded-lg bg-gradient-to-tr from-cyan-500 to-teal-400 p-0.5 shrink-0 mt-0.5 shadow-md shadow-cyan-500/20">
-                    <div className="w-full h-full bg-[var(--surface)] rounded-[5px] flex items-center justify-center">
-                      <svg className="w-3 h-3 text-[var(--cyan)]" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
-                        <polygon points="12 2 2 7 12 12 22 7 12 2" />
-                      </svg>
+                {/* Canvas */}
+                <div className="flex-1 relative overflow-hidden bg-[var(--canvas)]">
+                  {job.isLoading && (
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <div className="flex flex-col items-center gap-3 text-[var(--text-3)]">
+                        <Loader2 className="w-6 h-6 animate-spin text-[var(--cyan)]" />
+                        <p className="text-xs font-mono-data">Loading job</p>
+                      </div>
                     </div>
-                  </div>
-                  <div className="flex-1 space-y-3">
-                    <div className="p-3.5 rounded-xl bg-[var(--surface)] border border-[var(--border)] space-y-3 leading-relaxed text-[var(--text-2)]">
-                      <p>{data?.answer || "I detected significant urban expansion in the northeastern part of the area between 2023 and 2025."}</p>
-                      
-                      {/* Confidence Meter */}
-                      <div className="p-2 rounded-lg bg-[var(--surface-2)] border border-[var(--border)]">
-                        <div className="flex items-center justify-between text-[11px] mb-1.5">
-                          <span className="text-[var(--text-3)] flex items-center gap-1.5">
-                            Confidence
-                            <span className="flex items-center gap-1 text-emerald-400 font-medium">
-                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-                              High
-                            </span>
-                          </span>
-                          <span className="font-bold text-[var(--cyan)] font-mono">{Math.round((data?.confidence ?? 0.87) * 100)}%</span>
+                  )}
+
+                  {isFailed && (
+                    <BlurFade className="absolute inset-0 flex items-center justify-center">
+                      <div className="max-w-sm text-center px-6">
+                        <div className="w-12 h-12 rounded-xl bg-[var(--error-bg)] border border-[var(--error)]/30 flex items-center justify-center mx-auto mb-4">
+                          <AlertCircle className="w-6 h-6 text-[var(--error)]" />
                         </div>
-                        <div className="h-1.5 w-full bg-[var(--surface-hover)] rounded-full overflow-hidden">
-                          <div className="h-full bg-gradient-to-r from-teal-400 to-cyan-400 rounded-full" style={{ width: `${Math.round((data?.confidence ?? 0.87) * 100)}%` }} />
+                        <h3 className="text-sm font-semibold text-[var(--heading)] mb-1">Analysis failed</h3>
+                        <p className="text-xs text-[var(--text-2)] mb-4">
+                          The pipeline encountered an error. Inspect the execution trace for details.
+                        </p>
+                        <Link
+                          href="/analysis"
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-[var(--cyan)] text-[var(--canvas)] text-xs font-semibold hover:brightness-110 transition"
+                        >
+                          Start a new analysis
+                        </Link>
+                      </div>
+                    </BlurFade>
+                  )}
+
+                  {isRunning && (
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <BlurFade className="text-center">
+                        <div className="relative w-16 h-16 mx-auto mb-4">
+                          <div className="absolute inset-0 rounded-full border-2 border-[var(--border)]" />
+                          <div className="absolute inset-0 rounded-full border-2 border-transparent border-t-[var(--cyan)] animate-spin-smooth" />
+                          <Sparkles className="absolute inset-0 m-auto w-6 h-6 text-[var(--cyan)]" />
+                        </div>
+                        <p className="text-sm font-semibold text-[var(--heading)]">{STATUS_LABEL[status]}</p>
+                        <p className="text-xs text-[var(--text-3)] mt-1 max-w-xs">
+                          Running geospatial pipeline · usually takes 20–60 seconds
+                        </p>
+                      </BlurFade>
+                    </div>
+                  )}
+
+                  {isCompleted && currentLayer?.artifact_url && (
+                    <BlurFade className="absolute inset-0 p-4">
+                      <div ref={containerRef} className="relative w-full h-full rounded-xl overflow-hidden border border-[var(--border)] bg-[var(--canvas)]">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={currentLayer.artifact_url}
+                          alt={currentLayer.name}
+                          className="absolute inset-0 w-full h-full object-contain"
+                        />
+                        {currentLayer.legend_url && (
+                          <div className="absolute bottom-3 right-3 px-2.5 py-1.5 rounded-md bg-[var(--surface)]/90 border border-[var(--border)] backdrop-blur-sm">
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img
+                              src={currentLayer.legend_url}
+                              alt="Legend"
+                              className="h-4 w-auto"
+                            />
+                          </div>
+                        )}
+                        {/* Split divider overlay (visual cue) */}
+                        <div
+                          style={{ left: `${splitPos}%` }}
+                          className="absolute top-0 bottom-0 -translate-x-1/2 w-px bg-[var(--cyan)]/40 pointer-events-none"
+                        />
+                      </div>
+                    </BlurFade>
+                  )}
+
+                  {isCompleted && !currentLayer?.artifact_url && (
+                    <div className="absolute inset-0 flex items-center justify-center text-[var(--text-3)] text-xs font-mono-data">
+                      No artifact URL for selected layer
+                    </div>
+                  )}
+
+                  {!job.isLoading && !isRunning && !isFailed && !isCompleted && (
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <BlurFade className="text-center">
+                        <div className="relative w-16 h-16 mx-auto mb-4">
+                          <div className="absolute inset-0 rounded-full border-2 border-[var(--border)]" />
+                          <Loader2 className="absolute inset-0 m-auto w-6 h-6 text-[var(--text-3)] animate-spin" />
+                        </div>
+                        <p className="text-sm font-semibold text-[var(--heading)]">{STATUS_LABEL[status]}</p>
+                        <p className="text-xs text-[var(--text-3)] mt-1">
+                          Waiting for pipeline to start
+                        </p>
+                      </BlurFade>
+                    </div>
+                  )}
+                </div>
+
+                {/* Footer hint */}
+                <div className="border-t border-[var(--border)] bg-[var(--surface)] px-4 py-2 flex items-center justify-between text-[10px] font-mono-data text-[var(--text-3)] shrink-0">
+                  <div className="flex items-center gap-3">
+                    <span>Job ID: <span className="text-[var(--text-2)]">{jobId}</span></span>
+                    {data?.models_used && data.models_used.length > 0 && (
+                      <span>· Models: <span className="text-[var(--text-2)]">{data.models_used.join(", ")}</span></span>
+                    )}
+                  </div>
+                  {data?.execution_trace && (
+                    <span>Trace: {trace.length} steps</span>
+                  )}
+                </div>
+              </div>
+
+              {/* Right panel */}
+              <aside className="flex flex-col bg-[var(--surface)] overflow-hidden shrink-0">
+                <Tabs
+                  value={activeTab}
+                  onValueChange={(v) => setActiveTab(v as typeof activeTab)}
+                  className="flex-1 flex flex-col overflow-hidden"
+                >
+                  <div className="border-b border-[var(--border)] px-4 shrink-0">
+                    <TabsList className="border-b-0 gap-3">
+                      <TabsTrigger value="chat">Chat</TabsTrigger>
+                      <TabsTrigger value="analysis">Analysis</TabsTrigger>
+                      <TabsTrigger value="trace">Trace</TabsTrigger>
+                    </TabsList>
+                  </div>
+
+                  <div className="flex-1 overflow-y-auto">
+                    {/* Chat */}
+                    <TabsContent value="chat" className="p-4 space-y-4">
+                      <div className="flex items-start gap-2.5">
+                        <div className="w-6 h-6 rounded-full bg-[var(--surface-3)] flex items-center justify-center text-[10px] font-bold text-[var(--heading)] shrink-0 mt-0.5">
+                          YOU
+                        </div>
+                        <div className="flex-1">
+                          <div className="bg-[var(--surface-3)] border border-[var(--border)] rounded-xl rounded-tl-sm p-3 text-[var(--text)] text-xs leading-relaxed">
+                            {data?.query || job.data?.query || "Untitled analysis"}
+                          </div>
                         </div>
                       </div>
 
-                      {/* Key stats if present */}
-                      {stats && (
-                        <div className="rounded-lg bg-[var(--surface-2)]/70 border border-[var(--border)] p-2.5 space-y-1.5">
-                          <div className="text-[var(--cyan)] font-semibold text-[11px]">Key Findings</div>
-                          <ul className="space-y-1 text-[var(--text-2)] pl-2 text-[11px]">
-                            {stats.region_count > 0 && <li>Regions detected: <strong className="text-[var(--heading)]">{stats.region_count}</strong></li>}
-                            {stats.changed_pixels > 0 && <li>Changed pixels: <strong className="text-[var(--heading)]">{stats.changed_pixels.toLocaleString()}</strong></li>}
-                          </ul>
+                      {(isCompleted || data?.answer) && (
+                        <BlurFade>
+                          <div className="flex items-start gap-2.5">
+                            <div className="w-6 h-6 rounded-md bg-gradient-to-tr from-[var(--cyan)] to-[var(--teal)] flex items-center justify-center shrink-0 mt-0.5">
+                              <Sparkles className="w-3 h-3 text-[var(--canvas)]" />
+                            </div>
+                            <div className="flex-1">
+                              <div className="p-3.5 rounded-xl bg-[var(--surface)] border border-[var(--border)] text-xs text-[var(--text-2)] leading-relaxed space-y-3">
+                                {data?.answer || "Analysis complete. View layers and metrics in the Analysis tab."}
+
+                                {data?.confidence != null && (
+                                  <div className="p-2 rounded-lg bg-[var(--surface-2)] border border-[var(--border)]">
+                                    <div className="flex items-center justify-between text-[11px] mb-1.5">
+                                      <span className="text-[var(--text-3)]">Confidence</span>
+                                      <span className="font-mono-data font-bold text-[var(--cyan)]">
+                                        {Math.round(data.confidence * 100)}%
+                                      </span>
+                                    </div>
+                                    <Progress value={data.confidence * 100} className="h-1" />
+                                  </div>
+                                )}
+
+                                {statistics && (
+                                  <div className="rounded-lg bg-[var(--surface-2)] border border-[var(--border)] p-2.5 space-y-1.5">
+                                    <p className="text-[var(--cyan)] font-semibold text-[11px]">Key Findings</p>
+                                    <ul className="space-y-1 text-[var(--text-2)] text-[11px]">
+                                      {statistics.region_count > 0 && (
+                                        <li>Regions detected: <strong className="text-[var(--heading)]">{statistics.region_count}</strong></li>
+                                      )}
+                                      {statistics.changed_pixels > 0 && (
+                                        <li>Changed pixels: <strong className="text-[var(--heading)]">{statistics.changed_pixels.toLocaleString()}</strong></li>
+                                      )}
+                                      {statistics.estimated_area_sq_km != null && (
+                                        <li>Estimated area: <strong className="text-[var(--heading)]">{statistics.estimated_area_sq_km.toFixed(2)} km²</strong></li>
+                                      )}
+                                    </ul>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        </BlurFade>
+                      )}
+
+                      {!isCompleted && !data?.answer && !isFailed && (
+                        <div className="flex items-start gap-2.5">
+                          <div className="w-6 h-6 rounded-md bg-[var(--surface-3)] flex items-center justify-center shrink-0 mt-0.5">
+                            <Loader2 className="w-3 h-3 text-[var(--cyan)] animate-spin" />
+                          </div>
+                          <div className="flex-1 space-y-2">
+                            <Skeleton className="h-3 w-full" />
+                            <Skeleton className="h-3 w-5/6" />
+                            <Skeleton className="h-3 w-2/3" />
+                          </div>
                         </div>
                       )}
-                    </div>
+                    </TabsContent>
+
+                    {/* Analysis */}
+                    <TabsContent value="analysis" className="p-4 space-y-4">
+                      <Card>
+                        <CardHeader className="pb-2">
+                          <CardTitle className="text-xs flex items-center gap-2">
+                            <Cpu className="w-3.5 h-3.5 text-[var(--cyan)]" />
+                            Workflow
+                          </CardTitle>
+                        </CardHeader>
+                        <CardContent className="space-y-3">
+                          <div>
+                            <p className="text-[10px] font-mono-data uppercase tracking-wider text-[var(--text-3)] mb-1">
+                              Selected
+                            </p>
+                            <p className="text-xs font-medium text-[var(--heading)]">
+                              {data?.workflow || "—"}
+                            </p>
+                          </div>
+                          {data?.workflow_reason && (
+                            <div>
+                              <p className="text-[10px] font-mono-data uppercase tracking-wider text-[var(--text-3)] mb-1">
+                                Reasoning
+                              </p>
+                              <p className="text-xs text-[var(--text-2)] leading-relaxed">
+                                {data.workflow_reason}
+                              </p>
+                            </div>
+                          )}
+                        </CardContent>
+                      </Card>
+
+                      {spatial && (
+                        <Card>
+                          <CardHeader className="pb-2">
+                            <CardTitle className="text-xs flex items-center gap-2">
+                              <Target className="w-3.5 h-3.5 text-[var(--cyan)]" />
+                              Detected Regions
+                            </CardTitle>
+                          </CardHeader>
+                          <CardContent>
+                            {spatial.boxes.length > 0 ? (
+                              <div className="space-y-1">
+                                {spatial.boxes.slice(0, 8).map((b, i) => (
+                                  <div
+                                    key={i}
+                                    className="flex items-center justify-between p-2 rounded-md bg-[var(--surface-2)] border border-[var(--border)]"
+                                  >
+                                    <span className="text-xs text-[var(--text-2)] truncate">{b.label}</span>
+                                    {b.score != null && (
+                                      <span className="text-[10px] font-mono-data text-[var(--cyan)]">
+                                        {(b.score * 100).toFixed(0)}%
+                                      </span>
+                                    )}
+                                  </div>
+                                ))}
+                              </div>
+                            ) : (
+                              <p className="text-xs text-[var(--text-3)] text-center py-3">
+                                No regions detected
+                              </p>
+                            )}
+                          </CardContent>
+                        </Card>
+                      )}
+
+                      {data?.warnings && data.warnings.length > 0 && (
+                        <Card>
+                          <CardHeader className="pb-2">
+                            <CardTitle className="text-xs flex items-center gap-2 text-[var(--warning)]">
+                              <AlertCircle className="w-3.5 h-3.5" />
+                              Warnings
+                            </CardTitle>
+                          </CardHeader>
+                          <CardContent>
+                            <ul className="space-y-1.5 text-xs text-[var(--text-2)]">
+                              {data.warnings.map((w, i) => (
+                                <li key={i} className="flex items-start gap-1.5">
+                                  <span className="text-[var(--warning)] mt-0.5">•</span>
+                                  <span>{w}</span>
+                                </li>
+                              ))}
+                            </ul>
+                          </CardContent>
+                        </Card>
+                      )}
+                    </TabsContent>
+
+                    {/* Trace */}
+                    <TabsContent value="trace" className="p-4">
+                      {trace.length === 0 ? (
+                        <div className="text-center py-12 text-xs text-[var(--text-3)]">
+                          No execution trace yet
+                        </div>
+                      ) : (
+                        <div className="space-y-2">
+                          {trace.map((step, i) => {
+                            const statusIcon =
+                              step.status === "success" ? (
+                                <CheckCircle2 className="w-3.5 h-3.5 text-[var(--green)]" />
+                              ) : step.status === "running" ? (
+                                <Loader2 className="w-3.5 h-3.5 text-[var(--cyan)] animate-spin" />
+                              ) : step.status === "error" ? (
+                                <AlertCircle className="w-3.5 h-3.5 text-[var(--error)]" />
+                              ) : (
+                                <Clock className="w-3.5 h-3.5 text-[var(--text-4)]" />
+                              );
+
+                            return (
+                              <div
+                                key={i}
+                                className="p-3 rounded-lg bg-[var(--surface-2)] border border-[var(--border)]"
+                              >
+                                <div className="flex items-center justify-between gap-2 mb-1">
+                                  <div className="flex items-center gap-2 min-w-0">
+                                    {statusIcon}
+                                    <span className="text-xs font-medium text-[var(--heading)] truncate">
+                                      {step.step}
+                                    </span>
+                                  </div>
+                                  {step.duration_ms != null && (
+                                    <span className="text-[10px] font-mono-data text-[var(--text-3)] shrink-0">
+                                      {formatTime(step.duration_ms)}
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="flex items-center gap-2 text-[10px] text-[var(--text-3)] font-mono-data">
+                                  {step.model && <span>{step.model}</span>}
+                                  {step.model && step.tool && <span>·</span>}
+                                  {step.tool && <span>{step.tool}</span>}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </TabsContent>
                   </div>
-                </div>
-              </>
-            )}
+                </Tabs>
 
-            {activeTab === "analysis" && (
-              <div className="p-3 rounded-lg bg-[var(--surface-2)] border border-[var(--border)] space-y-2">
-                <h4 className="text-xs font-semibold text-[var(--heading)]">Results Summary</h4>
-                <div className="flex justify-between text-[11px]">
-                  <span className="text-[var(--text-3)]">Status:</span>
-                  <span className="text-emerald-400 font-mono">{status}</span>
-                </div>
-              </div>
-            )}
-
-            {activeTab === "trace" && (
-              <div className="space-y-2 text-[11px]">
-                {[
-                  { name: "Query interpreted", ms: "32ms" },
-                  { name: "Input validated", ms: "410ms" },
-                  { name: "Specialist selected", ms: "185ms" },
-                  { name: "Analysis executed", ms: "1.42s" },
-                ].map((step, idx) => (
-                  <div key={idx} className="p-2 rounded bg-[var(--surface-2)] border border-[var(--border)] flex items-center justify-between">
-                    <span className="text-[var(--text-2)]">{step.name}</span>
-                    <span className="text-[10px] font-mono text-[var(--text-3)]">{step.ms}</span>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          <div className="p-3 border-t border-[var(--border)] bg-[var(--surface)] shrink-0">
-            <div className="relative bg-[var(--surface-2)] rounded-xl border border-[var(--border)] focus-within:border-[var(--cyan)]/70 p-2.5">
-              <input
-                value={followUp}
-                onChange={(e) => setFollowUp(e.target.value)}
-                className="w-full bg-transparent border-none p-0 text-xs text-[var(--text)] placeholder-[var(--text-3)]  focus:outline-none"
-                placeholder="Ask a follow-up question..."
-                type="text"
-              />
+                {/* Follow-up composer */}
+                {/*<div className="border-t border-[var(--border)] p-3 bg-[var(--surface-2)] shrink-0">*/}
+                {/*  <div className="flex items-center gap-2 bg-[var(--surface)] border border-[var(--border)] rounded-lg px-3 py-2 focus-within:border-[var(--cyan)] focus-within:ring-1 focus-within:ring-[var(--cyan)]/30 transition">*/}
+                {/*    <input*/}
+                {/*      value={followUp}*/}
+                {/*      onChange={(e) => setFollowUp(e.target.value)}*/}
+                {/*      type="text"*/}
+                {/*      placeholder="Ask a follow-up question…"*/}
+                {/*      className="flex-1 bg-transparent border-0 text-xs text-[var(--heading)] placeholder-[var(--text-3)] focus:outline-none"*/}
+                {/*    />*/}
+                {/*    <button className="w-7 h-7 rounded-md bg-[var(--cyan)] text-[var(--canvas)] hover:brightness-110 transition flex items-center justify-center shrink-0">*/}
+                {/*      <Send className="w-3.5 h-3.5" />*/}
+                {/*    </button>*/}
+                {/*  </div>*/}
+                {/*</div>*/}
+              </aside>
             </div>
-          </div>
-        </aside>
+          </main>
+        </div>
       </div>
-    </div>
+    </TooltipProvider>
   );
 }

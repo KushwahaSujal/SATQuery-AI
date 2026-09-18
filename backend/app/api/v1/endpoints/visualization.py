@@ -4,13 +4,14 @@ SatQuery AI — Visual analytics layers, legends, pixel inspection, histograms a
 Split out of the former monolithic api/routes.py (1246 lines).
 """
 import os
+import io
 import uuid
 import shutil
 from pathlib import Path
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.geo.rendering import create_change_overlay
@@ -84,8 +85,6 @@ from pydantic import BaseModel
 from PIL import Image
 import numpy as np
 
-router = APIRouter(prefix="/api", tags=["SatQuery AI"])
-
 router = APIRouter(tags=["SatQuery AI"])
 
 
@@ -154,7 +153,12 @@ async def get_visualization_image(job_id: str, layer_id: str, db: AsyncSession =
     input_dir = job_dir / "input"
     input_files = sorted([f for f in input_dir.iterdir() if f.is_file() and not f.name.endswith(".json")]) if input_dir.exists() else []
     if not input_files:
-        raise ArtifactNotFoundError("input_imagery", message=f"No input imagery found for job '{job_id}'.", details={"job_id": job_id})
+        # Return a 1x1 transparent PNG placeholder instead of 404
+        placeholder = Image.new("RGBA", (1, 1), (0, 0, 0, 0))
+        buf = io.BytesIO()
+        placeholder.save(buf, format="PNG")
+        buf.seek(0)
+        return StreamingResponse(buf, media_type="image/png")
 
     arr, meta = RasterInspector.read_as_array(input_files[0])
     img: Optional[Image.Image] = None

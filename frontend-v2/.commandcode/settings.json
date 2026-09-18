@@ -42,7 +42,16 @@
       "Shell(cd \"D:\\SATQuery-AI\\SATQuery-AI-backend\\frontend-v2\" && rmdir /s /q node_modules 2>nul & del package-lock.json 2>nul & npm install)",
       "Shell(cd \"D:\\SATQuery-AI\\SATQuery-AI-backend\\frontend-v2\" && dir node_modules\\@tailwindcss\\postcss\\package.json 2>nul)",
       "Shell(node -e require('@tailwindcss/postcss') 2 >& 1)",
-      "Shell(cd \"D:\\SATQuery-AI\\SATQuery-AI-backend\\frontend-v2\" && taskkill /f /im node.exe 2>nul & rmdir /s /q node_modules 2>nul & rmdir /s /q .next 2>nul & del package-lock.json 2>nul)"
+      "Shell(cd \"D:\\SATQuery-AI\\SATQuery-AI-backend\\frontend-v2\" && taskkill /f /im node.exe 2>nul & rmdir /s /q node_modules 2>nul & rmdir /s /q .next 2>nul & del package-lock.json 2>nul)",
+      "Shell(npx tsc --noEmit 2 >& 1)",
+      "Shell(npx tsc --noEmit 2>&1)",
+      "Shell(more:*)",
+      "Shell(powershell -NoProfile -Command \"Get-Content 'D:\\SATQuery-AI\\SATQuery-AI-backend\\frontend-v2\\src\\app\\analysis\\[jobId]\\page.tsx' -TotalCount 1 | Select-Object -First 1\")",
+      "Shell(powershell -NoProfile -Command \"Get-ChildItem 'D:\\SATQuery-AI\\SATQuery-AI-backend\\frontend-v2\\src\\app\\analysis\\jobId' -ErrorAction SilentlyContinue | Format-List Name, Length\")",
+      "Shell(powershell -NoProfile -Command \"Get-ChildItem -LiteralPath 'D:\\SATQuery-AI\\SATQuery-AI-backend\\frontend-v2\\src\\app\\analysis' -Recurse | Where-Object { \\$_.Name -eq 'page.tsx' } | Select-Object FullName, Length\")",
+      "powershell",
+      "Shell(cmd /c type \"D:\\SATQuery-AI\\SATQuery-AI-backend\\DEMO_SETUP.md\" 2>nul | more)",
+      "Shell(node scripts/smoke.mjs 2 >& 1)"
     ],
     "deny": [],
     "defaultMode": "default"

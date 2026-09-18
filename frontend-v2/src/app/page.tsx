@@ -3,23 +3,174 @@
 import { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { motion, useInView } from "framer-motion";
+import { useQuery } from "@tanstack/react-query";
+import { api } from "@/lib/api";
 import Sidebar from "@/components/layout/Sidebar";
 import TopBar from "@/components/layout/TopBar";
+import { ShimmerButton } from "@/components/ui/shimmer-button";
+import { SpotlightCard } from "@/components/ui/spotlight-card";
+import { BorderBeam } from "@/components/ui/border-beam";
+import { NumberTicker } from "@/components/ui/number-ticker";
+import { BlurFade } from "@/components/ui/blur-fade";
+import { AuroraText } from "@/components/ui/aurora-text";
+import { Marquee } from "@/components/ui/marquee";
 
+// ─── Animation Variants ──────────────────────────────────────────────────────
+const fadeUp = {
+  hidden: { opacity: 0, y: 24 },
+  show: { opacity: 1, y: 0, transition: { duration: 0.55, ease: [0.22, 1, 0.36, 1] as [number, number, number, number] } },
+};
+const stagger = {
+  hidden: {},
+  show: { transition: { staggerChildren: 0.1 } },
+};
+const scaleIn = {
+  hidden: { opacity: 0, scale: 0.92 },
+  show: { opacity: 1, scale: 1, transition: { duration: 0.5, ease: [0.22, 1, 0.36, 1] as [number, number, number, number] } },
+};
+
+// ─── Stats Data ───────────────────────────────────────────────────────────────
+const stats = [
+  { value: 98, suffix: "%", label: "Detection Accuracy" },
+  { value: 12, suffix: "x", label: "Faster Than Manual" },
+  { value: 2500, suffix: "+", label: "Analyses Run" },
+  { value: 47, suffix: "", label: "Data Sources" },
+];
+
+// ─── Feature Cards Data ───────────────────────────────────────────────────────
+const features = [
+  {
+    id: "vqa",
+    href: "/analysis?tool=vqa",
+    icon: (
+      <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="1.75" viewBox="0 0 24 24">
+        <path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    ),
+    title: "Single Image Analysis",
+    desc: "Ask questions, get scene descriptions, localize objects, and extract region insights from a single satellite frame.",
+    tags: ["VQA", "Captioning", "Grounding"],
+    accent: "from-teal-500/20 to-cyan-500/10",
+    border: "hover:border-teal-500/50",
+    glow: "rgba(0, 213, 190, 0.08)",
+    imgClass: "sat-crop-delhi-main",
+  },
+  {
+    id: "fusion",
+    href: "/analysis?tool=fusion",
+    icon: (
+      <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="1.75" viewBox="0 0 24 24">
+        <polygon points="12 2 2 7 12 12 22 7 12 2" />
+        <polyline points="2 17 12 22 22 17" />
+        <polyline points="2 12 12 17 22 12" />
+      </svg>
+    ),
+    title: "Optical + SAR Fusion",
+    desc: "Combine multi-spectral optical data with radar imagery for all-weather, all-condition intelligence extraction.",
+    tags: ["Cross-Modal", "Multi-Sensor", "Fusion"],
+    accent: "from-violet-500/20 to-blue-500/10",
+    border: "hover:border-violet-500/50",
+    glow: "rgba(121, 87, 255, 0.08)",
+    imgClass: "sat-crop-sar",
+  },
+  {
+    id: "change",
+    href: "/analysis?tool=change",
+    icon: (
+      <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="1.75" viewBox="0 0 24 24">
+        <path d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    ),
+    title: "Bi-temporal Change",
+    desc: "Detect, measure, and interpret land surface changes over time with AI-powered difference analysis.",
+    tags: ["Change Detection", "Change VQA", "Temporal"],
+    accent: "from-amber-500/20 to-orange-500/10",
+    border: "hover:border-amber-500/50",
+    glow: "rgba(245, 166, 35, 0.08)",
+    imgClass: "sat-crop-river",
+  },
+  {
+    id: "agentic",
+    href: "/analysis",
+    icon: (
+      <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="1.75" viewBox="0 0 24 24">
+        <circle cx="12" cy="12" r="3" />
+        <path d="M12 2v3m0 14v3M2 12h3m14 0h3m-3.2-6.8-2.1 2.1M7.3 16.7l-2.1 2.1M18.8 18.8l-2.1-2.1M7.3 7.3 5.2 5.2" strokeLinecap="round" />
+      </svg>
+    ),
+    title: "Agentic Orchestration",
+    desc: "Let the AI automatically select the right models, validate inputs, chain steps, and return structured evidence.",
+    tags: ["Smart Routing", "Multi-Step", "Evidence"],
+    accent: "from-emerald-500/20 to-teal-500/10",
+    border: "hover:border-emerald-500/50",
+    glow: "rgba(40, 201, 138, 0.08)",
+    imgClass: "sat-crop-urban",
+  },
+];
+
+// ─── Recent Analyses (fetched from backend) ──────────────────────────────────
+const THUMB_CLASSES = ["sat-crop-urban", "sat-crop-river", "sat-crop-sar", "sat-crop-amazon"];
+const TASK_TAGS: Record<string, string> = {
+  bi_temporal_change: "Change Detection",
+  bi_temporal_change_vqa: "Change VQA",
+  single_image_vqa: "VQA",
+  single_image_grounding: "Grounding",
+  single_image_caption: "Captioning",
+  video_grounding_tracking: "Video",
+  optical_sar_analysis: "Cross-Modal",
+};
+
+function formatDate(iso: string): string {
+  try {
+    return new Date(iso).toLocaleDateString("en-US", { day: "numeric", month: "short", year: "numeric" });
+  } catch {
+    return "";
+  }
+}
+
+// ─── Component ────────────────────────────────────────────────────────────────
 export default function HomePage() {
   const router = useRouter();
   const [query, setQuery] = useState("");
   const [dragActive, setDragActive] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const statsRef = useRef(null);
+  const statsInView = useInView(statsRef, { once: true, margin: "-80px" });
 
-  const simulateProcessing = (callback: () => void) => {
+  const { data: jobs } = useQuery({
+    queryKey: ["jobs"],
+    queryFn: () => api.listJobs(),
+    staleTime: 30_000,
+    refetchInterval: 30_000,
+    refetchOnWindowFocus: false,
+  });
+
+  const recentAnalyses = (jobs ?? []).slice(0, 4).map((j: Record<string, unknown>, i: number) => ({
+    title: (j.query as string)?.slice(0, 50) || "Analysis",
+    tag: TASK_TAGS[(j.task as string) || ""] || (j.task as string) || "Analysis",
+    meta: `${formatDate((j.created_at as string) || new Date().toISOString())}`,
+    imgClass: THUMB_CLASSES[i % THUMB_CLASSES.length],
+    job_id: (j.job_id || j.id) as string,
+    status: (j.status as string) || "COMPLETED",
+  }));
+
+  async function handleUploadFiles(files: FileList | File[]) {
     setIsUploading(true);
-    setTimeout(() => {
-      callback();
-    }, 800);
-  };
+    setUploadError(null);
+    try {
+      await api.uploadRasters(Array.from(files));
+      router.push("/analysis");
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Upload failed";
+      setUploadError(msg);
+    } finally {
+      setIsUploading(false);
+    }
+  }
 
   const handleQuerySubmit = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
@@ -40,556 +191,425 @@ export default function HomePage() {
   const handleFileDrop = (e: React.DragEvent) => {
     e.preventDefault();
     setDragActive(false);
-    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-      simulateProcessing(() => router.push("/analysis"));
-    }
+    if (e.dataTransfer.files?.length > 0) handleUploadFiles(e.dataTransfer.files);
   };
 
   return (
     <>
-      <style dangerouslySetInnerHTML={{ __html: `body { overflow: hidden !important; }` }} />
-      <div className="bg-[var(--canvas)] text-[var(--text)] font-sans h-screen overflow-hidden flex flex-col antialiased selection:bg-[var(--cyan)] selection:text-[var(--canvas)]">
-        {/* Full-width TopBar */}
-        <TopBar
-          showBrand={true}
-          searchPlaceholder='Search anything... (e.g. "urban expansion in Delhi")'
-          onSearch={(val) => {
-            if (val) router.push(`/analysis?q=${encodeURIComponent(val)}`);
-          }}
-        />
+      <style dangerouslySetInnerHTML={{ __html: `body { overflow-y: auto !important; height: auto !important; }` }} />
+      <div className="bg-[var(--canvas)] text-[var(--text)] font-sans min-h-screen flex antialiased">
+        <Sidebar activeItem="home" hideBrand={false} className="sticky top-0 h-screen flex-shrink-0" />
 
-        {/* Main Body Layout */}
-        <div className="flex flex-1 overflow-hidden">
-          {/* Left Navigation Sidebar */}
-          <Sidebar hideBrand={true} activeItem="home" className="h-full" />
+        <main className="flex-1 flex flex-col min-w-0 bg-[var(--canvas)] relative">
+          <TopBar
+            showBrand={false}
+            searchPlaceholder='Search anything… e.g. "urban expansion in Delhi"'
+            onSearch={(val) => { if (val) router.push(`/analysis?q=${encodeURIComponent(val)}`); }}
+          />
 
-          {/* Workspace Center Content */}
-          <main className="flex-1 overflow-y-auto bg-[var(--canvas)]" data-purpose="home-workspace">
-            {/* Hero Section */}
-            <section className="relative px-8 pt-8 pb-10 border-b border-[var(--border)] overflow-hidden">
-          {/* Ambient Glow */}
-          <div className="absolute inset-0 hero-glow-overlay pointer-events-none" />
+          {/* ── HERO ─────────────────────────────────────────────────────── */}
+          <section className="relative px-6 md:px-10 pt-10 pb-14 overflow-hidden border-b border-[var(--border)]">
+            {/* Radial glow blob (subtle, single source) */}
+            <div className="absolute -top-32 left-1/3 w-[600px] h-[600px] rounded-full bg-[var(--cyan)]/[0.04] blur-[120px] pointer-events-none" />
 
-          {/* Semi-transparent Earth Satellite Backdrop */}
-          <div className="absolute right-0 top-0 w-3/5 h-full opacity-35 pointer-events-none select-none overflow-hidden mix-blend-screen hidden lg:block">
-            <img
-              alt="Satellite earth backdrop"
-              className="w-full h-full object-cover object-right scale-110 blur-[1px]"
-              src="https://lh3.googleusercontent.com/aida-public/AB6AXuBiSm38CjZwA9aZcIl0dpx0SygZnM98iDrTy5AfRejRWjqJGG_AIbAKBxM5dJ44TH1nLSdHLZhZ3zXw-JlXlP5SAm_fi1m4t5WZ51bXqI_BfSmpDIHYXPXQWfnDPeFahqC1-uLnEEex4AhzD4j4A1cOW68ODyn7hZpg1YXeVlva6EpssfkzGGHCbvkAWrl-wDlzrTJnz8uu53TGwfomQwkV7Gg9WRiYdEs01h7kH7TjduJknv-Tc2pvIq4PoXcitRpB"
-            />
-            <div className="absolute inset-0 bg-gradient-to-r from-[#050911] via-[#050911]/80 to-transparent" />
-          </div>
+            <div className="relative z-10 max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
+              {/* Left: Headline + Upload Card */}
+              <motion.div variants={stagger} initial="hidden" animate="show">
+                {/* Pill badge */}
+                <motion.div variants={fadeUp}>
+                  <div className="inline-flex items-center gap-2 mb-5 px-3 py-1.5 rounded-full border border-[var(--cyan)]/30 bg-[var(--cyan)]/8 backdrop-blur-sm">
+                    <span className="w-1.5 h-1.5 rounded-full bg-[var(--cyan)] animate-pulse-dot" />
+                    <span className="text-[11px] font-semibold tracking-widest text-[var(--cyan)] uppercase">
+                      AI Copilot for Remote Sensing
+                    </span>
+                  </div>
+                </motion.div>
 
-          <div className="relative z-10 max-w-7xl mx-auto flex flex-col lg:flex-row gap-8 items-start justify-between">
-            {/* Left Hero Text & Search Box */}
-            <div className="max-w-2xl">
-              {/* Tagline */}
-              <div className="inline-flex items-center gap-2 text-xs font-semibold tracking-wider text-[var(--cyan)] uppercase mb-4">
-                <span className="w-4 h-0.5 bg-[var(--cyan)] rounded-full" />
-                <span>AI COPILOT FOR REMOTE-SENSING ANALYSIS</span>
-              </div>
-
-              {/* Main Heading */}
-              <h1 className="text-4xl sm:text-5xl font-extrabold text-[var(--heading)] tracking-tight leading-[1.15] mb-4">
-                Analyze Earth imagery <br />
-                with <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#00d5be] to-[#00f2fe] glow-cyan-text">natural language.</span>
-              </h1>
-
-              {/* Hero Subtitle */}
-              <p className="text-[var(--text-3)] text-sm sm:text-base leading-relaxed mb-6 font-normal">
-                Ask questions. Compare imagery. Discover change.<br />
-                Understand what&apos;s there — with the power of AI.
-              </p>
-
-              {/* Central Upload & Query Card */}
-              <div className="bg-[var(--surface)]/90 backdrop-blur-xl border border-[var(--border)] rounded-2xl p-5 shadow-2xl shadow-cyan-950/20">
-                {/* Top Dropzone & Browse Row */}
-                <div className="flex flex-col sm:flex-row items-center gap-4 pb-4 border-b border-[var(--border)]">
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    multiple
-                    accept=".tif,.tiff,.png,.jpg,.jpeg,.geojson"
-                    className="hidden"
-                    disabled={isUploading || isSubmitting}
-                    onChange={() => simulateProcessing(() => router.push("/analysis"))}
-                  />
-                  {/* Drag & Drop Zone */}
-                  <div
-                    onClick={() => !isUploading && !isSubmitting && fileInputRef.current?.click()}
-                    onDragOver={(e) => { e.preventDefault(); !isUploading && setDragActive(true); }}
-                    onDragLeave={() => setDragActive(false)}
-                    onDrop={handleFileDrop}
-                    className={`flex-1 w-full border border-dashed rounded-xl py-4 px-5 text-center transition-all ${isUploading || isSubmitting ? 'cursor-not-allowed opacity-70' : 'cursor-pointer group hover:bg-[var(--cyan)]/5'} ${
-                      dragActive
-                        ? "border-[var(--cyan)] bg-[var(--cyan-glow)]"
-                        : "border-[var(--border-strong)] hover:border-[var(--cyan)]/50"
-                    }`}
+                {/* H1 */}
+                <motion.h1
+                  variants={fadeUp}
+                  className="text-[2.6rem] sm:text-5xl font-extrabold text-[var(--heading)] tracking-tight leading-[1.1] mb-5"
+                >
+                  Analyze Earth imagery
+                  <br />
+                  with{" "}
+                  <AuroraText
+                    as="span"
+                    colors={["#00d5be", "#168BFF", "#7957FF", "#00d5be"]}
+                    speed={8}
+                    className="font-extrabold"
                   >
-                    <div className="flex items-center justify-center gap-2 text-[var(--text)] text-sm font-medium group-hover:text-[var(--cyan)]">
-                      {isUploading ? (
-                        <>
-                          <svg className="w-5 h-5 text-[var(--cyan)] animate-spin" fill="none" viewBox="0 0 24 24">
-                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    natural language.
+                  </AuroraText>
+                </motion.h1>
+
+                <motion.p variants={fadeUp} className="text-[var(--text-2)] text-[15px] leading-relaxed mb-7 max-w-lg">
+                  Ask questions. Compare imagery. Discover change.
+                  Understand what&apos;s there — powered by satellite AI that doesn&apos;t need code.
+                </motion.p>
+
+                {/* Upload + Query card */}
+                <motion.div variants={scaleIn} className="relative rounded-2xl overflow-hidden">
+                  <div className="relative bg-[var(--surface)]/90 backdrop-blur-xl border border-[var(--border)] rounded-2xl p-5 shadow-2xl shadow-black/40">
+                    <BorderBeam duration={6} size={250} colorFrom="#00d5be" colorTo="#00f2fe" />
+
+                    {/* Drop zone */}
+                    <div className="flex flex-col sm:flex-row items-center gap-4 pb-4 border-b border-[var(--border)]">
+                      <input
+                        ref={fileInputRef}
+                        type="file"
+                        multiple
+                        accept=".tif,.tiff,.png,.jpg,.jpeg,.geojson"
+                        className="hidden"
+                        disabled={isUploading || isSubmitting}
+                        onChange={(e) => { if (e.target.files?.length) handleUploadFiles(e.target.files) }}
+                      />
+                      <div
+                        onClick={() => !isUploading && !isSubmitting && fileInputRef.current?.click()}
+                        onDragOver={(e) => { e.preventDefault(); !isUploading && setDragActive(true); }}
+                        onDragLeave={() => setDragActive(false)}
+                        onDrop={handleFileDrop}
+                        className={`flex-1 w-full border border-dashed rounded-xl py-4 px-5 text-center transition-all duration-200 ${
+                          isUploading || isSubmitting
+                            ? "cursor-not-allowed opacity-60"
+                            : "cursor-pointer hover:bg-[var(--cyan)]/5"
+                        } ${dragActive ? "border-[var(--cyan)] bg-[var(--cyan)]/10" : "border-[var(--border-strong)] hover:border-[var(--cyan)]/40"}`}
+                      >
+                        <div className="flex items-center justify-center gap-2 text-sm font-medium text-[var(--heading)]">
+                          {isUploading ? (
+                            <>
+                              <svg className="w-4 h-4 text-[var(--cyan)] animate-spin" fill="none" viewBox="0 0 24 24">
+                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                              </svg>
+                              <span>Processing imagery…</span>
+                            </>
+                          ) : (
+                            <>
+                              <svg className="w-4 h-4 text-[var(--cyan)]" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                                <path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" strokeLinecap="round" strokeLinejoin="round" />
+                              </svg>
+                              <span>Drop satellite images here</span>
+                            </>
+                          )}
+                        </div>
+                        <p className="text-[11px] text-[var(--text-3)] mt-1">GeoTIFF · TIFF · PNG · JPEG · GeoJSON</p>
+                      </div>
+
+                      <span className="text-[11px] text-[var(--text-3)] font-semibold uppercase hidden sm:block px-1">or</span>
+
+                      <button
+                        onClick={() => fileInputRef.current?.click()}
+                        disabled={isUploading || isSubmitting}
+                        className="shrink-0 w-full sm:w-auto px-4 py-3 rounded-xl bg-[var(--surface-2)] border border-[var(--border-strong)] hover:border-[var(--cyan)]/40 text-[var(--heading)] hover:text-[var(--heading)] flex items-center justify-center gap-2 text-sm font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        <svg className="w-4 h-4 text-[var(--text-3)]" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                          <path d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" strokeLinecap="round" strokeLinejoin="round" />
+                        </svg>
+                        Browse Files
+                      </button>
+                    </div>
+
+                    {/* Query bar */}
+                    <form onSubmit={handleQuerySubmit} className="mt-4 flex items-center gap-2 bg-[var(--canvas)] border border-[var(--border-strong)] rounded-xl px-4 py-2.5 focus-within:border-[var(--cyan)]/70 focus-within:ring-1 focus-within:ring-[var(--cyan)]/20 transition-all">
+                      <svg className="w-4 h-4 text-[var(--cyan)] shrink-0" fill="currentColor" viewBox="0 0 24 24">
+                        <path d="M12 2l2.4 6.6L21 11l-6.6 2.4L12 20l-2.4-6.6L3 11l6.6-2.4L12 2z" />
+                      </svg>
+                      <input
+                        value={query}
+                        onChange={(e) => setQuery(e.target.value)}
+                        disabled={isUploading || isSubmitting}
+                        className="bg-transparent border-none text-[var(--heading)] placeholder-[var(--text-3)] text-sm w-full focus:outline-none p-0 disabled:opacity-50"
+                        placeholder="Ask a question about your imagery…"
+                      />
+                      <button
+                        type="submit"
+                        disabled={isUploading || isSubmitting || !query.trim()}
+                        className="w-8 h-8 rounded-lg bg-[var(--cyan)] text-[var(--canvas)] hover:brightness-110 transition-all shrink-0 flex items-center justify-center disabled:opacity-40 disabled:cursor-not-allowed shadow-md shadow-[var(--cyan)]/30"
+                      >
+                        {isSubmitting ? (
+                          <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
                           </svg>
-                          <span>Processing Imagery...</span>
-                        </>
-                      ) : (
-                        <>
-                          <svg className="w-4 h-4 text-[var(--cyan)]" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                            <path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" strokeLinecap="round" strokeLinejoin="round" />
+                        ) : (
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
+                            <path d="M14 5l7 7m0 0l-7 7m7-7H3" strokeLinecap="round" strokeLinejoin="round" />
                           </svg>
-                          <span>Drop your satellite images here</span>
-                        </>
-                      )}
-                    </div>
-                    <p className="text-[11px] text-[var(--text-3)] mt-1">Supports GeoTIFF, TIFF, PNG, JPEG (for benchmarks)</p>
+                        )}
+                      </button>
+                    </form>
                   </div>
+                </motion.div>
 
-                  {/* Divider */}
-                  <div className="text-xs text-[var(--text-3)] font-medium uppercase px-1 hidden sm:block">or</div>
+                {uploadError && (
+                  <motion.div variants={fadeUp} className="mt-4 p-3 rounded-lg border border-red-500/30 bg-red-500/10 text-red-400 text-xs flex items-start gap-2">
+                    <svg className="w-4 h-4 mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                    <span>{uploadError}</span>
+                  </motion.div>
+                )}
 
-                  {/* Browse Files Button */}
-                  <button
-                    onClick={() => fileInputRef.current?.click()}
-                    disabled={isUploading || isSubmitting}
-                    className="w-full sm:w-auto px-5 py-3.5 rounded-xl bg-[var(--surface-3)] border border-[var(--border-strong)] hover:border-[var(--cyan)]/40 text-[var(--text)] hover:text-[var(--heading)] flex items-center justify-center gap-2 text-sm font-medium transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
-                    type="button"
+                {/* Quick prompts */}
+                <motion.div variants={fadeUp} className="flex flex-wrap items-center gap-2 mt-4 text-xs">
+                  <span className="text-[var(--text-3)] font-medium">Try asking:</span>
+                  {[
+                    "Describe this scene",
+                    "Highlight the water body",
+                    "What changed between these dates?",
+                    "Optical + SAR analysis",
+                  ].map((p) => (
+                    <button
+                      key={p}
+                      onClick={() => handleQuickPrompt(p)}
+                      className="px-3 py-1 rounded-full border border-[var(--border)] bg-[var(--surface-2)] text-[var(--text-2)] hover:border-[var(--cyan)]/50 hover:text-[var(--cyan)] transition-all duration-150 hover:bg-[var(--cyan)]/5"
+                    >
+                      {p}
+                    </button>
+                  ))}
+                </motion.div>
+              </motion.div>
+
+              {/* Right: Floating analytics preview */}
+              {/*<motion.div*/}
+              {/*  initial={{ opacity: 0, x: 32 }}*/}
+              {/*  animate={{ opacity: 1, x: 0 }}*/}
+              {/*  transition={{ duration: 0.7, delay: 0.3, ease: [0.22, 1, 0.36, 1] as [number, number, number, number] }}*/}
+              {/*  className="hidden lg:flex flex-col gap-4"*/}
+              {/*>*/}
+              {/*  /!* Optical + SAR side-by-side *!/*/}
+              {/*  <div className="relative bg-[var(--surface)]/80 border border-[var(--border)] backdrop-blur-md rounded-2xl p-4 shadow-xl">*/}
+              {/*    <p className="text-[10px] font-bold text-[var(--text-3)] uppercase tracking-wider mb-3">Live Fusion Preview</p>*/}
+              {/*    <div className="flex items-center gap-3 justify-center">*/}
+              {/*      <div className="relative w-40 h-28 rounded-lg overflow-hidden border border-[var(--cyan)]/40">*/}
+              {/*        <div className="absolute inset-0 sat-crop-delhi-main" />*/}
+              {/*        <span className="absolute bottom-1.5 left-2 px-1.5 py-0.5 rounded bg-black/60 text-[10px] font-semibold text-[var(--text-2)]">Optical</span>*/}
+              {/*      </div>*/}
+              {/*      <div className="text-[var(--text-3)] font-bold text-xl">+</div>*/}
+              {/*      <div className="relative w-40 h-28 rounded-lg overflow-hidden border border-[var(--text-4)]/60">*/}
+              {/*        <div className="absolute inset-0 sat-crop-sar" />*/}
+              {/*        <span className="absolute bottom-1.5 left-2 px-1.5 py-0.5 rounded bg-black/60 text-[10px] font-semibold text-[var(--text-2)]">SAR</span>*/}
+              {/*      </div>*/}
+              {/*    </div>*/}
+              {/*  </div>*/}
+
+              {/*  /!* Classification pill list *!/*/}
+              {/*  <div className="flex flex-col gap-2">*/}
+              {/*    {[*/}
+              {/*      { color: "bg-[var(--green)]", label: "Land Cover", val: "73%" },*/}
+              {/*      { color: "bg-[var(--cyan)]", label: "Water Bodies", val: "18%" },*/}
+              {/*      { color: "bg-[var(--warning)]", label: "Built-up Areas", val: "6%" },*/}
+              {/*      { color: "bg-[var(--error)]", label: "Change Detected", val: "3%" },*/}
+              {/*    ].map(({ color, label, val }) => (*/}
+              {/*      <div key={label} className="flex items-center justify-between px-4 py-2.5 rounded-xl bg-[var(--surface)]/80 border border-[var(--border)] backdrop-blur-sm">*/}
+              {/*        <div className="flex items-center gap-2.5">*/}
+              {/*          <span className={`w-2 h-2 rounded-full ${color}`} />*/}
+              {/*          <span className="text-xs font-medium text-[var(--text-2)]">{label}</span>*/}
+              {/*        </div>*/}
+              {/*        <span className="text-xs font-bold text-[var(--text-3)] font-mono-data">{val}</span>*/}
+              {/*      </div>*/}
+              {/*    ))}*/}
+              {/*  </div>*/}
+
+              {/*  /!* AI detection badge *!/*/}
+              {/*  <div className="flex items-center gap-2.5 px-4 py-3 rounded-xl bg-[var(--cyan)]/5 border border-[var(--cyan)]/20 backdrop-blur-sm">*/}
+              {/*    <div className="w-2 h-2 rounded-full bg-[var(--cyan)] animate-pulse-dot" />*/}
+              {/*    <p className="text-xs text-[var(--cyan)] font-medium">*/}
+              {/*      AI model running — <span className="text-[var(--text-3)] font-normal">GeoFM · Change-VQA · SAR-Encoder</span>*/}
+              {/*    </p>*/}
+              {/*  </div>*/}
+              {/*</motion.div>*/}
+            </div>
+          </section>
+
+          {/* ── STATS ROW ────────────────────────────────────────────────── */}
+          <section ref={statsRef} className="px-6 md:px-10 py-10 border-b border-[var(--border)]">
+            <motion.div
+              variants={stagger}
+              initial="hidden"
+              animate={statsInView ? "show" : "hidden"}
+              className="max-w-7xl mx-auto grid grid-cols-2 sm:grid-cols-4 gap-6"
+            >
+              {stats.map(({ value, suffix, label }) => (
+                <motion.div key={label} variants={fadeUp} className="text-center">
+                  <div className="text-3xl font-black text-[var(--heading)] tracking-tight mb-1 font-mono-data">
+                    <NumberTicker value={value} suffix={suffix} duration={1600} />
+                  </div>
+                  <p className="text-xs text-[var(--text-3)] font-medium">{label}</p>
+                </motion.div>
+              ))}
+            </motion.div>
+          </section>
+
+          {/* ── FEATURES: BENTO GRID ─────────────────────────────────────── */}
+          <section className="px-6 md:px-10 py-10 border-b border-[var(--border)]">
+            <div className="max-w-7xl mx-auto">
+              <motion.div
+                initial={{ opacity: 0, y: 16 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true, margin: "-60px" }}
+                transition={{ duration: 0.5 }}
+                className="flex items-end justify-between mb-6"
+              >
+                <div>
+                  <p className="text-[11px] font-bold text-[var(--cyan)] uppercase tracking-widest mb-1 font-mono-data">Capabilities</p>
+                  <h2 className="text-2xl font-bold text-[var(--heading)] tracking-tight">What can you do with SatQuery AI?</h2>
+                </div>
+                <Link
+                  href="/analysis"
+                  className="hidden sm:flex items-center gap-1.5 text-xs font-medium text-[var(--cyan)] hover:text-[var(--primary)] transition-colors"
+                >
+                  Explore all
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                    <path d="M5 12h14M12 5l7 7-7 7" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                </Link>
+              </motion.div>
+
+              <motion.div
+                variants={stagger}
+                initial="hidden"
+                whileInView="show"
+                viewport={{ once: true, margin: "-40px" }}
+                className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4"
+              >
+                {features.map((f) => (
+                  <motion.div key={f.id} variants={scaleIn}>
+                    <Link href={f.href} className="block h-full">
+                      <SpotlightCard
+                        spotlightColor={f.glow}
+                        className={`h-full bg-[var(--surface)] border border-[var(--border)] ${f.border} rounded-xl p-4 flex flex-col gap-3 transition-all duration-200 hover:-translate-y-0.5 group cursor-pointer`}
+                      >
+                        {/* Mini image */}
+                        <div className="h-24 rounded-lg overflow-hidden relative">
+                          <div className={`absolute inset-0 ${f.imgClass}`} />
+                          <div className="absolute inset-0 bg-gradient-to-t from-[var(--surface)]/80 to-transparent" />
+                          <div className={`absolute inset-0 bg-gradient-to-br ${f.accent} opacity-50`} />
+                        </div>
+
+                        {/* Icon + Title */}
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="flex items-center gap-2">
+                            <div className="w-8 h-8 rounded-lg bg-[var(--surface-2)] border border-[var(--border)] flex items-center justify-center text-[var(--cyan)] group-hover:border-[var(--cyan)]/40 transition-colors shrink-0">
+                              {f.icon}
+                            </div>
+                            <h3 className="text-sm font-semibold text-[var(--heading)] leading-snug">{f.title}</h3>
+                          </div>
+                          <svg className="w-4 h-4 text-[var(--text-4)] group-hover:text-[var(--cyan)] transition-colors shrink-0 mt-0.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                            <path d="M9 18l6-6-6-6" strokeLinecap="round" strokeLinejoin="round" />
+                          </svg>
+                        </div>
+
+                        <p className="text-xs text-[var(--text-2)] leading-relaxed flex-1">{f.desc}</p>
+
+                        <div className="flex flex-wrap gap-1.5 pt-2 border-t border-[var(--border)]">
+                          {f.tags.map((t) => (
+                            <span key={t} className="px-2 py-0.5 rounded-md bg-[var(--surface-2)] text-[10px] font-medium text-[var(--text-3)]">
+                              {t}
+                            </span>
+                          ))}
+                        </div>
+                      </SpotlightCard>
+                    </Link>
+                  </motion.div>
+                ))}
+              </motion.div>
+            </div>
+          </section>
+
+          {/* ── CTA BANNER ───────────────────────────────────────────────── */}
+          <motion.section
+            initial={{ opacity: 0, y: 24 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true, margin: "-40px" }}
+            transition={{ duration: 0.55 }}
+            className="px-6 md:px-10 py-10 border-b border-[var(--border)]"
+          >
+            <div className="max-w-7xl mx-auto">
+              <div className="relative overflow-hidden rounded-2xl border border-[var(--cyan)]/20 bg-gradient-to-r from-[var(--surface-2)] via-[var(--surface-3)] to-[var(--surface-2)] px-8 py-10 flex flex-col sm:flex-row items-center justify-between gap-6">
+                <div className="absolute inset-0 opacity-10 bg-[radial-gradient(var(--cyan)_1px,transparent_1px)] [background-size:20px_20px] pointer-events-none" />
+                <div className="absolute -right-12 -top-12 w-48 h-48 rounded-full bg-[var(--cyan)]/10 blur-3xl pointer-events-none" />
+                <div className="relative z-10">
+                  <h3 className="text-xl font-bold text-[var(--heading)] mb-1.5">Ready to analyze your first scene?</h3>
+                  <p className="text-sm text-[var(--text-2)]">Upload imagery or start with a natural language query — no code required.</p>
+                </div>
+                <div className="relative z-10 flex gap-3 shrink-0">
+                  <ShimmerButton
+                    onClick={() => router.push("/analysis")}
+                    shimmerColor="rgba(0, 213, 190, 0.15)"
+                    shimmerDuration="2.5s"
+                    className="px-5 py-2.5 rounded-xl bg-[var(--cyan)] text-[var(--canvas)] text-sm font-bold hover:brightness-110 transition-colors shadow-md shadow-[var(--cyan)]/30"
                   >
-                    <svg className="w-4 h-4 text-[var(--text-3)]" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                      <path d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" strokeLinecap="round" strokeLinejoin="round" />
-                    </svg>
-                    <span>Browse Files</span>
-                  </button>
-                </div>
-
-                {/* Natural Language Query Bar */}
-                <form onSubmit={handleQuerySubmit} className="mt-4 flex items-center gap-2 bg-[var(--canvas)] border border-[var(--border)] rounded-xl px-4 py-2.5 focus-within:border-teal-500/80 focus-within:ring-1 focus-within:ring-teal-500/30 transition-all">
-                  <svg className="w-4 h-4 text-[var(--cyan)] shrink-0" fill="currentColor" viewBox="0 0 24 24">
-                    <path d="M12 2l2.4 6.6L21 11l-6.6 2.4L12 20l-2.4-6.6L3 11l6.6-2.4L12 2z" />
-                  </svg>
-                  <input
-                    value={query}
-                    onChange={(e) => setQuery(e.target.value)}
-                    disabled={isUploading || isSubmitting}
-                    className="bg-transparent border-none text-[var(--text)] placeholder-[var(--text-3)] text-sm w-full focus:outline-none  p-0 disabled:opacity-50"
-                    placeholder="Ask a question about your imagery..."
-                    type="text"
-                  />
-                  <button
-                    type="submit"
-                    disabled={isUploading || isSubmitting || !query.trim()}
-                    className="p-2 rounded-lg bg-[var(--cyan)] text-[var(--canvas)] hover:bg-[var(--cyan)] transition-all font-semibold shrink-0 shadow-md shadow-teal-500/20 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center w-8 h-8"
-                    title="Submit query"
+                    Start Analysis
+                  </ShimmerButton>
+                  <Link
+                    href="/documentation"
+                    className="px-5 py-2.5 rounded-xl border border-[var(--border-strong)] text-[var(--text-2)] hover:text-[var(--heading)] hover:border-[var(--cyan)]/40 text-sm font-medium transition-all"
                   >
-                    {isSubmitting ? (
-                      <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                      </svg>
-                    ) : (
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
-                        <path d="M14 5l7 7m0 0l-7 7m7-7H3" strokeLinecap="round" strokeLinejoin="round" />
-                      </svg>
-                    )}
-                  </button>
-                </form>
-              </div>
-
-              {/* Quick Prompts Row */}
-              <div className="flex flex-wrap items-center gap-2 mt-4 text-xs">
-                <span className="text-[var(--text-3)] font-medium mr-1">Try asking:</span>
-                <button
-                  onClick={() => handleQuickPrompt("Describe this scene")}
-                  className="px-3 py-1 rounded-full bg-[var(--surface-2)] border border-[var(--border)] text-[var(--text-2)] hover:border-[var(--cyan)]/50 hover:text-[var(--cyan)] transition-colors"
-                  type="button"
-                >
-                  Describe this scene
-                </button>
-                <button
-                  onClick={() => handleQuickPrompt("Highlight the water body in the image")}
-                  className="px-3 py-1 rounded-full bg-[var(--surface-2)] border border-[var(--border)] text-[var(--text-2)] hover:border-[var(--cyan)]/50 hover:text-[var(--cyan)] transition-colors"
-                  type="button"
-                >
-                  Highlight the water body
-                </button>
-                <button
-                  onClick={() => handleQuickPrompt("What changed between these dates?")}
-                  className="px-3 py-1 rounded-full bg-[var(--surface-2)] border border-[var(--border)] text-[var(--text-2)] hover:border-[var(--cyan)]/50 hover:text-[var(--cyan)] transition-colors"
-                  type="button"
-                >
-                  What changed between these dates?
-                </button>
-                <button
-                  onClick={() => handleQuickPrompt("Use optical and SAR together for analysis")}
-                  className="px-3 py-1 rounded-full bg-[var(--surface-2)] border border-[var(--border)] text-[var(--text-2)] hover:border-[var(--cyan)]/50 hover:text-[var(--cyan)] transition-colors"
-                  type="button"
-                >
-                  Use optical and SAR together
-                </button>
-              </div>
-            </div>
-
-            {/* Right Hero Floating Satellite Analytics Preview */}
-            <div className="relative w-full lg:w-[480px] shrink-0 hidden md:block">
-              {/* Optical + SAR Comparison Pill Floating Container */}
-              <div className="bg-[var(--surface-2)]/90 border border-[var(--border)] backdrop-blur-md rounded-2xl p-3.5 shadow-xl mb-4">
-                <div className="flex items-center gap-3 justify-center">
-                  {/* Optical Preview Box */}
-                  <div className="relative w-36 h-24 rounded-lg overflow-hidden border border-[var(--cyan)]/40 bg-[var(--surface-3)] group">
-                    <img
-                      alt="Optical satellite imagery"
-                      className="w-full h-full object-cover scale-[2.2] object-top contrast-125"
-                      src="https://lh3.googleusercontent.com/aida-public/AB6AXuD1hS1hH89YqsbwG0KdMrp51ez_5hcxUhWTae6DNhBmfj4ffLgOvc4S7xIpljGic3ROODyWCpo7YLQzj5rFKrc5TfIhHTeJJkOEqjGQGV8sKvbGZpQMjvG_EHmZ-5eDYxZqPCqyPISHEtzaVpVt09G79IWPnvarfmHlK-wNzETxlGRAbGNPQJuZKUYwrkHw6EI-31SkPESHuTU8hrRPItTLmCVT4CfHJ0-UX4rk_ltrIc1SNTHt-Lg2KVIJ_ko3JKyr"
-                    />
-                    <span className="absolute bottom-1.5 left-2 px-1.5 py-0.5 rounded bg-[var(--scrim)] backdrop-blur-sm text-[10px] font-semibold text-[var(--text)]">Optical</span>
-                  </div>
-                  {/* Plus icon separator */}
-                  <div className="text-[var(--text-3)] font-bold text-lg">+</div>
-                  {/* SAR Preview Box */}
-                  <div className="relative w-36 h-24 rounded-lg overflow-hidden border border-[var(--border)] bg-[var(--surface-3)] group">
-                    <img
-                      alt="SAR radar imagery"
-                      className="w-full h-full object-cover grayscale contrast-200 scale-[2.2] object-right"
-                      src="https://lh3.googleusercontent.com/aida-public/AB6AXuAyXwBIkCAFP5wB6DbnmxWjG7ZrADP3kztslmRY1KkfBHUPpGWFSHcgYJ6_-3aE3cRsykFRn6B0cJ6wuWwwcZs9T16B8WOHE_SyegEK6eqtluBJJe0vOf42OU8wTaljsKD7ZRfqe47TByWsSMWlwJwqXeel_3YnVm8o-seY6njTnyG_WkJJ3NrzVdEJRuOOIbHvtWHe8o-35GPzzzZDDER7vuvsckfjCvt0DYUYan1XyNrYTYjNSh48j0nbNA1LCEwT"
-                    />
-                    <span className="absolute bottom-1.5 left-2 px-1.5 py-0.5 rounded bg-[var(--scrim)] backdrop-blur-sm text-[10px] font-semibold text-[var(--text)]">SAR</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Detection Bounding Target & Layer Tags Container */}
-              <div className="relative flex items-start justify-between gap-4">
-                {/* Dotted bounding box over Earth landscape */}
-                <div className="relative w-44 h-36 border-2 border-dashed border-[var(--cyan)]/80 rounded-xl bg-[var(--cyan)]/5 backdrop-blur-[1px] p-2 flex flex-col justify-between">
-                  <span className="self-start text-[9px] font-bold px-1.5 py-0.5 rounded bg-[var(--cyan)] text-[var(--canvas)] uppercase tracking-wider">ROI Target</span>
-                  <div className="flex items-center gap-1.5 self-end px-2 py-1 rounded bg-[var(--surface)]/90 border border-[var(--cyan)]/50 text-[10px] text-[var(--cyan)] font-medium shadow-lg">
-                    <svg className="w-3 h-3 text-[var(--cyan)]" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                      <path d="M4 7V4h3m10 0h3v3m0 10v3h-3M7 20H4v-3" strokeLinecap="round" strokeLinejoin="round" />
-                    </svg>
-                    <span>AI detects changes</span>
-                  </div>
-                </div>
-
-                {/* Vertical Classification Pills */}
-                <div className="flex flex-col gap-2 shrink-0">
-                  <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[var(--surface-2)]/90 border border-[var(--border)] text-xs font-medium text-[var(--text)] shadow-sm">
-                    <span className="w-2 h-2 rounded-full bg-emerald-400" />
-                    <span>Land Cover</span>
-                  </div>
-                  <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[var(--surface-2)]/90 border border-[var(--border)] text-xs font-medium text-[var(--text)] shadow-sm">
-                    <span className="w-2 h-2 rounded-full bg-sky-400" />
-                    <span>Water Bodies</span>
-                  </div>
-                  <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[var(--surface-2)]/90 border border-[var(--border)] text-xs font-medium text-[var(--text)] shadow-sm">
-                    <span className="w-2 h-2 rounded-full bg-amber-400" />
-                    <span>Built-up Areas</span>
-                  </div>
-                  <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[var(--surface-2)]/90 border border-[var(--border)] text-xs font-medium text-[var(--text)] shadow-sm">
-                    <span className="w-2 h-2 rounded-full bg-rose-400" />
-                    <span>Change Detection</span>
-                  </div>
+                    Read Docs
+                  </Link>
                 </div>
               </div>
             </div>
-          </div>
-        </section>
+          </motion.section>
 
-        {/* Features Grid Section */}
-        <section className="px-8 py-8 border-b border-[var(--border)]" data-purpose="features-showcase">
-          <div className="max-w-7xl mx-auto">
-            {/* Section Title & Link */}
-            <div className="flex items-center justify-between mb-5">
-              <h2 className="text-xl font-bold text-[var(--heading)] tracking-tight">What can you do with SatQuery AI?</h2>
-              <Link href="/analysis" className="text-xs font-medium text-[var(--cyan)] hover:text-[var(--cyan)] flex items-center gap-1 transition-colors">
-                <span>Explore all features</span>
-                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                  <path d="M5 12h14M12 5l7 7-7 7" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
-              </Link>
-            </div>
-
-            {/* 4 Feature Cards Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-              {/* Card 1: Single Image Analysis */}
-              <Link
-                href="/analysis?tool=vqa"
-                className="bg-[var(--surface)] border border-[var(--border)] hover:border-[var(--cyan)]/40 rounded-xl p-3.5 flex flex-col justify-between transition-all hover:-translate-y-0.5 group"
+          {/* ── RECENT ANALYSES ──────────────────────────────────────────── */}
+          <section className="px-6 md:px-10 py-10">
+            <div className="max-w-7xl mx-auto">
+              <motion.div
+                initial={{ opacity: 0, y: 16 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true, margin: "-60px" }}
+                transition={{ duration: 0.5 }}
+                className="flex items-center justify-between mb-5"
               >
-                <div>
-                  <div className="h-28 w-full rounded-lg overflow-hidden mb-3.5 relative bg-[var(--surface-3)]">
-                    <img
-                      alt="Single Image Analysis preview"
-                      className="w-full h-full object-cover scale-[2.5] object-center group-hover:scale-[2.6] transition-transform duration-300"
-                      src="https://lh3.googleusercontent.com/aida-public/AB6AXuA484pOnfeDELf_4y67ntdWCmOkfQ29rzml1fWDKyJco_2R2kYQY0IZV0uTckNun1QdfEht8Y_40sxpvr_CPZHjIRUobqxjNScT5oD0o6164IPV8DNlAkDYWrvFPQPKt6WpvfpM28hZE0k6MqTg1NIbvuqNd8bywOIrlKvvGmwLNAwMD7MCAbhvw5z5GI4aDUeEt0UPwxpyTfLo8jmxvQVCgTED7EUwBqPuNdtske7P6zKQnxRKs0rorfcOgOtr_zAa"
-                    />
-                    <div className="absolute inset-0 bg-gradient-to-t from-[#091120] via-transparent to-transparent opacity-60" />
-                  </div>
-                  <div className="flex items-center justify-between gap-2 mb-1.5">
-                    <div className="flex items-center gap-2">
-                      <svg className="w-4 h-4 text-[var(--cyan)] shrink-0" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                        <path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7" strokeLinecap="round" strokeLinejoin="round" />
-                      </svg>
-                      <h3 className="text-sm font-semibold text-[var(--heading)]">Single Image Analysis</h3>
-                    </div>
-                    <div className="w-6 h-6 rounded-full bg-[var(--surface-2)]/80 flex items-center justify-center text-[var(--text-3)] group-hover:text-[var(--cyan)] group-hover:bg-[var(--surface-hover)] transition-colors">
-                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                <div className="flex items-center gap-2">
+                  <svg className="w-4 h-4 text-[var(--cyan)]" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                    <circle cx="12" cy="12" r="9" />
+                    <polyline points="12 6 12 12 16 14" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                  <h2 className="text-base font-bold text-[var(--heading)] tracking-tight">Recent Analyses</h2>
+                </div>
+                <Link href="/history" className="text-xs font-medium text-[var(--cyan)] hover:text-[var(--primary)] flex items-center gap-1 transition-colors">
+                  View all
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                    <path d="M5 12h14M12 5l7 7-7 7" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                </Link>
+              </motion.div>
+
+              <motion.div
+                variants={stagger}
+                initial="hidden"
+                whileInView="show"
+                viewport={{ once: true, margin: "-40px" }}
+                className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4"
+              >
+                {recentAnalyses.map((item, i) => (
+                  <motion.div key={item.job_id || i} variants={fadeUp}>
+                    <Link
+                      href={`/analysis/${item.job_id}`}
+                      className="flex items-center gap-3 p-3 rounded-xl bg-[var(--surface)] border border-[var(--border)] hover:border-[var(--cyan)]/30 hover:bg-[var(--surface-2)] transition-all duration-200 group"
+                    >
+                      <div className={`w-12 h-12 rounded-lg overflow-hidden shrink-0 relative border border-[var(--border)]`}>
+                        <div className={`absolute inset-0 ${item.imgClass}`} />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-xs font-semibold text-[var(--heading)] truncate group-hover:text-[var(--cyan)] transition-colors">{item.title}</p>
+                        <span className="inline-block mt-0.5 px-1.5 py-0.5 rounded bg-[var(--cyan)]/10 text-[9px] font-medium text-[var(--cyan)] border border-[var(--cyan)]/20 font-mono-data">
+                          {item.tag}
+                        </span>
+                        <p className="text-[10px] text-[var(--text-3)] mt-0.5 truncate">{item.meta}</p>
+                      </div>
+                      <svg className="w-3.5 h-3.5 text-[var(--text-4)] group-hover:text-[var(--cyan)] transition-colors shrink-0" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
                         <path d="M9 18l6-6-6-6" strokeLinecap="round" strokeLinejoin="round" />
                       </svg>
-                    </div>
-                  </div>
-                  <p className="text-xs text-[var(--text-3)] line-clamp-2 mb-4 leading-relaxed">Ask questions, get descriptions, find regions and more.</p>
-                </div>
-                <div className="flex flex-wrap gap-1.5 pt-2 border-t border-[var(--border)]">
-                  <span className="px-2 py-0.5 rounded bg-[var(--surface-3)] text-[10px] font-medium text-[var(--text-3)]">VQA</span>
-                  <span className="px-2 py-0.5 rounded bg-[var(--surface-3)] text-[10px] font-medium text-[var(--text-3)]">Captioning</span>
-                  <span className="px-2 py-0.5 rounded bg-[var(--surface-3)] text-[10px] font-medium text-[var(--text-3)]">Grounding</span>
-                </div>
-              </Link>
-
-              {/* Card 2: Optical + SAR Fusion */}
-              <Link
-                href="/analysis?tool=fusion"
-                className="bg-[var(--surface)] border border-[var(--border)] hover:border-[var(--cyan)]/40 rounded-xl p-3.5 flex flex-col justify-between transition-all hover:-translate-y-0.5 group"
-              >
-                <div>
-                  <div className="h-28 w-full rounded-lg overflow-hidden mb-3.5 relative bg-[var(--surface-3)]">
-                    <img
-                      alt="Optical SAR Fusion preview"
-                      className="w-full h-full object-cover scale-[2.7] object-top group-hover:scale-[2.8] transition-transform duration-300"
-                      src="https://lh3.googleusercontent.com/aida-public/AB6AXuCHe-JINOUV1q-IZzPzi0fKnUItljYiA17FLkcnUwweMOqDyFrwDzrzDzxzCr32H8FCjw11nbbTphiiUxwjp8I0fexgznu3ngVHgmSEKu4rnCQIrei5CE4fDlthxoxuRgEIANHG4QAxGx80XFjWoIGq0VIlzBTSrqTkOLgEqJeQsfsgWNf_p6-AnjVb0E568F2xcW6cscpsM-SWgWJKvwgisVUmExsiK5iiZdtos7xHhz0mNSeYbwFfKlQQHOFhGBDW"
-                    />
-                    <div className="absolute inset-0 bg-gradient-to-t from-[#091120] via-transparent to-transparent opacity-60" />
-                  </div>
-                  <div className="flex items-center justify-between gap-2 mb-1.5">
-                    <div className="flex items-center gap-2">
-                      <svg className="w-4 h-4 text-[var(--cyan)] shrink-0" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                        <polygon points="12 2 2 7 12 12 22 7 12 2" />
-                        <polyline points="2 17 12 22 22 17" />
-                        <polyline points="2 12 12 17 22 12" />
-                      </svg>
-                      <h3 className="text-sm font-semibold text-[var(--heading)]">Optical + SAR Fusion</h3>
-                    </div>
-                    <div className="w-6 h-6 rounded-full bg-[var(--surface-2)]/80 flex items-center justify-center text-[var(--text-3)] group-hover:text-[var(--cyan)] group-hover:bg-[var(--surface-hover)] transition-colors">
-                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                        <path d="M9 18l6-6-6-6" strokeLinecap="round" strokeLinejoin="round" />
-                      </svg>
-                    </div>
-                  </div>
-                  <p className="text-xs text-[var(--text-3)] line-clamp-2 mb-4 leading-relaxed">Combine multi-sensor data for richer, more reliable insights.</p>
-                </div>
-                <div className="flex flex-wrap gap-1.5 pt-2 border-t border-[var(--border)]">
-                  <span className="px-2 py-0.5 rounded bg-[var(--surface-3)] text-[10px] font-medium text-[var(--text-3)]">Cross-Modal</span>
-                  <span className="px-2 py-0.5 rounded bg-[var(--surface-3)] text-[10px] font-medium text-[var(--text-3)]">Information Extraction</span>
-                </div>
-              </Link>
-
-              {/* Card 3: Bi-temporal Change Analysis */}
-              <Link
-                href="/analysis?tool=change"
-                className="bg-[var(--surface)] border border-[var(--border)] hover:border-[var(--cyan)]/40 rounded-xl p-3.5 flex flex-col justify-between transition-all hover:-translate-y-0.5 group"
-              >
-                <div>
-                  <div className="h-28 w-full rounded-lg overflow-hidden mb-3.5 relative bg-[var(--surface-3)]">
-                    <img
-                      alt="Bi-temporal Change Analysis"
-                      className="w-full h-full object-cover scale-[2.9] object-center group-hover:scale-[3.0] transition-transform duration-300"
-                      src="https://lh3.googleusercontent.com/aida-public/AB6AXuCHJvu4nRtRtapN9lJTOQiCnBQ0jQu_C8wxtFAqXqH9O8m2FbfD0-K1eJ3nzNPlVLhvHDOT2YiWkuPoCyTlYZ5KV1f_ajmPTdOMJ9bK2CxwNdc1svtMOmUWRkk_mmmrMme7cHmcAGF0mIsZpxEmXLdHGMcraoHFYmSAxz3lZPgqs4re9fpzI1TonRyOg5V-yn2TKI9cmsHV55sVyEx0B2AN0PljLFRlIA6sI6dBD4is90JIOCsR5TTes7lua8RlvVwF"
-                    />
-                    <div className="absolute inset-0 bg-gradient-to-t from-[#091120] via-transparent to-transparent opacity-60" />
-                  </div>
-                  <div className="flex items-center justify-between gap-2 mb-1.5">
-                    <div className="flex items-center gap-2">
-                      <svg className="w-4 h-4 text-[var(--cyan)] shrink-0" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                        <path d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" strokeLinecap="round" strokeLinejoin="round" />
-                      </svg>
-                      <h3 className="text-sm font-semibold text-[var(--heading)]">Bi-temporal Change Analysis</h3>
-                    </div>
-                    <div className="w-6 h-6 rounded-full bg-[var(--surface-2)]/80 flex items-center justify-center text-[var(--text-3)] group-hover:text-[var(--cyan)] group-hover:bg-[var(--surface-hover)] transition-colors">
-                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                        <path d="M9 18l6-6-6-6" strokeLinecap="round" strokeLinejoin="round" />
-                      </svg>
-                    </div>
-                  </div>
-                  <p className="text-xs text-[var(--text-3)] line-clamp-2 mb-4 leading-relaxed">Detect and understand changes over time.</p>
-                </div>
-                <div className="flex flex-wrap gap-1.5 pt-2 border-t border-[var(--border)]">
-                  <span className="px-2 py-0.5 rounded bg-[var(--surface-3)] text-[10px] font-medium text-[var(--text-3)]">Change Detection</span>
-                  <span className="px-2 py-0.5 rounded bg-[var(--surface-3)] text-[10px] font-medium text-[var(--text-3)]">Change VQA</span>
-                </div>
-              </Link>
-
-              {/* Card 4: Agentic Model Orchestration */}
-              <Link
-                href="/analysis"
-                className="bg-[var(--surface)] border border-[var(--border)] hover:border-[var(--cyan)]/40 rounded-xl p-3.5 flex flex-col justify-between transition-all hover:-translate-y-0.5 group"
-              >
-                <div>
-                  <div className="h-28 w-full rounded-lg overflow-hidden mb-3.5 relative bg-gradient-to-tr from-cyan-950 via-slate-900 to-blue-950 flex items-center justify-center">
-                    <div className="w-12 h-12 rounded-full bg-[var(--cyan-glow)] border border-[var(--cyan)]/50 flex items-center justify-center animate-pulse">
-                      <svg className="w-6 h-6 text-[var(--cyan)]" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                        <rect height="16" rx="2" width="16" x="4" y="4" />
-                        <path d="M9 9h6v6H9zM9 1v3m6-3v3M9 20v3m6-3v3M20 9h3m-3 6h3M1 9h3m-3 6h3" strokeLinecap="round" strokeLinejoin="round" />
-                      </svg>
-                    </div>
-                    <div className="absolute inset-0 bg-[radial-gradient(#00d5be_1px,transparent_1px)] [background-size:10px_10px] opacity-25" />
-                  </div>
-                  <div className="flex items-center justify-between gap-2 mb-1.5">
-                    <div className="flex items-center gap-2">
-                      <svg className="w-4 h-4 text-[var(--cyan)] shrink-0" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                        <circle cx="12" cy="12" r="3" />
-                        <path d="M12 2v3m0 14v3M2 12h3m14 0h3" strokeLinecap="round" strokeWidth="2" />
-                      </svg>
-                      <h3 className="text-sm font-semibold text-[var(--heading)]">Agentic Model Orchestration</h3>
-                    </div>
-                    <div className="w-6 h-6 rounded-full bg-[var(--surface-2)]/80 flex items-center justify-center text-[var(--text-3)] group-hover:text-[var(--cyan)] group-hover:bg-[var(--surface-hover)] transition-colors">
-                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                        <path d="M9 18l6-6-6-6" strokeLinecap="round" strokeLinejoin="round" />
-                      </svg>
-                    </div>
-                  </div>
-                  <p className="text-xs text-[var(--text-3)] line-clamp-2 mb-4 leading-relaxed">Automatically selects the right models, validates inputs and returns evidence.</p>
-                </div>
-                <div className="flex flex-wrap gap-1.5 pt-2 border-t border-[var(--border)]">
-                  <span className="px-2 py-0.5 rounded bg-[var(--surface-3)] text-[10px] font-medium text-[var(--text-3)]">Smart Routing</span>
-                  <span className="px-2 py-0.5 rounded bg-[var(--surface-3)] text-[10px] font-medium text-[var(--text-3)]">Execution Trace</span>
-                </div>
-              </Link>
+                    </Link>
+                  </motion.div>
+                ))}
+              </motion.div>
             </div>
-          </div>
-        </section>
-
-        {/* Recent Analyses Section */}
-        <section className="px-8 py-8" data-purpose="recent-activities">
-          <div className="max-w-7xl mx-auto">
-            {/* Header */}
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-2">
-                <svg className="w-4 h-4 text-[var(--cyan)]" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                  <circle cx="12" cy="12" r="9" />
-                  <polyline points="12 6 12 12 16 14" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
-                <h2 className="text-base font-bold text-[var(--heading)] tracking-tight">Recent Analyses</h2>
-              </div>
-              <Link href="/history" className="text-xs font-medium text-[var(--cyan)] hover:text-[var(--cyan)] flex items-center gap-1 transition-colors">
-                <span>View all</span>
-                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                  <path d="M5 12h14M12 5l7 7-7 7" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
-              </Link>
-            </div>
-
-            {/* 4 Recent Activity Cards */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-              {/* Item 1 */}
-              <Link
-                href="/history"
-                className="bg-[var(--surface)] border border-[var(--border)] hover:border-[var(--cyan)]/30 rounded-xl p-3 flex items-center gap-3 transition-all hover:bg-[var(--surface-hover)] cursor-pointer"
-              >
-                <div className="w-12 h-12 rounded-lg overflow-hidden shrink-0 bg-[var(--surface-3)]">
-                  <img
-                    alt="Urban Expansion Analysis"
-                    className="w-full h-full object-cover scale-[3.5] object-bottom"
-                    src="https://lh3.googleusercontent.com/aida-public/AB6AXuCnr6Hf5AuFazIFhbmD_t7DQlPxM22OCoNCt1mN08gu8mFDignS-myqLVvAXG9PnIqPvw5UPeE5f78_Oz2Hx9T-CcAooTv01AViQBnIEx_RaelKpo45Xec6QnieWMlENui7lVuROBx67IAf2RN57OOb5rPhhLrWogIBGds7CM6tRoeeN6DJn-8S3zIufUbRI6KMBHQqOXPG8sDQRkP3bj7UtAQ96MayjiAwFhalyUOVGXmV8ehtb2WM_MTnbmwq7ZyW"
-                  />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className="text-xs font-semibold text-[var(--heading)] truncate">Urban Expansion Analysis</p>
-                  <div className="flex items-center gap-1.5 mt-0.5">
-                    <span className="px-1.5 py-0.2 rounded bg-[var(--cyan-glow)] text-[9px] font-medium text-[var(--cyan)] border border-[var(--cyan)]/20">Change Analysis</span>
-                  </div>
-                  <p className="text-[10px] text-[var(--text-3)] mt-1 truncate">2 images • 12 Oct 2025, 11:42 AM</p>
-                </div>
-                <button className="text-[var(--text-3)] hover:text-[var(--heading)] p-1" title="Options" type="button" onClick={(e) => e.preventDefault()}>
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                    <circle cx="12" cy="12" r="1" /><circle cx="12" cy="5" r="1" /><circle cx="12" cy="19" r="1" />
-                  </svg>
-                </button>
-              </Link>
-
-              {/* Item 2 */}
-              <Link
-                href="/history"
-                className="bg-[var(--surface)] border border-[var(--border)] hover:border-[var(--cyan)]/30 rounded-xl p-3 flex items-center gap-3 transition-all hover:bg-[var(--surface-hover)] cursor-pointer"
-              >
-                <div className="w-12 h-12 rounded-lg overflow-hidden shrink-0 bg-[var(--surface-3)]">
-                  <img
-                    alt="River Detection"
-                    className="w-full h-full object-cover scale-[3.2] object-left"
-                    src="https://lh3.googleusercontent.com/aida-public/AB6AXuBY-SSY1JxU3dcTxAnqXUCNPGHbUGv7pigKTBrNsKF7GWoRN-iLqDkPgXrFQhxnA9wvWfNuBEvrbw3sfrf08NLbsp7swyQKCIjIf7UROj-_znX2UV43EUf16tuAmDnVfjHXN9dNY1Tc23iInMWNLc2QjX72z9GFuElSGzDA9jQj5kyUw5VzPDqWWx-7Ja1UQVPdGU0lGInCSb1mfIwQswnqzzDmM2Wp8GlA9QoJX-CrndfWVMRYtoh1e5z9kvHKTI3p"
-                  />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className="text-xs font-semibold text-[var(--heading)] truncate">River Detection</p>
-                  <div className="flex items-center gap-1.5 mt-0.5">
-                    <span className="px-1.5 py-0.2 rounded bg-[var(--cyan-glow)] text-[9px] font-medium text-[var(--cyan)] border border-[var(--cyan)]/20">VQA</span>
-                  </div>
-                  <p className="text-[10px] text-[var(--text-3)] mt-1 truncate">1 image • 11 Oct 2025, 04:21 PM</p>
-                </div>
-                <button className="text-[var(--text-3)] hover:text-[var(--heading)] p-1" title="Options" type="button" onClick={(e) => e.preventDefault()}>
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                    <circle cx="12" cy="12" r="1" /><circle cx="12" cy="5" r="1" /><circle cx="12" cy="19" r="1" />
-                  </svg>
-                </button>
-              </Link>
-
-              {/* Item 3 */}
-              <Link
-                href="/history"
-                className="bg-[var(--surface)] border border-[var(--border)] hover:border-[var(--cyan)]/30 rounded-xl p-3 flex items-center gap-3 transition-all hover:bg-[var(--surface-hover)] cursor-pointer"
-              >
-                <div className="w-12 h-12 rounded-lg overflow-hidden shrink-0 bg-[var(--surface-3)]">
-                  <img
-                    alt="Optical + SAR Fusion"
-                    className="w-full h-full object-cover scale-[2.8] object-center"
-                    src="https://lh3.googleusercontent.com/aida-public/AB6AXuAN0v0RhlwoMFsAuso5rJgyMSAci3SzBCDNIH0tT6A2wQ8UhglSVSA34j_TTfsPkI0K4HNYiSaWUErQ29QgBcdMjRx4VTyBq-ZWMkhVX9mCNYDGlJG8JSS_v4bnQSMrA_43NxtiLFqwtlGNOTTT59vilh86HNfE-T-hLd9Wy5nWgQg4wTMcMEvEzL_7ifpiCy5hCyaH5GpZ_FwhMCmKqsjUtvIoUm4K4du-FMBJF6VjNK9Lu2Xdn5-8oeJsG55rDI0X"
-                  />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className="text-xs font-semibold text-[var(--heading)] truncate">Optical + SAR Fusion</p>
-                  <div className="flex items-center gap-1.5 mt-0.5">
-                    <span className="px-1.5 py-0.2 rounded bg-[var(--cyan-glow)] text-[9px] font-medium text-[var(--cyan)] border border-[var(--cyan)]/20">Cross-Modal</span>
-                  </div>
-                  <p className="text-[10px] text-[var(--text-3)] mt-1 truncate">2 images • 10 Oct 2025, 09:16 AM</p>
-                </div>
-                <button className="text-[var(--text-3)] hover:text-[var(--heading)] p-1" title="Options" type="button" onClick={(e) => e.preventDefault()}>
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                    <circle cx="12" cy="12" r="1" /><circle cx="12" cy="5" r="1" /><circle cx="12" cy="19" r="1" />
-                  </svg>
-                </button>
-              </Link>
-
-              {/* Item 4 */}
-              <Link
-                href="/history"
-                className="bg-[var(--surface)] border border-[var(--border)] hover:border-[var(--cyan)]/30 rounded-xl p-3 flex items-center gap-3 transition-all hover:bg-[var(--surface-hover)] cursor-pointer"
-              >
-                <div className="w-12 h-12 rounded-lg overflow-hidden shrink-0 bg-[var(--surface-3)]">
-                  <img
-                    alt="Forest Monitoring"
-                    className="w-full h-full object-cover scale-[3.4] object-right"
-                    src="https://lh3.googleusercontent.com/aida-public/AB6AXuAGbD0Frbs3Qt7sz6ESmQlFEsyCNM_f_gro_vHkQYKjiIL3dsbb6-gjgsly7Dn_krZneXIEZj8F0SWMkiP7_4kRg0nxMa8mZCaodUhb7JA_4yaKmYbPATUnGyehZstaPCGoPJnLsPMidpDc-lKo4gr6_Pmz9h8WJ9pL57hTY7YFW7LOgF14nKhuQg1uxPW3MsfwCjGcjbE9SQbSRvMXqGA60Pk2l5xrnF-6zdEhiCVMmua_6_AplANmWWZIuOxA555E"
-                  />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className="text-xs font-semibold text-[var(--heading)] truncate">Forest Monitoring</p>
-                  <div className="flex items-center gap-1.5 mt-0.5">
-                    <span className="px-1.5 py-0.2 rounded bg-[var(--cyan-glow)] text-[9px] font-medium text-[var(--cyan)] border border-[var(--cyan)]/20">VQA</span>
-                  </div>
-                  <p className="text-[10px] text-[var(--text-3)] mt-1 truncate">1 image • 09 Oct 2025, 02:33 PM</p>
-                </div>
-                <button className="text-[var(--text-3)] hover:text-[var(--heading)] p-1" title="Options" type="button" onClick={(e) => e.preventDefault()}>
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                    <circle cx="12" cy="12" r="1" /><circle cx="12" cy="5" r="1" /><circle cx="12" cy="19" r="1" />
-                  </svg>
-                </button>
-              </Link>
-            </div>
-          </div>
-        </section>
-          </main>
-        </div>
+          </section>
+        </main>
       </div>
     </>
   );

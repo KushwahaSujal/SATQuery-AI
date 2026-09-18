@@ -2,168 +2,165 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { motion, AnimatePresence } from "framer-motion";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { api } from "@/lib/api";
+import { clearLocalJobs } from "@/lib/localJobs";
+import type { AnalysisResult } from "@/lib/types";
 import Sidebar from "@/components/layout/Sidebar";
 import TopBar from "@/components/layout/TopBar";
+import { SpotlightCard } from "@/components/ui/spotlight-card";
 
-interface HistoryItem {
-  id: string;
-  title: string;
-  type: string;
-  typeCategory: "Single Image" | "Change Analysis" | "Optical + SAR" | "Bi-temporal";
-  desc: string;
-  timestamp: string;
-  confidence: number;
-  status: "Completed" | "Processing" | "Failed";
-  tags: string[];
-  dualThumb?: { opt: string; sar: string };
-  singleThumb?: string;
-  stats?: {
-    builtUp: string;
-    water: string;
-    vegetation: string;
-  };
+const stagger = { hidden: {}, show: { transition: { staggerChildren: 0.07, delayChildren: 0.1 } } };
+const rowVariant = { hidden: { opacity: 0, x: -12 }, show: { opacity: 1, x: 0, transition: { duration: 0.4, ease: [0.22, 1, 0.36, 1] as [number, number, number, number] } } };
+const fadeUp = { hidden: { opacity: 0, y: 16 }, show: { opacity: 1, y: 0, transition: { duration: 0.45, ease: [0.22, 1, 0.36, 1] as [number, number, number, number] } } };
+
+const TASK_LABELS: Record<string, { label: string; category: string }> = {
+  bi_temporal_change: { label: "Change Detection", category: "Change Analysis" },
+  bi_temporal_change_vqa: { label: "Change VQA", category: "Change Analysis" },
+  single_image_vqa: { label: "VQA", category: "Single Image" },
+  single_image_grounding: { label: "Grounding", category: "Single Image" },
+  single_image_caption: { label: "Captioning", category: "Single Image" },
+  video_grounding_tracking: { label: "Video Tracking", category: "Video" },
+  video_vqa: { label: "Video VQA", category: "Video" },
+  video_change: { label: "Video Change", category: "Video" },
+  optical_sar_analysis: { label: "Optical + SAR", category: "Optical + SAR" },
+};
+
+const STATUS_MAP: Record<string, { label: string; color: string }> = {
+  COMPLETED: { label: "Completed", color: "emerald" },
+  RUNNING: { label: "Processing", color: "amber" },
+  PENDING: { label: "Processing", color: "amber" },
+  QUEUED: { label: "Processing", color: "amber" },
+  VALIDATING: { label: "Processing", color: "amber" },
+  PLANNING: { label: "Processing", color: "amber" },
+  GENERATING_EVIDENCE: { label: "Processing", color: "amber" },
+  FAILED: { label: "Failed", color: "rose" },
+};
+
+function formatTimestamp(iso: string): string {
+  try {
+    return new Date(iso).toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit", hour12: true });
+  } catch {
+    return iso;
+  }
 }
 
-const HISTORY_ITEMS: HistoryItem[] = [
-  {
-    id: "h1",
-    title: "Urban Area Detection",
-    type: "Optical + SAR",
-    typeCategory: "Optical + SAR",
-    desc: "Use the optical and SAR images together to identify built-up and water-covered regions.",
-    timestamp: "Oct 12, 2025 · 11:42 AM",
-    confidence: 92,
-    status: "Completed",
-    tags: ["Optical", "SAR", "Fusion"],
-    dualThumb: { opt: "thumb-optical-1", sar: "thumb-sar-1" },
-    stats: { builtUp: "+12.4%", water: "+5.1%", vegetation: "-8.7%" },
-  },
-  {
-    id: "h2",
-    title: "River Detection",
-    type: "Single Image",
-    typeCategory: "Single Image",
-    desc: "Identify and highlight the river channel in the satellite image.",
-    timestamp: "Oct 11, 2025 · 04:21 PM",
-    confidence: 89,
-    status: "Completed",
-    tags: ["Optical", "VQA"],
-    singleThumb: "thumb-optical-1",
-    stats: { builtUp: "0.0%", water: "+18.2%", vegetation: "-2.1%" },
-  },
-  {
-    id: "h3",
-    title: "Urban Expansion Analysis",
-    type: "Change Analysis",
-    typeCategory: "Change Analysis",
-    desc: "Detect urban growth between 2022 and 2025 using bi-temporal images.",
-    timestamp: "Oct 09, 2025 · 10:15 AM",
-    confidence: 95,
-    status: "Completed",
-    tags: ["Optical", "Change"],
-    dualThumb: { opt: "thumb-optical-1", sar: "thumb-change-red" },
-    stats: { builtUp: "+15.8%", water: "-1.2%", vegetation: "-11.4%" },
-  },
-  {
-    id: "h4",
-    title: "Water Body Identification",
-    type: "Optical + SAR",
-    typeCategory: "Optical + SAR",
-    desc: "Use optical and SAR data to identify water bodies in the region.",
-    timestamp: "Oct 06, 2025 · 02:48 PM",
-    confidence: 91,
-    status: "Completed",
-    tags: ["Optical", "SAR", "Fusion"],
-    dualThumb: { opt: "thumb-optical-1", sar: "thumb-sar-1" },
-    stats: { builtUp: "+3.1%", water: "+22.4%", vegetation: "-4.5%" },
-  },
-  {
-    id: "h5",
-    title: "Region Grounding",
-    type: "Single Image",
-    typeCategory: "Single Image",
-    desc: "Highlight the forest area mentioned in the query.",
-    timestamp: "Oct 04, 2025 · 01:12 PM",
-    confidence: 76,
-    status: "Processing",
-    tags: ["Optical", "Grounding"],
-    singleThumb: "thumb-forest",
-    stats: { builtUp: "+0.5%", water: "0.0%", vegetation: "+1.2%" },
-  },
-  {
-    id: "h6",
-    title: "Deforestation Analysis",
-    type: "Bi-temporal",
-    typeCategory: "Bi-temporal",
-    desc: "Has the forest area increased or decreased over the observation period?",
-    timestamp: "Oct 02, 2025 · 06:45 PM",
-    confidence: 84,
-    status: "Completed",
-    tags: ["Optical", "Change"],
-    dualThumb: { opt: "thumb-forest", sar: "thumb-change-red" },
-    stats: { builtUp: "+8.2%", water: "-0.8%", vegetation: "-19.5%" },
-  },
-  {
-    id: "h7",
-    title: "Infrastructure Mapping",
-    type: "Optical + SAR",
-    typeCategory: "Optical + SAR",
-    desc: "Identify roads and buildings using optical and SAR multi-sensor data.",
-    timestamp: "Sep 27, 2025 · 04:33 PM",
-    confidence: 82,
-    status: "Completed",
-    tags: ["Optical", "Captioning"],
-    dualThumb: { opt: "thumb-forest", sar: "thumb-sar-1" },
-    stats: { builtUp: "+11.1%", water: "+1.0%", vegetation: "-7.4%" },
-  },
-];
-
 export default function HistoryPage() {
+  const queryClient = useQueryClient();
   const [selectedTab, setSelectedTab] = useState<string>("All");
   const [searchQuery, setSearchQuery] = useState("");
-  const [selectedId, setSelectedId] = useState<string>("h1");
-  const [selectedChecks, setSelectedChecks] = useState<Record<string, boolean>>({ h1: true });
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedChecks, setSelectedChecks] = useState<Record<string, boolean>>({});
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
+  const [sliderPos, setSliderPos] = useState(50);
 
-  const selectedItem = HISTORY_ITEMS.find((item) => item.id === selectedId) || HISTORY_ITEMS[0];
+  const { data: jobs = [], isLoading } = useQuery({
+    queryKey: ["jobs"],
+    queryFn: async () => {
+      const raw = await api.listJobs();
+      return raw.map((item: Record<string, unknown>) => ({
+        id: (item.job_id || item.id || "") as string,
+        query: (item.query as string) || "Geospatial query",
+        task: (item.task as string) || "single_image_vqa",
+        status: (item.status as string) || "COMPLETED",
+        created_at: (item.created_at as string) || new Date().toISOString(),
+        confidence: (item.confidence as number) ?? undefined,
+        models_used: (item.models_used as string[]) || [],
+      }));
+    },
+    staleTime: 30_000,
+    refetchInterval: 30_000,
+    refetchOnWindowFocus: false,
+  });
 
-  const filteredItems = HISTORY_ITEMS.filter((item) => {
-    const matchesTab = selectedTab === "All" || item.typeCategory === selectedTab;
-    const matchesSearch =
-      item.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      item.desc.toLowerCase().includes(searchQuery.toLowerCase());
+  const clearMutation = useMutation({
+    mutationFn: async () => {
+      await api.clearJobs();
+      clearLocalJobs();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["jobs"] });
+      setShowClearConfirm(false);
+      setSelectedId(null);
+      setSelectedChecks({});
+    },
+  });
+
+  const deleteSelectedMutation = useMutation({
+    mutationFn: async (ids: string[]) => {
+      await Promise.all(ids.map((id) => api.deleteJob(id)));
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["jobs"] });
+      setSelectedChecks({});
+      setShowClearConfirm(false);
+    },
+  });
+
+  const selectedIds = Object.entries(selectedChecks)
+    .filter(([, checked]) => checked)
+    .map(([id]) => id);
+  const selectedCount = selectedIds.length;
+
+  const toggleAll = () => {
+    if (allVisibleChecked) {
+      setSelectedChecks({});
+    } else {
+      const next: Record<string, boolean> = {};
+      filteredItems.forEach((item) => { next[item.id] = true; });
+      setSelectedChecks(next);
+    }
+  };
+
+  const activeId = selectedId || (jobs.length > 0 ? jobs[0].id : null);
+
+  const { data: result } = useQuery<AnalysisResult>({
+    queryKey: ["result", activeId],
+    queryFn: () => api.result(activeId!),
+    enabled: Boolean(activeId),
+    staleTime: 60_000,
+    retry: 1,
+  });
+
+  const categories = ["All", "Single Image", "Change Analysis", "Optical + SAR", "Video"];
+  const tabCounts: Record<string, number> = { All: jobs.length };
+  for (const j of jobs) {
+    const cat = TASK_LABELS[j.task]?.category || "Single Image";
+    tabCounts[cat] = (tabCounts[cat] || 0) + 1;
+  }
+
+  const filteredItems = jobs.filter((item) => {
+    const cat = TASK_LABELS[item.task]?.category || "Single Image";
+    const matchesTab = selectedTab === "All" || cat === selectedTab;
+    const matchesSearch = item.query.toLowerCase().includes(searchQuery.toLowerCase());
     return matchesTab && matchesSearch;
   });
 
-  const tabCounts: Record<string, number> = {
-    All: 24,
-    "Single Image": 8,
-    "Change Analysis": 6,
-    "Optical + SAR": 5,
-    "Bi-temporal": 5,
-  };
+  const allVisibleChecked = filteredItems.length > 0 && filteredItems.every((item) => selectedChecks[item.id]);
 
   const toggleCheck = (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
     setSelectedChecks((prev) => ({ ...prev, [id]: !prev[id] }));
   };
 
-  return (
-    <div className="bg-[var(--canvas)] text-[var(--text)] antialiased font-sans h-screen overflow-hidden flex flex-col selection:bg-cyan-500 selection:text-[var(--canvas)]">
-      {/* Top Global Header */}
-      <TopBar
-        showBrand={true}
-        searchPlaceholder="Search your analyses, locations, or queries..."
-        onSearch={(q) => setSearchQuery(q)}
-      />
+  const displayConfidence = result?.confidence != null ? Math.round(result.confidence * 100) : null;
+  const displayStatus = result?.status || jobs.find((j) => j.id === activeId)?.status || "COMPLETED";
+  const statusInfo = STATUS_MAP[displayStatus] || STATUS_MAP.COMPLETED;
 
-      {/* Core App Layout */}
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={{ duration: 0.4 }}
+      className="bg-[var(--canvas)] text-[var(--text)] antialiased font-sans h-screen overflow-hidden flex flex-col selection:bg-cyan-500 selection:text-[var(--canvas)]"
+    >
+      <TopBar showBrand={true} searchPlaceholder="Search your analyses, locations, or queries..." onSearch={(q) => setSearchQuery(q)} />
+
       <div className="flex-1 flex overflow-hidden">
-        {/* Left Sidebar */}
         <Sidebar hideBrand={true} activeItem="history" className="h-full" />
 
-        {/* Main Content Area */}
         <main className="flex-1 flex flex-col min-w-0 bg-[var(--canvas)] overflow-hidden">
-          {/* Title & Filters Bar */}
           <div className="p-6 pb-3 border-b border-[var(--border)] shrink-0">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
               <div>
@@ -172,9 +169,127 @@ export default function HistoryPage() {
                   View and manage your past analyses. Revisit results, download reports, or continue where you left off.
                 </p>
               </div>
-
-              {/* Secondary Inline Search */}
               <div className="flex items-center gap-2">
+                {/* Bulk Delete Controls */}
+                <AnimatePresence>
+                  {selectedCount > 0 && (
+                    <motion.div
+                      initial={{ opacity: 0, scale: 0.95, x: 10 }}
+                      animate={{ opacity: 1, scale: 1, x: 0 }}
+                      exit={{ opacity: 0, scale: 0.95, x: 10 }}
+                      className="flex items-center gap-2"
+                    >
+                      <span className="text-[11px] text-[var(--text-2)] font-medium">
+                        {selectedCount} selected
+                      </span>
+                      <div className="relative">
+                        <button
+                          onClick={() => setShowClearConfirm(true)}
+                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-red-500/30 bg-red-500/5 text-red-400 hover:bg-red-500/10 hover:border-red-500/50 text-xs font-medium transition"
+                        >
+                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                            <path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" strokeLinecap="round" strokeLinejoin="round" />
+                          </svg>
+                          <span>Delete</span>
+                        </button>
+
+                        <AnimatePresence>
+                          {showClearConfirm && (
+                            <>
+                              <div className="fixed inset-0 z-40" onClick={() => setShowClearConfirm(false)} />
+                              <div className="absolute right-0 top-full mt-2 w-72 bg-[var(--surface)] border border-[var(--border)] rounded-xl shadow-2xl z-50 p-4">
+                                <div className="flex items-center gap-2.5 mb-3">
+                                  <div className="w-9 h-9 rounded-lg bg-red-500/10 border border-red-500/30 flex items-center justify-center shrink-0">
+                                    <svg className="w-4.5 h-4.5 text-red-400" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                                      <path d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" strokeLinecap="round" strokeLinejoin="round" />
+                                    </svg>
+                                  </div>
+                                  <div>
+                                    <p className="text-xs font-semibold text-[var(--heading)]">Delete {selectedCount} item{selectedCount !== 1 ? "s" : ""}?</p>
+                                    <p className="text-[10px] text-[var(--text-3)]">This action cannot be undone.</p>
+                                  </div>
+                                </div>
+                                <p className="text-[11px] text-[var(--text-3)] mb-3">
+                                  Selected analysis jobs and their reports will be permanently deleted.
+                                </p>
+                                <div className="flex gap-2">
+                                  <button
+                                    onClick={() => deleteSelectedMutation.mutate(selectedIds)}
+                                    disabled={deleteSelectedMutation.isPending}
+                                    className="flex-1 px-3 py-1.5 rounded-lg text-[11px] font-semibold bg-red-500/10 border border-red-500/30 text-red-400 hover:bg-red-500/20 transition disabled:opacity-50"
+                                  >
+                                    {deleteSelectedMutation.isPending ? "Deleting..." : "Delete Selected"}
+                                  </button>
+                                  <button
+                                    onClick={() => setShowClearConfirm(false)}
+                                    className="flex-1 px-3 py-1.5 rounded-lg text-[11px] font-medium bg-[var(--surface-2)] border border-[var(--border)] text-[var(--text-2)] hover:text-[var(--heading)] transition"
+                                  >
+                                    Cancel
+                                  </button>
+                                </div>
+                              </div>
+                            </>
+                          )}
+                        </AnimatePresence>
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+
+                {/* Clear All Button */}
+                {jobs.length > 0 && selectedCount === 0 && (
+                  <div className="relative">
+                    <button
+                      onClick={() => setShowClearConfirm(!showClearConfirm)}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-red-500/30 bg-red-500/5 text-red-400 hover:bg-red-500/10 hover:border-red-500/50 text-xs font-medium transition"
+                    >
+                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                        <path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" strokeLinecap="round" strokeLinejoin="round" />
+                      </svg>
+                      <span>Clear All</span>
+                    </button>
+
+                    <AnimatePresence>
+                      {showClearConfirm && (
+                        <>
+                          <div className="fixed inset-0 z-40" onClick={() => setShowClearConfirm(false)} />
+                          <div className="absolute right-0 top-full mt-2 w-64 bg-[var(--surface)] border border-[var(--border)] rounded-xl shadow-2xl z-50 p-4">
+                            <div className="flex items-center gap-2 mb-2">
+                              <div className="w-8 h-8 rounded-lg bg-red-500/10 border border-red-500/30 flex items-center justify-center">
+                                <svg className="w-4 h-4 text-red-400" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                                  <path d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" strokeLinecap="round" strokeLinejoin="round" />
+                                </svg>
+                              </div>
+                              <div>
+                                <p className="text-xs font-semibold text-[var(--heading)]">Clear all history?</p>
+                                <p className="text-[10px] text-[var(--text-3)]">This cannot be undone.</p>
+                              </div>
+                            </div>
+                            <p className="text-[11px] text-[var(--text-3)] mb-3">
+                              All {jobs.length} analysis jobs and their reports will be permanently deleted.
+                            </p>
+                            <div className="flex gap-2">
+                              <button
+                                onClick={() => clearMutation.mutate()}
+                                disabled={clearMutation.isPending}
+                                className="flex-1 px-3 py-1.5 rounded-lg text-[11px] font-semibold bg-red-500/10 border border-red-500/30 text-red-400 hover:bg-red-500/20 transition disabled:opacity-50"
+                              >
+                                {clearMutation.isPending ? "Deleting..." : "Delete All"}
+                              </button>
+                              <button
+                                onClick={() => setShowClearConfirm(false)}
+                                className="flex-1 px-3 py-1.5 rounded-lg text-[11px] font-medium bg-[var(--surface-2)] border border-[var(--border)] text-[var(--text-2)] hover:text-[var(--heading)] transition"
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          </div>
+                        </>
+                      )}
+                    </AnimatePresence>
+                  </div>
+                )}
+
                 <div className="relative">
                   <svg className="absolute left-3 top-2.5 w-3.5 h-3.5 text-[var(--text-3)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <circle cx="11" cy="11" r="8" />
@@ -188,17 +303,11 @@ export default function HistoryPage() {
                     type="text"
                   />
                 </div>
-                <button className="p-1.5 rounded-lg border border-[var(--border)] bg-[var(--surface-2)] text-[var(--text-3)] hover:text-[var(--heading)] transition">
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" />
-                  </svg>
-                </button>
               </div>
             </div>
 
-            {/* Filter Category Tabs */}
             <div className="flex items-center gap-2 mt-5 overflow-x-auto pb-1 text-xs">
-              {["All", "Single Image", "Change Analysis", "Optical + SAR", "Bi-temporal"].map((tab) => {
+              {categories.map((tab) => {
                 const active = selectedTab === tab;
                 return (
                   <button
@@ -211,11 +320,7 @@ export default function HistoryPage() {
                     }`}
                   >
                     <span>{tab}</span>
-                    <span
-                      className={`ml-0.5 px-1.5 py-0.2 rounded-full text-[10px] ${
-                        active ? "bg-cyan-500/20 text-[var(--cyan)] font-semibold" : "bg-[var(--surface-2)] text-[var(--text-2)]"
-                      }`}
-                    >
+                    <span className={`ml-0.5 px-1.5 py-0.2 rounded-full text-[10px] ${active ? "bg-cyan-500/20 text-[var(--cyan)] font-semibold" : "bg-[var(--surface-2)] text-[var(--text-2)]"}`}>
                       {tabCounts[tab] ?? 0}
                     </span>
                   </button>
@@ -224,145 +329,148 @@ export default function HistoryPage() {
             </div>
           </div>
 
-          {/* History List Items Scrollable Area */}
-          <div className="flex-1 overflow-y-auto p-5 space-y-3">
-            {filteredItems.map((item) => {
-              const isSelected = selectedId === item.id;
-              const isChecked = !!selectedChecks[item.id];
-              return (
-                <article
-                  key={item.id}
-                  onClick={() => setSelectedId(item.id)}
-                  className={`relative flex items-center justify-between p-3.5 rounded-xl transition-all cursor-pointer ${
-                    isSelected
-                      ? "bg-[var(--surface)] border-2 border-[var(--cyan)] shadow-[0_0_20px_rgba(0,229,255,0.12)]"
-                      : "bg-[var(--surface)] border border-[var(--border)] hover:border-[var(--border-strong)]"
-                  }`}
-                >
-                  <div className="flex items-center gap-3.5 min-w-0">
-                    <input
-                      type="checkbox"
-                      checked={isChecked}
-                      onClick={(e) => toggleCheck(item.id, e)}
-                      onChange={() => {}}
-                      className="w-4 h-4 rounded bg-[var(--surface)] border-[var(--cyan)] text-[var(--cyan)]   cursor-pointer"
-                    />
+          {/* Select All Header */}
+          {filteredItems.length > 0 && (
+            <div className="px-5 py-2 border-b border-[var(--border)] flex items-center gap-3 text-[11px] text-[var(--text-3)]">
+              <input
+                type="checkbox"
+                checked={allVisibleChecked}
+                onChange={toggleAll}
+                className="w-4 h-4 rounded bg-[var(--surface)] border-[var(--border)] text-[var(--cyan)] cursor-pointer accent-[var(--cyan)]"
+              />
+              <span className="font-medium">
+                {allVisibleChecked ? "Deselect all" : `Select all (${filteredItems.length})`}
+              </span>
+            </div>
+          )}
 
-                    {/* Dual or Single Thumbnails */}
-                    {item.dualThumb ? (
-                      <div className="flex items-center gap-1 shrink-0">
-                        <div className={`w-14 h-14 rounded-lg overflow-hidden border border-[var(--border)] ${item.dualThumb.opt} relative shadow-inner`}>
-                          <span className="absolute bottom-0.5 left-1 text-[8px] font-mono text-[var(--cyan)] bg-[var(--scrim)] px-1 rounded">OPT</span>
-                        </div>
-                        <div className={`w-14 h-14 rounded-lg overflow-hidden border border-[var(--border)] ${item.dualThumb.sar} relative shadow-inner`}>
-                          <span className="absolute bottom-0.5 left-1 text-[8px] font-mono text-[var(--text-2)] bg-[var(--scrim)] px-1 rounded">SAR</span>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className={`w-28 h-14 rounded-lg overflow-hidden border border-[var(--border)] ${item.singleThumb || "thumb-forest"} shrink-0 relative shadow-inner`} />
-                    )}
+          <motion.div variants={stagger} initial="hidden" animate="show" className="flex-1 overflow-y-auto p-5 space-y-2.5">
+            {isLoading && jobs.length === 0 ? (
+              <div className="flex items-center justify-center py-12">
+                <span className="text-xs text-[var(--text-3)]">Loading analyses...</span>
+              </div>
+            ) : filteredItems.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-12">
+                <p className="text-xs text-[var(--text-3)]">No analyses found</p>
+                <p className="text-[10px] text-[var(--text-4)] mt-1">Run an analysis to see results here</p>
+              </div>
+            ) : (
+              filteredItems.map((item) => {
+                const isSelected = activeId === item.id;
+                const isChecked = !!selectedChecks[item.id];
+                const taskInfo = TASK_LABELS[item.task] || { label: item.task, category: "Single Image" };
+                const status = STATUS_MAP[item.status] || STATUS_MAP.COMPLETED;
+                return (
+                  <motion.div key={item.id} variants={rowVariant}>
+                    <SpotlightCard
+                      spotlightColor={isSelected ? "rgba(0,199,217,0.06)" : "rgba(0,199,217,0.05)"}
+                      onClick={() => setSelectedId(item.id)}
+                      className={`relative flex items-center justify-between p-3.5 rounded-xl transition-all duration-150 cursor-pointer ${
+                        isSelected
+                          ? "bg-[var(--surface)] border-2 border-[var(--cyan)] shadow-[0_0_20px_rgba(0,229,255,0.12)]"
+                          : "bg-[var(--surface)] border border-[var(--border)] hover:border-[var(--border-strong)]"
+                      }`}
+                    >
+                      <div className="flex items-center gap-3.5 min-w-0">
+                        <input
+                          type="checkbox"
+                          checked={isChecked}
+                          onClick={(e) => toggleCheck(item.id, e)}
+                          onChange={() => {}}
+                          className="w-4 h-4 rounded bg-[var(--surface)] border-[var(--cyan)] text-[var(--cyan)] cursor-pointer"
+                        />
 
-                    {/* Analysis Details */}
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className="px-2 py-0.5 text-[10px] font-medium rounded bg-cyan-950/70 border border-[var(--cyan)]/30 text-[var(--cyan)]">
-                          {item.type}
-                        </span>
-                        <h3 className="text-sm font-semibold text-[var(--heading)] truncate">{item.title}</h3>
-                      </div>
-                      <p className="text-xs text-[var(--text-3)] line-clamp-1">{item.desc}</p>
-                      <div className="flex items-center gap-3 mt-2 text-[11px] text-[var(--text-3)]">
-                        <span className="flex items-center gap-1.5 text-[var(--text-3)]">
-                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <rect height="18" rx="2" ry="2" width="18" x="3" y="4" />
-                            <line x1="16" x2="16" y1="2" y2="6" />
-                            <line x1="8" x2="8" y1="2" y2="6" />
-                            <line x1="3" x2="21" y1="10" y2="10" />
+                        <div className="w-28 h-14 rounded-lg overflow-hidden border border-[var(--border)] shrink-0 relative shadow-inner bg-[var(--surface-2)] flex">
+                          {["bi_temporal_change", "bi_temporal_change_vqa"].includes(item.task) ? (
+                            <>
+                              <img
+                                src={api.visualizationUrl(item.id, "temporal_image_a")}
+                                alt=""
+                                className="w-1/2 h-full object-cover border-r border-[var(--border)]"
+                                onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
+                              />
+                              <img
+                                src={api.visualizationUrl(item.id, "temporal_image_b")}
+                                alt=""
+                                className="w-1/2 h-full object-cover"
+                                onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
+                              />
+                            </>
+                          ) : (
+                            <img
+                              src={api.visualizationUrl(item.id, "true_color")}
+                              alt=""
+                              className="w-full h-full object-cover"
+                              onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
+                            />
+                          )}
+                          <svg className="w-5 h-5 text-[var(--text-4)] hidden absolute inset-0 m-auto" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
+                            <path d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 001.5-1.5V6a1.5 1.5 0 00-1.5-1.5H3.75A1.5 1.5 0 002.25 6v12a1.5 1.5 0 001.5 1.5zm10.5-11.25h.008v.008h-.008V8.25zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z" strokeLinecap="round" strokeLinejoin="round" />
                           </svg>
-                          {item.timestamp}
-                        </span>
-                        <div className="flex items-center gap-1.5">
-                          {item.tags.map((tag) => (
-                            <span key={tag} className="px-1.5 py-0.5 rounded bg-[var(--surface-2)] border border-[var(--border)] text-[10px] text-[var(--text-2)]">
-                              {tag}
+                        </div>
+
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className="px-2 py-0.5 text-[10px] font-medium rounded bg-cyan-950/70 border border-[var(--cyan)]/30 text-[var(--cyan)]">
+                              {taskInfo.label}
                             </span>
-                          ))}
+                            <h3 className="text-sm font-semibold text-[var(--heading)] truncate">{item.query}</h3>
+                          </div>
+                          <div className="flex items-center gap-3 mt-2 text-[11px] text-[var(--text-3)]">
+                            <span className="flex items-center gap-1.5">
+                              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <rect height="18" rx="2" ry="2" width="18" x="3" y="4" />
+                                <line x1="16" x2="16" y1="2" y2="6" />
+                                <line x1="8" x2="8" y1="2" y2="6" />
+                                <line x1="3" x2="21" y1="10" y2="10" />
+                              </svg>
+                              {formatTimestamp(item.created_at)}
+                            </span>
+                            <span className="font-mono text-[10px] text-[var(--text-4)]">{item.id.slice(0, 8)}...</span>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  </div>
 
-                  {/* Confidence & Actions */}
-                  <div className="flex items-center gap-5 shrink-0 pl-4">
-                    <div className="flex items-center gap-3">
-                      {/* Circular Gauge */}
-                      <div className="relative w-11 h-11 flex items-center justify-center">
-                        <svg className="w-11 h-11 transform -rotate-90" viewBox="0 0 36 36">
-                          <path
-                            className="text-[var(--heading)]"
-                            d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="3.5"
-                          />
-                          <path
-                            className={item.status === "Processing" ? "text-amber-400" : "text-emerald-400"}
-                            d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeDasharray={`${item.confidence}, 100`}
-                            strokeLinecap="round"
-                            strokeWidth="3.5"
-                          />
-                        </svg>
-                        <span className="absolute text-[11px] font-bold text-[var(--heading)]">{item.confidence}%</span>
+                      <div className="flex items-center gap-5 shrink-0 pl-4">
+                        <div className="flex items-center gap-3">
+                          <div className="flex flex-col items-end">
+                            <span className={`inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-full ${
+                              status.color === "emerald" ? "text-emerald-400 bg-[var(--green-bg)]/40 border border-emerald-500/30" :
+                              status.color === "amber" ? "text-amber-400 bg-amber-950/40 border border-amber-500/30" :
+                              "text-rose-400 bg-rose-950/40 border border-rose-500/30"
+                            }`}>
+                              {status.color === "amber" && <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-ping" />}
+                              {status.color === "emerald" && <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />}
+                              {status.color === "rose" && <span className="w-1.5 h-1.5 rounded-full bg-rose-400" />}
+                              {status.label}
+                            </span>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-1 text-[var(--text-3)]">
+                          <Link href={`/analysis/${item.id}`} onClick={(e) => e.stopPropagation()} className="p-1.5 hover:text-[var(--heading)] rounded hover:bg-[var(--surface-hover)] transition" title="View">
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" />
+                              <path d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" />
+                            </svg>
+                          </Link>
+                          <a href={api.downloadUrl(item.id)} onClick={(e) => e.stopPropagation()} className="p-1.5 hover:text-[var(--heading)] rounded hover:bg-[var(--surface-hover)] transition" title="Download">
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" />
+                            </svg>
+                          </a>
+                        </div>
                       </div>
-                      <div className="flex flex-col">
-                        <span className="text-[10px] text-[var(--text-3)]">Confidence</span>
-                        {item.status === "Completed" ? (
-                          <span className="inline-flex items-center gap-1 text-[10px] font-medium text-emerald-400 bg-[var(--green-bg)]/40 border border-emerald-500/30 px-2 py-0.5 rounded-full mt-0.5">
-                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" /> Completed
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center gap-1 text-[10px] font-medium text-amber-400 bg-amber-950/40 border border-amber-500/30 px-2 py-0.5 rounded-full mt-0.5">
-                            <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-ping" /> Processing
-                          </span>
-                        )}
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-1 text-[var(--text-3)]">
-                      <button className="p-1.5 hover:text-[var(--heading)] rounded hover:bg-[var(--surface-hover)] transition" title="View">
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" />
-                          <path d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" />
-                        </svg>
-                      </button>
-                      <button className="p-1.5 hover:text-[var(--heading)] rounded hover:bg-[var(--surface-hover)] transition" title="Download">
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" />
-                        </svg>
-                      </button>
-                      <button className="p-1.5 hover:text-[var(--heading)] rounded hover:bg-[var(--surface-hover)] transition" title="More">
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <circle cx="12" cy="5" r="1.5" /><circle cx="12" cy="12" r="1.5" /><circle cx="12" cy="19" r="1.5" />
-                        </svg>
-                      </button>
-                    </div>
-                  </div>
-                </article>
-              );
-            })}
-          </div>
+                    </SpotlightCard>
+                  </motion.div>
+                );
+              })
+            )}
+          </motion.div>
         </main>
 
         {/* Right Details Drawer */}
-        <aside
-          className="w-[380px] border-l border-[var(--border)] bg-[var(--surface)] flex flex-col justify-between overflow-y-auto shrink-0 select-none"
-          data-purpose="history-detail-drawer"
-        >
+        <aside className="w-[380px] border-l border-[var(--border)] bg-[var(--surface)] flex flex-col justify-between overflow-y-auto shrink-0 select-none">
           <div className="p-4 space-y-4">
-            {/* Drawer Header */}
             <div className="flex items-center justify-between pb-2 border-b border-[var(--border)]">
               <span className="flex items-center gap-1.5 text-xs text-[var(--text-2)] font-medium">
                 <svg className="w-3.5 h-3.5 text-[var(--cyan)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -370,168 +478,177 @@ export default function HistoryPage() {
                 </svg>
                 <span>Analysis Details</span>
               </span>
-              <span className="inline-flex items-center gap-1 text-[10px] font-medium text-emerald-400 bg-[var(--green-bg)]/50 border border-emerald-500/30 px-2.5 py-0.5 rounded-full">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" /> {selectedItem.status}
+              <span className={`inline-flex items-center gap-1 text-[10px] font-medium px-2.5 py-0.5 rounded-full ${
+                statusInfo.color === "emerald" ? "text-emerald-400 bg-[var(--green-bg)]/50 border border-emerald-500/30" :
+                statusInfo.color === "amber" ? "text-amber-400 bg-amber-950/50 border border-amber-500/30" :
+                "text-rose-400 bg-rose-950/50 border border-rose-500/30"
+              }`}>
+                {statusInfo.color === "emerald" && <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />}
+                {statusInfo.label}
               </span>
             </div>
 
-            {/* Large False-Color Map Preview Card */}
-            <div className="relative h-44 rounded-xl border border-[var(--border)] hero-map-overlay overflow-hidden shadow-lg p-2.5 flex flex-col justify-between">
-              <div className="flex justify-end">
-                <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-blue-900/80 text-blue-200 border border-blue-400/40 backdrop-blur-md">
-                  {selectedItem.type}
-                </span>
+            {/* Visualization Preview */}
+            {result && activeId && (
+              <div
+                className="relative h-64 rounded-xl border border-[var(--border)] overflow-hidden shadow-lg cursor-ew-resize select-none"
+                onMouseMove={(e) => {
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  const x = e.clientX - rect.left;
+                  const pct = Math.max(0, Math.min(100, (x / rect.width) * 100));
+                  setSliderPos(pct);
+                }}
+              >
+                {["bi_temporal_change", "bi_temporal_change_vqa"].includes(result.task) ? (
+                  <>
+                    {/* Base image */}
+                    <img
+                      src={api.visualizationUrl(activeId, "temporal_image_a")}
+                      alt="Before"
+                      className="absolute inset-0 w-full h-full object-cover"
+                      onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
+                    />
+                    {/* Overlay image — clipped */}
+                    <div
+                      className="absolute inset-0 overflow-hidden"
+                      style={{ clipPath: `inset(0 0 0 ${sliderPos}%)` }}
+                    >
+                      <img
+                        src={api.visualizationUrl(activeId, "temporal_image_b")}
+                        alt="After"
+                        className="absolute inset-0 w-full h-full object-cover"
+                        onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
+                      />
+                    </div>
+                    {/* Divider */}
+                    <div
+                      className="absolute top-0 bottom-0 w-0.5 bg-white/80 shadow-[0_0_8px_rgba(255,255,255,0.5)] z-10 pointer-events-none"
+                      style={{ left: `${sliderPos}%` }}
+                    />
+                    {/* Labels */}
+                    <div className="absolute top-2 left-2 px-2 py-0.5 rounded bg-[var(--scrim)] backdrop-blur text-[10px] text-[var(--heading)] font-medium border border-[var(--border)] z-10">
+                      Before
+                    </div>
+                    <div className="absolute top-2 right-2 px-2 py-0.5 rounded bg-[var(--scrim)] backdrop-blur text-[10px] text-[var(--heading)] font-medium border border-[var(--border)] z-10">
+                      After
+                    </div>
+                  </>
+                ) : (
+                  <img
+                    src={api.visualizationUrl(activeId, "true_color")}
+                    alt="Analysis visualization"
+                    className="w-full h-full object-cover"
+                    onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
+                  />
+                )}
+                <div className="absolute inset-0 bg-gradient-to-t from-[var(--surface)]/80 to-transparent pointer-events-none" />
+                <div className="absolute top-2.5 right-2.5 px-2 py-0.5 rounded text-[10px] font-semibold bg-blue-900/80 text-blue-200 border border-blue-400/40 backdrop-blur-md z-10">
+                  {TASK_LABELS[result.task]?.label || result.task}
+                </div>
               </div>
-              {/* Bottom Legend on Map */}
-              <div className="bg-[var(--scrim)] backdrop-blur-md p-2 rounded-lg border border-[var(--border)] self-end space-y-1">
-                <div className="flex items-center gap-2">
-                  <span className="w-2.5 h-2.5 rounded-sm bg-red-500" />
-                  <span className="text-[10px] text-[var(--text)] font-medium">Built-up area</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="w-2.5 h-2.5 rounded-sm bg-emerald-500" />
-                  <span className="text-[10px] text-[var(--text)] font-medium">Vegetation</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="w-2.5 h-2.5 rounded-sm bg-blue-500" />
-                  <span className="text-[10px] text-[var(--text)] font-medium">Water body</span>
-                </div>
-              </div>
-            </div>
+            )}
 
-            {/* Details Info */}
+            {/* Details */}
             <div>
-              <h2 className="text-base font-bold text-[var(--heading)]">{selectedItem.title}</h2>
-              <div className="flex items-center gap-2 text-[11px] text-[var(--text-3)] mt-0.5">
-                <span>{selectedItem.timestamp}</span>
-              </div>
-              <p className="text-xs text-[var(--text-2)] mt-2 leading-relaxed">{selectedItem.desc}</p>
-              <div className="flex items-center gap-1.5 mt-2.5">
-                {selectedItem.tags.map((tag) => (
-                  <span key={tag} className="px-2 py-0.5 rounded bg-[var(--surface-2)] border border-[var(--border)] text-[10px] text-[var(--text-2)]">
-                    {tag}
-                  </span>
-                ))}
-              </div>
+              <h2 className="text-base font-bold text-[var(--heading)]">
+                {result?.query || jobs.find((j) => j.id === activeId)?.query || "Analysis"}
+              </h2>
+              <p className="text-[11px] text-[var(--text-3)] mt-0.5">
+                {formatTimestamp(result?.job_id ? (jobs.find((j) => j.id === activeId)?.created_at || "") : "")}
+              </p>
+              {result?.answer && (
+                <p className="text-xs text-[var(--text-2)] mt-2 leading-relaxed">{result.answer}</p>
+              )}
+              {result?.models_used && result.models_used.length > 0 && (
+                <div className="flex items-center gap-1.5 mt-2.5">
+                  {result.models_used.map((m) => (
+                    <span key={m} className="px-2 py-0.5 rounded bg-[var(--surface-2)] border border-[var(--border)] text-[10px] text-[var(--text-2)]">
+                      {m}
+                    </span>
+                  ))}
+                </div>
+              )}
             </div>
 
             {/* Results Summary */}
-            <div className="pt-2 border-t border-[var(--border)]">
-              <h4 className="text-xs font-semibold text-[var(--text-2)] mb-2.5">Results Summary</h4>
-              <div className="bg-[var(--surface)] border border-[var(--border)] rounded-xl p-3 space-y-3">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="relative w-10 h-10 flex items-center justify-center">
-                      <svg className="w-10 h-10 transform -rotate-90" viewBox="0 0 36 36">
-                        <path
-                          className="text-[var(--heading)]"
-                          d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="3.5"
-                        />
-                        <path
-                          className="text-[var(--cyan)]"
-                          d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeDasharray={`${selectedItem.confidence}, 100`}
-                          strokeLinecap="round"
-                          strokeWidth="3.5"
-                        />
-                      </svg>
-                      <span className="absolute text-[11px] font-bold text-[var(--heading)]">{selectedItem.confidence}%</span>
+            {displayConfidence != null && (
+              <motion.div variants={fadeUp} initial="hidden" animate="show" className="pt-2 border-t border-[var(--border)]">
+                <h4 className="text-xs font-semibold text-[var(--text-2)] mb-2.5">Results Summary</h4>
+                <div className="bg-[var(--surface)] border border-[var(--border)] rounded-xl p-3 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="relative w-10 h-10 flex items-center justify-center">
+                        <svg className="w-10 h-10 transform -rotate-90" viewBox="0 0 36 36">
+                          <path className="text-[var(--heading)]" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="currentColor" strokeWidth="3.5" />
+                          <path className="text-[var(--cyan)]" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="currentColor" strokeDasharray={`${displayConfidence}, 100`} strokeLinecap="round" strokeWidth="3.5" />
+                        </svg>
+                        <span className="absolute text-[11px] font-bold text-[var(--heading)]">{displayConfidence}%</span>
+                      </div>
+                      <span className="text-xs text-[var(--text-2)] font-medium">Confidence</span>
                     </div>
-                    <span className="text-xs text-[var(--text-2)] font-medium">Confidence</span>
                   </div>
-                  <span className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-400 bg-[var(--green-bg)]/50 border border-emerald-500/30 px-2.5 py-0.5 rounded-full">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" /> {selectedItem.status}
-                  </span>
-                </div>
 
-                {/* Stats Metric Cards */}
-                <div className="grid grid-cols-3 gap-2 pt-1">
-                  <div className="bg-[var(--surface-2)] border border-[var(--border)] p-2 rounded-lg text-center">
-                    <div className="flex items-center justify-center gap-1 text-[10px] text-[var(--text-3)]">
-                      <span className="w-1.5 h-1.5 rounded-full bg-red-400" /> Built-up
+                  {/* Spatial metrics */}
+                  {result?.evidence?.spatial?.statistics && (
+                    <div className="grid grid-cols-3 gap-2 pt-1">
+                      <div className="bg-[var(--surface-2)] border border-[var(--border)] p-2 rounded-lg text-center">
+                        <div className="flex items-center justify-center gap-1 text-[10px] text-[var(--text-3)]">
+                          <span className="w-1.5 h-1.5 rounded-full bg-red-400" /> Changed
+                        </div>
+                        <div className="text-xs font-bold text-red-400 mt-1">
+                          {result.evidence.spatial.statistics.changed_pixels?.toLocaleString() || "—"}
+                        </div>
+                      </div>
+                      <div className="bg-[var(--surface-2)] border border-[var(--border)] p-2 rounded-lg text-center">
+                        <div className="flex items-center justify-center gap-1 text-[10px] text-[var(--text-3)]">
+                          <span className="w-1.5 h-1.5 rounded-full bg-blue-400" /> Regions
+                        </div>
+                        <div className="text-xs font-bold text-blue-400 mt-1">
+                          {result.evidence.spatial.statistics.region_count || "—"}
+                        </div>
+                      </div>
+                      <div className="bg-[var(--surface-2)] border border-[var(--border)] p-2 rounded-lg text-center">
+                        <div className="flex items-center justify-center gap-1 text-[10px] text-[var(--text-3)]">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" /> Area
+                        </div>
+                        <div className="text-xs font-bold text-emerald-400 mt-1">
+                          {result.evidence.spatial.statistics.estimated_area_sq_km
+                            ? `${result.evidence.spatial.statistics.estimated_area_sq_km.toFixed(2)} km²`
+                            : result.evidence.spatial.statistics.estimated_area_sq_m
+                              ? `${(result.evidence.spatial.statistics.estimated_area_sq_m / 1000000).toFixed(2)} km²`
+                              : "—"}
+                        </div>
+                      </div>
                     </div>
-                    <div className="text-xs font-bold text-red-400 mt-1">
-                      {selectedItem.stats?.builtUp || "+12.4%"}
-                    </div>
-                  </div>
-                  <div className="bg-[var(--surface-2)] border border-[var(--border)] p-2 rounded-lg text-center">
-                    <div className="flex items-center justify-center gap-1 text-[10px] text-[var(--text-3)]">
-                      <span className="w-1.5 h-1.5 rounded-full bg-blue-400" /> Water
-                    </div>
-                    <div className="text-xs font-bold text-blue-400 mt-1">
-                      {selectedItem.stats?.water || "+5.1%"}
-                    </div>
-                  </div>
-                  <div className="bg-[var(--surface-2)] border border-[var(--border)] p-2 rounded-lg text-center">
-                    <div className="flex items-center justify-center gap-1 text-[10px] text-[var(--text-3)]">
-                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" /> Vegetation
-                    </div>
-                    <div className="text-xs font-bold text-emerald-400 mt-1">
-                      {selectedItem.stats?.vegetation || "-8.7%"}
-                    </div>
-                  </div>
+                  )}
                 </div>
-              </div>
-            </div>
+              </motion.div>
+            )}
 
-            {/* Input Images */}
-            <div className="pt-2 border-t border-[var(--border)]">
-              <div className="flex items-center justify-between mb-2">
-                <h4 className="text-xs font-semibold text-[var(--text-2)]">Input Images</h4>
-                <Link href="/analysis" className="text-[11px] text-[var(--cyan)] hover:underline flex items-center gap-0.5">
-                  <span>View Full Image</span>
-                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path d="M9 5l7 7-7 7" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" />
-                  </svg>
-                </Link>
-              </div>
-              <div className="flex items-center gap-3">
-                <div className="flex-1 bg-[var(--surface)] border border-[var(--border)] rounded-lg p-2">
-                  <div className="h-16 rounded overflow-hidden thumb-forest relative border border-[var(--border)]/50" />
-                  <div className="flex items-center justify-between mt-1.5">
-                    <span className="text-[10px] font-mono text-[var(--text-3)]">Optical (T1)</span>
-                  </div>
-                </div>
-                <div className="flex-1 bg-[var(--surface)] border border-[var(--border)] rounded-lg p-2">
-                  <div className="h-16 rounded overflow-hidden thumb-sar-1 relative border border-[var(--border)]/50" />
-                  <div className="flex items-center justify-between mt-1.5">
-                    <span className="text-[10px] font-mono text-[var(--text-3)]">SAR (T2)</span>
-                  </div>
+            {/* Execution Trace */}
+            {result?.execution_trace && result.execution_trace.length > 0 && (
+              <div className="pt-2 border-t border-[var(--border)]">
+                <h4 className="text-xs font-semibold text-[var(--text-2)] mb-2">Execution Trace</h4>
+                <div className="space-y-1.5">
+                  {result.execution_trace.map((step, i) => (
+                    <div key={i} className="flex items-center justify-between py-1 px-2 rounded bg-[var(--surface-2)] border border-[var(--border)]">
+                      <div className="flex items-center gap-2">
+                        <span className={`w-1.5 h-1.5 rounded-full ${
+                          step.status === "success" ? "bg-emerald-400" :
+                          step.status === "error" ? "bg-red-400" :
+                          step.status === "running" ? "bg-amber-400 animate-pulse" : "bg-[var(--text-4)]"
+                        }`} />
+                        <span className="text-[10px] text-[var(--text-2)] font-mono">{step.step}</span>
+                      </div>
+                      {step.model && <span className="text-[9px] text-[var(--text-4)] font-mono">{step.model}</span>}
+                    </div>
+                  ))}
                 </div>
               </div>
-            </div>
-
-            {/* Model Details */}
-            <div className="pt-2 border-t border-[var(--border)]">
-              <div className="flex items-center justify-between py-1">
-                <h4 className="text-xs font-semibold text-[var(--text-2)]">Model Details</h4>
-                <svg className="w-4 h-4 text-[var(--text-3)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path d="M5 15l7-7 7 7" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" />
-                </svg>
-              </div>
-              <div className="space-y-1.5 text-xs mt-2 bg-[var(--surface)] p-2.5 rounded-lg border border-[var(--border)]">
-                <div className="flex justify-between">
-                  <span className="text-[var(--text-3)]">Task</span>
-                  <span className="text-[var(--text)] font-medium">{selectedItem.type}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-[var(--text-3)]">Model</span>
-                  <span className="text-[var(--text)] font-medium">Remote Sensing VLM (BigEarthNet)</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-[var(--text-3)]">Parameters</span>
-                  <span className="text-[var(--text)] font-medium">Default (Auto)</span>
-                </div>
-              </div>
-            </div>
+            )}
           </div>
 
-          {/* Action Buttons Footer */}
+          {/* Action Buttons */}
           <div className="p-4 border-t border-[var(--border)] space-y-2 bg-[var(--canvas)]">
             <Link
               href="/analysis"
@@ -540,30 +657,35 @@ export default function HistoryPage() {
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" />
               </svg>
-              <span>Open in New Analysis</span>
+              <span>New Analysis</span>
             </Link>
-            <div className="flex items-center gap-2">
-              <Link
-                href="/reports"
-                className="flex-1 flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg border border-[var(--border)] bg-[var(--surface-2)] hover:bg-[var(--surface-3)] text-[var(--text-2)] text-xs font-medium transition"
-              >
-                <svg className="w-3.5 h-3.5 text-[var(--text-3)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" />
-                </svg>
-                <span>Download Report</span>
-              </Link>
-              <button
-                onClick={() => alert("Report settings")}
-                className="p-2 rounded-lg border border-[var(--border)] bg-[var(--surface-2)] hover:bg-[var(--surface-3)] text-[var(--text-3)] hover:text-[var(--heading)] transition"
-              >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <circle cx="12" cy="5" r="1.5" /><circle cx="12" cy="12" r="1.5" /><circle cx="12" cy="19" r="1.5" />
-                </svg>
-              </button>
-            </div>
+            {activeId && (
+              <div className="flex items-center gap-2">
+                <a
+                  href={api.downloadUrl(activeId)}
+                  className="flex-1 flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg border border-[var(--border)] bg-[var(--surface-2)] hover:bg-[var(--surface-3)] text-[var(--text-2)] text-xs font-medium transition"
+                >
+                  <svg className="w-3.5 h-3.5 text-[var(--text-3)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" />
+                  </svg>
+                  <span>Download Results</span>
+                </a>
+                <a
+                  href={api.reportUrl(activeId)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="p-2 rounded-lg border border-[var(--border)] bg-[var(--surface-2)] hover:bg-[var(--surface-3)] text-[var(--text-3)] hover:text-[var(--heading)] transition"
+                  title="View Report"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" />
+                  </svg>
+                </a>
+              </div>
+            )}
           </div>
         </aside>
       </div>
-    </div>
+    </motion.div>
   );
 }

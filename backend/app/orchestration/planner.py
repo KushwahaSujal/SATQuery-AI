@@ -62,7 +62,18 @@ class AdvancedWorkflowPlanner:
         # 3. Match capability with explicit priority rules
         capability, reason = CapabilityMatcher.match(intent, input_facts)
 
-        # 4. Build execution DAG
+        # 4. Override task type if user specified one
+        if state.override_task and state.override_task != "unsupported":
+            try:
+                override_type = TaskType(state.override_task)
+                intent.task = override_type.value
+                state.task = override_type
+                reason = f"User override: {override_type.value}"
+                logger.info(f"Task type overridden to {override_type.value} by user selection")
+            except ValueError:
+                logger.warning(f"Invalid override_task value: {state.override_task}")
+
+        # 5. Build execution DAG
         dag_plan = DependencyGraph.build_dag_for_capability(capability.capability_id)
 
         # Linear steps for backward compatibility with existing ToolExecutor

@@ -86,8 +86,6 @@ from pydantic import BaseModel
 from PIL import Image
 import numpy as np
 
-router = APIRouter(prefix="/api", tags=["SatQuery AI"])
-
 router = APIRouter(tags=["SatQuery AI"])
 
 
@@ -125,7 +123,8 @@ async def analyze_query(request: AnalyzeRequest, db: AsyncSession = Depends(get_
         request_id=req_id,
         query=request.query,
         image_paths=image_paths,
-        parameters=parameters
+        parameters=parameters,
+        override_task=request.override_task,
     )
 
     response = await agent_controller.run_pipeline(state)
@@ -149,11 +148,16 @@ async def analyze_query(request: AnalyzeRequest, db: AsyncSession = Depends(get_
 
 @router.get("/jobs")
 async def list_jobs(db: AsyncSession = Depends(get_db)):
-    """Retrieves list of all analysis jobs from PostgreSQL."""
+    """Retrieves recent non-failed analysis jobs from PostgreSQL (limited to 50)."""
     try:
         from sqlalchemy import select
         from backend.app.db.models.job import AnalysisJob
-        stmt = select(AnalysisJob).order_by(AnalysisJob.created_at.desc())
+        stmt = (
+            select(AnalysisJob)
+            .where(AnalysisJob.status.notin_(["FAILED", "CANCELLED"]))
+            .order_by(AnalysisJob.created_at.desc())
+            .limit(50)
+        )
         res = await db.execute(stmt)
         jobs = res.scalars().all()
         return [
@@ -204,6 +208,47 @@ async def delete_all_jobs(db: AsyncSession = Depends(get_db)):
         return {"status": "ok", "message": "All jobs cleared successfully."}
     except Exception as e:
         logger.error(f"Failed to clear jobs: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.delete("/jobs/{job_id}")
+async def delete_job(job_id: str, db: AsyncSession = Depends(get_db)):
+    """Deletes a single analysis job and its related data."""
+    try:
+        from sqlalchemy import delete, select
+        from backend.app.db.models.job import AnalysisJob
+        from backend.app.db.models.file import UploadedFile
+        from backend.app.db.models.model_run import ModelRun
+        from backend.app.db.models.step import ExecutionStep
+        from backend.app.db.models.result import AnalysisResult
+        from backend.app.db.models.artifact import Artifact
+        import shutil
+
+        # Verify job exists
+        result = await db.execute(select(AnalysisJob).where(AnalysisJob.id == job_id))
+        job = result.scalar_one_or_none()
+        if not job:
+            raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found")
+
+        # Delete related records
+        await db.execute(delete(Artifact).where(Artifact.job_id == job_id))
+        await db.execute(delete(AnalysisResult).where(AnalysisResult.job_id == job_id))
+        await db.execute(delete(ExecutionStep).where(ExecutionStep.job_id == job_id))
+        await db.execute(delete(ModelRun).where(ModelRun.job_id == job_id))
+        await db.execute(delete(UploadedFile).where(UploadedFile.job_id == job_id))
+        await db.execute(delete(AnalysisJob).where(AnalysisJob.id == job_id))
+        await db.commit()
+
+        # Clean workspace job dir
+        job_dir = artifact_manager.workspace_root / "jobs" / job_id
+        if job_dir.exists():
+            shutil.rmtree(job_dir, ignore_errors=True)
+
+        return {"status": "ok", "message": f"Job '{job_id}' deleted."}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to delete job {job_id}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

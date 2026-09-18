@@ -115,6 +115,49 @@
 
   /* ── Overlay ── */
   --scrim: rgba(2, 13, 25, 0.72);
+
+  /* ============================================================
+     SHORTHAND TOKEN ALIASES
+     Map the short-form primitive tokens (--s1/--b0/--t0/--accent)
+     onto the canonical long-form system so the primitive UI library
+     (Button, Card, Badge, Tabs, Separator, AppHeader, Rail) and
+     visual-effect components (GlowCard, AnimatedGradientText,
+     ParticleBackground, BorderBeam) render correctly without
+     duplication.
+     ============================================================ */
+
+  /* Surfaces */
+  --s1: var(--surface);
+  --s2: var(--surface-2);
+  --s3: var(--surface-3);
+  --raised: var(--surface-2);
+
+  /* Borders */
+  --b0: var(--border);
+  --b1: var(--border);
+  --b2: var(--border-strong);
+  --b3: var(--border-focus);
+
+  /* Text */
+  --t0: var(--heading);
+  --t1: var(--text);
+  --t2: var(--text);
+  --t3: var(--text-2);
+  --t4: var(--text-3);
+  --tx3: var(--text-2);
+
+  /* Accent / brand */
+  --accent: var(--primary);
+  --accent-text: var(--heading);
+  --accent-dim: var(--primary-glow);
+
+  /* Status */
+  --red: var(--error);
+  --red-dim: var(--error-bg);
+  --green: var(--green);
+  --green-dim: var(--green-bg);
+  --amber: var(--warning);
+  --amber-dim: var(--warning-bg);
 }
 
 /* ============================================================
@@ -210,6 +253,43 @@
 
   /* ── Overlay ── */
   --scrim: rgba(15, 23, 42, 0.4);
+
+  /* ============================================================
+     SHORTHAND TOKEN ALIASES (LIGHT)
+     ============================================================ */
+
+  /* Surfaces */
+  --s1: var(--surface);
+  --s2: var(--surface-2);
+  --s3: var(--surface-3);
+  --raised: var(--surface-2);
+
+  /* Borders */
+  --b0: var(--border);
+  --b1: var(--border);
+  --b2: var(--border-strong);
+  --b3: var(--border-focus);
+
+  /* Text */
+  --t0: var(--heading);
+  --t1: var(--text);
+  --t2: var(--text);
+  --t3: var(--text-2);
+  --t4: var(--text-3);
+  --tx3: var(--text-2);
+
+  /* Accent / brand */
+  --accent: var(--primary);
+  --accent-text: var(--heading);
+  --accent-dim: var(--primary-glow);
+
+  /* Status */
+  --red: var(--error);
+  --red-dim: var(--error-bg);
+  --green: var(--green);
+  --green-dim: var(--green-bg);
+  --amber: var(--warning);
+  --amber-dim: var(--warning-bg);
 }
 
 /* ============================================================
@@ -370,6 +450,36 @@ body {
   0% { transform: translateX(-100%); }
   100% { transform: translateX(100%); }
 }
+@property --angle {
+  syntax: "<angle>";
+  initial-value: 0deg;
+  inherits: false;
+}
+@keyframes border-beam {
+  from { --angle: 0deg; }
+  to { --angle: 360deg; }
+}
+@keyframes gradient-x {
+  0%, 100% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+}
+@keyframes float-y {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-8px); }
+}
+@keyframes ticker-in {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes aurora-shift {
+  0%, 100% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+}
+@keyframes marquee-scroll {
+  from { transform: translateX(0); }
+  to { transform: translateX(calc(-100% - var(--gap))); }
+}
+
 
 .animate-fade-in { animation: fade-in 0.18s ease; }
 .animate-slide-down { animation: slide-down 0.15s cubic-bezier(0.16, 1, 0.3, 1); }
@@ -377,6 +487,55 @@ body {
 .animate-pulse-ring { animation: pulse-ring 1.8s ease-out infinite; }
 .animate-spin-smooth { animation: spin-smooth 0.7s linear infinite; }
 .animate-shimmer { animation: shimmer-slide 2s linear infinite; }
+.animate-gradient-x { animation: gradient-x 4s ease infinite; background-size: 200% 200%; }
+.animate-float { animation: float-y 4s ease-in-out infinite; }
+.animate-marquee { animation: marquee-scroll var(--marquee-duration, 30s) linear infinite; }
+
+/* ============================================================
+   SHADCN-COMPATIBLE DATA-STATE ANIMATIONS
+   Provides tailwindcss-animate-style classes for Radix UI primitives
+   (Dialog, Tooltip, Select, etc.) without needing the plugin.
+   ============================================================ */
+
+@keyframes tw-fade-in  { from { opacity: 0 } to { opacity: 1 } }
+@keyframes tw-fade-out { from { opacity: 1 } to { opacity: 0 } }
+@keyframes tw-zoom-in-95   { from { transform: scale(0.95) } to { transform: scale(1) } }
+@keyframes tw-zoom-out-95  { from { transform: scale(1) } to { transform: scale(0.95) } }
+@keyframes tw-slide-in-from-top-2     { from { transform: translateY(-0.5rem) } to { transform: translateY(0) } }
+@keyframes tw-slide-in-from-right-2   { from { transform: translateX(0.5rem) } to { transform: translateX(0) } }
+@keyframes tw-slide-in-from-bottom-2  { from { transform: translateY(0.5rem) } to { transform: translateY(0) } }
+@keyframes tw-slide-in-from-left-2    { from { transform: translateX(-0.5rem) } to { transform: translateX(0) } }
+@keyframes tw-slide-out-to-top-2      { from { transform: translateY(0) } to { transform: translateY(-0.5rem) } }
+@keyframes tw-slide-out-to-right-2    { from { transform: translateX(0) } to { transform: translateX(0.5rem) } }
+@keyframes tw-slide-out-to-bottom-2   { from { transform: translateY(0) } to { transform: translateY(0.5rem) } }
+@keyframes tw-slide-out-to-left-2     { from { transform: translateX(0) } to { transform: translateX(-0.5rem) } }
+
+.animate-in { animation-duration: 180ms; animation-timing-function: cubic-bezier(.2,.8,.2,1); animation-fill-mode: both; }
+.animate-out { animation-duration: 140ms; animation-timing-function: cubic-bezier(.4,0,1,1); animation-fill-mode: both; }
+
+.fade-in-0 { animation-name: tw-fade-in; }
+.fade-out-0 { animation-name: tw-fade-out; }
+.zoom-in-95  { animation-name: tw-zoom-in-95; }
+.zoom-out-95 { animation-name: tw-zoom-out-95; }
+
+.data-\[state\=closed\]\:animate-out[data-state="closed"] { animation-name: inherit; }
+.data-\[state\=open\]\:animate-in[data-state="open"]     { animation-name: inherit; }
+
+.data-\[state\=closed\]\:fade-out-0[data-state="closed"] { animation-name: tw-fade-out; }
+.data-\[state\=open\]\:fade-in-0[data-state="open"]     { animation-name: tw-fade-in; }
+.data-\[state\=closed\]\:zoom-out-95[data-state="closed"] { animation-name: tw-zoom-out-95; }
+.data-\[state\=open\]\:zoom-in-95[data-state="open"]     { animation-name: tw-zoom-in-95; }
+
+.data-\[side\=bottom\]\:slide-in-from-top-2[data-side="bottom"]     { animation-name: tw-slide-in-from-top-2; }
+.data-\[side\=left\]\:slide-in-from-right-2[data-side="left"]       { animation-name: tw-slide-in-from-right-2; }
+.data-\[side\=right\]\:slide-in-from-left-2[data-side="right"]       { animation-name: tw-slide-in-from-left-2; }
+.data-\[side\=top\]\:slide-in-from-bottom-2[data-side="top"]         { animation-name: tw-slide-in-from-bottom-2; }
+
+.data-\[state\=closed\]\:slide-out-to-left-1\/2[data-state="closed"]  { animation-name: tw-slide-out-to-left-2; }
+.data-\[state\=closed\]\:slide-out-to-top-\[48\%\][data-state="closed"] { animation-name: tw-slide-out-to-top-2; }
+.data-\[state\=open\]\:slide-in-from-left-1\/2[data-state="open"]      { animation-name: tw-slide-in-from-left-2; }
+.data-\[state\=open\]\:slide-in-from-top-\[48\%\][data-state="open"]     { animation-name: tw-slide-in-from-top-2; }
+
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
