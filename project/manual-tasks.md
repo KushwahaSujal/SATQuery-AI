@@ -51,3 +51,53 @@ Do NOT paste keys into chat. They go only into the file in the next section.
 - [ ] 5 minutes before: run "mask airplanes" once from the UI.
 - [ ] After: `.venv/bin/modal deploy deploy/modal_app.py` (back to free idle), check usage.
 - [ ] Emergency: if the cloud fails, start the local backend and switch the connection to `http://localhost:8000`.
+
+## Training data — manual steps (added 2026-09-17)
+
+The automatic downloads (`scripts/download_training_data.py`, sources in
+`datasets/manifests/training_sources.yaml`) need nothing more from you. The Kaggle token is already at
+`~/.kaggle/access_token`. These are optional extras:
+
+- [x] **Hugging Face token** (done 2026-09-17, logged in as DRAgNATSU66; optional; downloads work without one, but anonymous requests get lower rate
+  limits): <https://huggingface.co/settings/tokens> → *Create new token* → type **Read**. Then type
+  `! .venv/bin/hf auth login` in the Claude session and paste it at the prompt, not in chat. *[2 min]*
+
+### Phase 2: additional downloads (only if accuracy stops improving)
+
+Do these **after** the automatic ~145 GB set has been trained on and evaluated, and only for a
+capability whose test score has stopped improving. Each one is worth fetching only if it targets a
+measured weakness.
+
+- [x] **LoveDA, full official set** (done 2026-09-18; the Zenodo zips were not byte-identical to any
+  available re-upload, so this was fetched as 8382 individual files from `ahsennazir/loveDA` instead —
+  see `project/qna.md` Q-037). Retrained: land-cover LoveDA mIoU 0.428 → 0.488.
+- [x] **ISPRS Potsdam / Vaihingen** (access approved for SIH development and download started by you, 2026-09-17; Potsdam.zip 12.4 GB, Vaihingen.zip 14.9 GB, Toronto.zip 3.2 GB) (5 cm aerial imagery, 6 land-cover classes; the best
+  high-resolution segmentation benchmark). Request access with the form at
+  <https://www.isprs.org/resources/datasets/benchmarks/UrbanSemLab/default.aspx>. Research use only. *[5 min + wait]*
+- [ ] **PRADAN (ISRO, Chandrayaan-2 OHRC/TMC imagery)**: register at <https://pradan.issdc.gov.in>
+  (Chandrayaan-2 section: <https://pradan.issdc.gov.in/ch2/>). The images have **no labels**; they are
+  only useful after we label them (e.g. craters/boulders), or for testing the crater model. *[10 min]*
+- [ ] **Bhoonidhi (ISRO/NRSC, Resourcesat/Cartosat/Sentinel scenes)**: register at
+  <https://bhoonidhi.nrsc.gov.in>. Also **unlabelled**. Useful for Indian test scenes and demo imagery,
+  not for training as-is. *[10 min]*
+- [ ] *Not needed:* **xView** (<https://xviewdataset.org>) and **FAIR1M** (gaofen-challenge.com, which
+  was unreachable on 2026-09-17) are both already inside LAE-1M, which is downloading automatically.
+  The same goes for DOTA (<https://captain-whu.github.io/DOTA/>) and DIOR.
+- [ ] **Licences.** DeepGlobe, Massachusetts, DIOR, DOTA, Inria and ISPRS are for research use.
+  LoveDA and OpenEarthMap are CC-BY-NC-SA (no commercial use). WHU, SpaceNet and the Kaggle crater
+  set are CC-BY. LAE-1M is MIT, but the underlying images keep their original licences. Fine for
+  SIH and a paper; check again before any commercial use.
+
+### Raw data retention (after training)
+
+A trained checkpoint does not need its raw data to run, so most of `datasets/raw/` can be deleted once
+a model is final. Keep these:
+- **the val/test tiles** for every dataset a model claims a score on (a few GB): needed to re-run the
+  evaluation for the paper or demo, and to compare the next model against the same tiles;
+- **the manifest** (`datasets/manifests/training_sources.yaml`) and download script, which can fetch
+  anything deleted again;
+- **the train split** of any dataset still being trained on, or queued for the next run.
+
+Delete the train splits only after the checkpoint has been scored on test, and the result recorded in
+`project/qna.md`.
+
