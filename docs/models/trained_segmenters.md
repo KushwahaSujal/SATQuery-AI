@@ -5,6 +5,10 @@ Four models trained on this project's own data pipeline, now reachable through t
 the adapters, the config entries and the tests only. Wiring prompts to them is a separate change and
 gets its own QNA entry (project/qna.md Q-031 lists the gate each capability must pass).
 
+**Update:** the router and agent are still unchanged, but `run_grounding_pipeline` itself now routes
+plain "mark all roads" / "segment buildings" style requests straight to `roads_segmenter` /
+`buildings_segmenter`. See the "Wired in" section at the end of this file (project/qna.md Q-038).
+
 All numbers below are copied from the QNA transcript. Nothing here is estimated.
 
 | Registry key | Checkpoint | Architecture | QNA |
@@ -260,3 +264,66 @@ Notes:
 - NIR (`train_nir_additional_to38cloud`) is on disk but unused: `build_model` builds a 3-channel
   encoder with ImageNet weights. A false-colour NIR/red/green variant would be a second entry in
   `_READERS` and one more `SOURCES` line if it is ever wanted.
+
+## Wired in — roads and buildings (project/qna.md Q-038)
+
+`run_grounding_pipeline` (`backend/app/workflows/grounding.py`) now dispatches a plain, unqualified
+whole-image category request for roads or buildings straight to `roads_segmenter` /
+`buildings_segmenter`, instead of Grounding DINO + V4 reasoning + SAM 2. The dispatch decision lives
+in `backend/app/workflows/trained_segmenter.py` (`classify_trained_segmenter_target`, a pure function
+tested with no weights in `tests/unit/test_trained_segmenter_dispatch.py`) and runs right after
+`parse_v4_query`, before any detector call.
+
+**Routes to the trained segmenter:** "mark all roads", "segment buildings", "find every road", "mask
+all the buildings" — a category request with no size, position, ordinal, relational or colour
+qualifier, and naming only roads or only buildings (reusing `_wants_all_instances`'s existing
+category-vs-single-target signal, plus explicit checks on `relation` and `color`, which that function
+does not itself look at).
+
+**Falls through to the existing Grounding DINO + SAM 2 path, unchanged:** "the largest building"
+(size/ordinal), "the road near the school" (relational), "red buildings" (colour-qualified), "roads
+and buildings" (multiple classes in one query), any class without a trained segmenter (cars, ships,
+planes, water, craters, ...). The capability-level routing in
+`backend/app/orchestration/intent_classifier.py` is untouched — this dispatch is entirely inside the
+grounding workflow, one level below where that file's road/building/water regex groups route a query
+to `single_image_grounding` in the first place.
+
+**Strategy strings**, distinct from `V4_RELATIONAL` so they are traceable in logs and evidence:
+`trained_segmenter_roads`, `trained_segmenter_buildings`.
+
+**Config flag:** `settings.trained_segmenter_routing.enabled` (`configs/app.yaml`,
+`trained_segmenter_routing.enabled`, default `true`), env override
+`SATQUERY_TRAINED_SEGMENTERS_ENABLED`. Setting it to `false` sends every query through the existing
+detector + SAM 2 path, with no code change. If the checkpoint or `training.segmentation` is
+unavailable for a route that matched (`model_registry.is_model_available()` false), the pipeline
+falls back to the existing path too, with a `trained_segmenter_unavailable` trace step — the same
+graceful-unavailability behaviour the adapters already have (`is_available()`), not a new failure
+mode.
+
+**Response shape:** matches `run_grounding_pipeline`'s existing contract. `selected_box` is `None`
+(a road network or a scene's buildings are not one box; downstream code already handles a `None`
+box with a mask present — `backend/app/evidence/fusion.py::build_grounding_evidence` builds the mask,
+statistics and GeoJSON independent of `selected_box`, and only skips adding a bounding-box evidence
+entry). `segmentation_mask` is the adapter's binary mask at the image's own resolution.
+`grounding_score` is `None` (no detector ran); `sam2_score` carries the segmenter's own confidence
+(mean foreground probability where it fired) so `run_grounding`'s existing
+`pipeline_res.get("sam2_score") or pipeline_res.get("grounding_score")` read keeps working
+unchanged. `evidence` adds a `trained_segmenter` block (`model_key`, `checkpoint`, `threshold`,
+`threshold_source`, `coverage_pct`, `trained_gsd_m`, `encoder`, `tta`) alongside the usual
+`mask_pixel_count` / `mask_area_ratio`. `trace` gets one `call_trained_segmenter` step (checkpoint
+path, threshold, confidence) plus the existing `validate_image` / `receive_query` / `parse_query` /
+`build_visual_evidence` / `complete_pipeline` steps; the detector- and SAM2-specific steps
+(`call_grounding_dino`, `call_sam2`, `run_grounding_reasoner`, ...) never appear.
+
+**Resolution / GSD caveat, unchanged from the rest of this document:** the checkpoints are trained
+and validated at 0.5 m/px. `run_grounding_pipeline` has no GSD metadata for an arbitrary uploaded
+image (`AgentState`/the calling context does not thread one this deep), so the model runs at the
+image's native resolution — no unvalidated resampling step was added — and the answer text says so
+explicitly. A caller that knows its image's GSD should resample to 0.5 m before calling.
+
+**Measured end-to-end** (`tests/models/test_grounding_trained_segmenter.py`, CPU, one DeepGlobe tile,
+`656960_sat.jpg`, 1024x1024): `run_grounding_pipeline(image, "mark all roads")` returned
+`strategy = "trained_segmenter_roads"`, `selected_box = None`, predicted road fraction 0.67% against
+a ground-truth fraction of 0.64%, IoU 0.746 against that tile's ground truth. This is one tile, not
+the held-out test split Q-032 scores (DeepGlobe test IoU 0.557-0.569) — it checks the wiring is
+correct, not the model's accuracy.

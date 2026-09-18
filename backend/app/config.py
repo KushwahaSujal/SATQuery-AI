@@ -150,6 +150,14 @@ class AgentVerificationSettings(BaseModel):
     video_frames_to_verify: int = 3
 
 
+class TrainedSegmenterRoutingSettings(BaseModel):
+    """Direct dispatch of plain "mark all roads" / "segment buildings" queries to the trained U-Net
+    segmenters instead of Grounding DINO + SAM 2 (project/qna.md Q-025t, Q-026t, Q-038). Default
+    enabled; set to false to fall back to the detector + SAM 2 path everywhere without a code change
+    if the trained-segmenter path misbehaves in the real app."""
+    enabled: bool = True
+
+
 class ModelSpec(BaseModel):
     name: str
     version: Optional[str] = None
@@ -189,6 +197,7 @@ class Config:
         self.database = self._load_database_config()
         self.video = self._load_video_config()
         self.agent_verification = self._load_agent_verification_config()
+        self.trained_segmenter_routing = self._load_trained_segmenter_routing_config()
         self.change_adjudication = self._load_change_adjudication_config()
         self.visualization = self._load_visualization_config()
         self.models: Dict[str, ModelSpec] = self._load_models_config()
@@ -239,6 +248,10 @@ class Config:
         raw = self._load_yaml("app.yaml").get("agent_verification", {})
         return AgentVerificationSettings(**raw) if raw else AgentVerificationSettings()
 
+    def _load_trained_segmenter_routing_config(self) -> TrainedSegmenterRoutingSettings:
+        raw = self._load_yaml("app.yaml").get("trained_segmenter_routing", {})
+        return TrainedSegmenterRoutingSettings(**raw) if raw else TrainedSegmenterRoutingSettings()
+
     def _load_video_config(self) -> VideoSettings:
         raw = self._load_yaml("app.yaml").get("video", {})
         cfg = VideoSettings(**raw) if raw else VideoSettings()
@@ -268,6 +281,8 @@ class Config:
             self.app.cors_origins = [o.strip() for o in os.getenv("SATQUERY_CORS_ORIGINS").split(",") if o.strip()]
         if os.getenv("SATQUERY_MAX_UPLOAD_MB"):
             self.storage.max_upload_size_mb = int(os.getenv("SATQUERY_MAX_UPLOAD_MB"))
+        if os.getenv("SATQUERY_TRAINED_SEGMENTERS_ENABLED"):
+            self.trained_segmenter_routing.enabled = os.getenv("SATQUERY_TRAINED_SEGMENTERS_ENABLED").lower() in ("true", "1")
 
         # Database overrides
         if os.getenv("DATABASE_URL"):

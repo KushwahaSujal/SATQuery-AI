@@ -3323,3 +3323,89 @@ a benign generic-results poller hitting a video job id (**404**, repeated — se
 "We didn't take Modal's word for the deploy config — we asked the running container directly. `modal
 container exec` into it and asked PyTorch what GPU it sees; it answered 'NVIDIA L4', 22 GB, which is the L4's
 real VRAM size and not the T4's 16 GB. That's the same container that served every request in this table."
+
+## Q-038 · Trained road/building segmenters wired into the live query path — the first capability actually reaching users
+
+**Recorded** 2026-09-18, atop `prototype` 5e0d965. This is the change Q-031's "what unlocked means" gate
+was written for: until now every trained model in Q-025t..Q-037 existed only as a checkpoint plus an
+adapter, with nothing routing to it. This entry covers roads and buildings only.
+
+### 1. Mechanism
+
+`run_grounding_pipeline` (`backend/app/workflows/grounding.py`) funnels every mask/box query through
+Grounding DINO → V4 reasoning → SAM 2. A dispatch check now sits between query parsing and detector
+invocation:
+
+- `classify_trained_segmenter_target` (new module `backend/app/workflows/trained_segmenter.py`) returns
+  `roads_segmenter` / `buildings_segmenter` / `None`. It routes to a trained segmenter **only** when all
+  hold: the routing flag is on; `_wants_all_instances(...)` is True (the pipeline's own existing
+  category-vs-single-target signal — deliberately reused, not reimplemented, so the two can't drift);
+  no relational or colour qualifier in the parsed query; and the parsed category matches exactly one of
+  the road/building vocabularies.
+- Everything else falls through to the existing path **byte-unchanged**: single-target ("the largest
+  building"), ordinal, size/position, relational ("the road near the school"), colour ("red buildings"),
+  multi-class ("roads and buildings"), and every class without a trained segmenter (cars, ships, planes,
+  tanks, tennis courts...).
+- If the target class matches but the checkpoint or trainer module is unavailable, a
+  `trained_segmenter_unavailable` trace step is recorded and the query falls back to the detector path
+  rather than erroring.
+- `run_trained_segmenter_path` returns the same response shape callers already consume, with a distinct
+  `strategy` (`trained_segmenter_roads` / `trained_segmenter_buildings`) so this path is never confusable
+  with a V4 result in logs or evidence, and an `evidence.trained_segmenter` block carrying checkpoint,
+  threshold, threshold source, coverage and encoder.
+- Toggle: `configs/app.yaml` `trained_segmenter_routing.enabled` (default **true**), env override
+  `SATQUERY_TRAINED_SEGMENTERS_ENABLED`.
+
+**Resolution caveat, deliberately not papered over.** The segmenters were trained at 0.5 m/px
+(Q-025t/Q-026t/Q-032). `run_grounding_pipeline` has no GSD metadata for an arbitrary uploaded image, so
+this path runs the model at the image's **native resolution** and says so in the answer text. No
+resampling step was invented, because none was validated. A caller that knows its GSD should resample to
+0.5 m before calling.
+
+### 2. What this changes for a user
+
+| Query | Before | After |
+|---|---|---|
+| "mark all roads" | Grounding DINO + SAM 2, IoU 0.031 DeepGlobe / 0.021 Massachusetts (Q-025t) | trained U-Net, IoU 0.557 / 0.616 (Q-032) |
+| "segment buildings" | IoU 0.635 WHU / 0.191 Massachusetts (Q-026t) | 0.834 / 0.695 (Q-032) |
+| "mark the largest building", "find the road near the school", "mask red cars", "mask airplanes" | unchanged | unchanged |
+
+The accuracy figures are carried over from the training entries — this change routes to those
+checkpoints, it does not re-measure them.
+
+### 3. Blast radius
+
+- **This is the highest-risk change of the session:** it sits inside the function every object-class
+  query, and video frame grounding, passes through. Mitigations: narrow dispatch conditions, reuse of the
+  existing all-instances signal, a kill switch, unavailable-checkpoint fallback, and the regression run
+  in §4.
+- Roads/buildings answers now have `selected_box: None` and an empty `instance_boxes` — a class mask has
+  no single selected instance. Downstream consumers were checked for None handling; anything new that
+  assumes a box must handle it.
+- Only roads and buildings are wired. Craters, land cover, water, cloud and ISPRS remain checkpoint-only
+  (Q-031's gate not yet passed for them).
+- Not re-validated at non-0.5 m resolutions (see §1).
+
+### 4. Verification
+
+Independently re-run in this session, not taken from the subagent's report:
+- `tests/unit/test_trained_segmenter_dispatch.py` — **20 passed** (dispatch decisions, no weights needed:
+  segmenter for "mark all roads"/"segment buildings"; fallback for ordinal, relational, colour, wrong
+  class, and flag-disabled).
+- `tests/models/test_grounding_trained_segmenter.py` — **1 passed**, real end-to-end: logs confirm it
+  loaded `checkpoints/roads_all_r50_seg/best.pt` (unet/resnet50, epoch 54, threshold 0.35) and ran real
+  inference through `run_grounding_pipeline`.
+- Full suite `tests/unit tests/models -m "not models"`: **326 passed, 3 failed** — the same three
+  pre-existing `test_geotiff_georeferencing.py` GDAL/rasterio failures that fail on 541b0f2 without any
+  of this work. Count rose from 306 (Q-035..Q-037 baseline) by the 20 new dispatch tests.
+- API assumptions spot-checked directly against source: `parsed["category"]`,
+  `model_registry.is_model_available`, the adapter's `class_name`/`checkpoint_path`, and `ModelResult`'s
+  `masks`/`confidence`/`metadata`.
+
+### 5. Defence — "You changed the function everything depends on. How do you know you didn't break it?"
+
+"Because the fallback is the old code path, untouched, and we proved it still runs: 326 tests pass, the
+only failures are three that already failed before this work existed. The new path is entered only when
+four independent conditions all agree, it reuses the pipeline's own category signal rather than a second
+opinion that could drift, and it can be switched off in config with no code change. A reviewer who
+distrusts it can set `trained_segmenter_routing.enabled: false` and get the exact previous behaviour."

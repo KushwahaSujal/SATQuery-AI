@@ -17,6 +17,10 @@ from backend.app.workflows.grounding_reasoner import (
 from backend.app.ml.registry import model_registry
 from backend.app.ml.adapters.grounding_dino import GroundingDINOAdapter
 from backend.app.ml.adapters.sam2 import SAM2Adapter
+from backend.app.workflows.trained_segmenter import (
+    classify_trained_segmenter_target,
+    run_trained_segmenter_path,
+)
 from backend.app.agent.state import AgentState
 from backend.app.schemas.agent import JobStatus, TaskType, ExecutionStep
 from backend.app.schemas.responses import AnalyzeResponse
@@ -214,6 +218,28 @@ def run_grounding_pipeline(
         "clean_prompt": clean_prompt,
         "modifiers": {k: v for k, v in parsed.items() if v and k not in ("category", "target_category", "raw_query", "clean_prompt")}
     })
+
+    # Trained-segmenter dispatch: a plain, unqualified whole-image category mask for roads or
+    # buildings goes straight to the trained U-Net segmenter instead of Grounding DINO + V4 + SAM 2
+    # (project/qna.md Q-025t: DeepGlobe/Massachusetts IoU 0.03 pipeline vs 0.54-0.61 trained; Q-026t:
+    # WHU/Massachusetts 0.64-0.19 pipeline vs 0.83-0.69 trained). Every qualified (size, position,
+    # ordinal, relational, colour), multi-class, or unsupported-class query falls through to the
+    # existing path below, completely unchanged. Toggle: settings.trained_segmenter_routing.enabled
+    # / SATQUERY_TRAINED_SEGMENTERS_ENABLED.
+    wants_all = _wants_all_instances(norm_query, "", parsed)
+    trained_target = classify_trained_segmenter_target(norm_query, parsed, wants_all)
+    if trained_target is not None:
+        if model_registry.is_model_available(trained_target):
+            result = run_trained_segmenter_path(
+                trained_target, pil_img, norm_query, target_category, record_step, t0
+            )
+            result["trace"] = trace
+            return result
+        record_step("trained_segmenter_unavailable", "warning", details={
+            "model": trained_target,
+            "reason": "checkpoint_or_trainer_unavailable",
+            "fallback": "grounding_dino_sam2",
+        })
 
     # Steps 4-6. Grounding DINO proposes boxes; "auto" is accepted as an alias for it.
     prompt = clean_prompt
