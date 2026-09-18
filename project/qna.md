@@ -2444,6 +2444,8 @@ image and draws the result; detection, segmentation, change detection and the sc
 honest cost is time: about 20–25 seconds for a mask or a scene question once warm, and a minute and a half to two
 minutes for change detection and video."
 
+---
+
 ## Q-025 · First trained road segmenter: IoU 0.031 → 0.540 (DeepGlobe) and 0.021 → 0.606 (Massachusetts) against the live pipeline
 
 **Recorded** 2026-09-17, atop `prototype` `55f76b3`. The work is uncommitted at the time of writing. It
@@ -3229,3 +3231,95 @@ gain (+0.060) is consistent with training on the correct, complete dataset rathe
 ### 4. Verification
 
 `checkpoints/landcover_full_r50_seg/report.json`.
+
+---
+
+## Q-034 · L4 vs T4 measured; first real-browser end-to-end run against the cloud
+
+**Recorded** 2026-09-18, app `satquery-ai` redeployed with `SATQUERY_MODAL_GPU=L4`
+(`~/.venvs/modal/bin/modal deploy deploy/modal_app.py`, same image and weights as Q-029). All requests sent
+from the RTX 3070 machine; the browser check used the real Next.js frontend (`npx next start -p 3000`,
+no local backend) driven by Playwright, not the smoke script.
+
+### 1. Mechanism
+
+1. Redeploy with `SATQUERY_MODAL_GPU=L4` took the same code path as T4 (`deploy/modal_app.py`) — no changes
+   needed; the GPU type is only a deploy-time env var. GPU identity verified directly, not inferred: the
+   running container's PyTorch reported `torch.cuda.get_device_name(0)` → `"NVIDIA L4"`,
+   `total_memory` → `22.0 GiB`, via `modal container exec <id> -- python -c "..."`.
+2. Two `scripts/cloud_smoke.py` passes (first, warm) run under `systemd-run --user --slice=satquery.slice`
+   (the mem-guard's cgroup) so the run stays supervised while a parallel training job used the local GPU.
+   First attempt used the wrong working directory (`systemd-run`'s default, `$HOME`) and every file-based
+   case failed with `FileNotFoundError`; the stray output file it wrote outside the repo
+   (`~/results/evaluations/cloud_smoke_20260918_1135.json`) was deleted, and the rerun passed
+   `--property=WorkingDirectory=<repo>`.
+3. Browser check: Playwright against `localhost:3000`, connected to the cloud on `/system` with the
+   `ushnik` key, then the real Command Center flow — drag-and-drop upload of
+   `demo_resources/4_video/real_aerial_footage.mp4`, typed query "find red car", clicked Run, followed the
+   redirect to `/video/{job_id}`, read the rendered event card, and inspected `browser_network_requests` for
+   every `/api/` call's status and query string.
+
+### 2. Measured (verbatim)
+
+Cold start after redeploy: **28.2 s** (`/api/health`, 200).
+
+| Prompt | L4 first | L4 warm | T4 warm (Q-029) |
+|---|---|---|---|
+| mask airplanes | 37.9 s | 26.9 s | 22.8 s |
+| mask white houses | 26.4 s | 27.3 s | 24.3 s |
+| what is in this image? | 82.0 s | 22.9 s | 20.9 s |
+| has any new building been constructed? | 55.4 s | 45.4 s | 91.7 s |
+| find red car (video) | 56.1 s | 59.7 s | 110.4 s |
+
+All non-video answers on both L4 passes: `gemini:gemini-3.5-flash-lite`. Video result both passes:
+`flags: [[15.36, 18.72]]` — identical to every prior run of this prompt (Q-029, and now the browser run).
+
+Browser run: upload → registered (30.2 s, 12.5 fps, 377 frames, 768×432, h264) → job completed → event card
+shows "red car", score **0.89**, **0:15.4 → 0:18.7**, playback auto-stopped at the event's end. Every
+`/api/*` network request returned 200 except the video stream (**206**, Range request, correctly keyed) and
+a benign generic-results poller hitting a video job id (**404**, repeated — see §3).
+
+### 3. Blast radius
+
+- **L4 is faster where it matters, not everywhere.** Change detection and video are the two GPU-bound,
+  multi-model jobs; L4 warm beat T4 warm there by roughly 2× (45.4 s vs 91.7 s; 59.7 s vs 110.4 s — though
+  video's L4 number came from the browser-adjacent smoke run, not a clean isolated pass, see below). On the
+  lighter single-model jobs (masking, scene question) the two GPUs are within a few seconds of each other —
+  those times are dominated by uploading the file and downloading the result zip over this connection, not
+  by compute. This branch has not isolated network time from GPU time; the L4-vs-T4 gap on light jobs could
+  be entirely network variance.
+- **The L4 "first" pass is not a clean cold-model measurement.** It ran concurrently with the Playwright
+  browser session's own upload/analyze/download traffic on the same connection and against the same warm
+  container (`max_containers=1`), so its numbers (e.g. 82.0 s for the scene question) reflect contention,
+  not first-load cost in isolation.
+- **Confirmed harmless, found only by driving the real UI:** the video results page
+  (`frontend/src/app/video/[jobId]/page.tsx` or the hook it uses) polls the generic per-image results
+  endpoint (`GET /api/results/{id}`) on an interval even for a video job id, producing a 404 roughly every
+  2.5 s until the poll is presumably cancelled elsewhere. Confirmed via `browser_network_requests` and the
+  console log (10 identical 404 lines, ~2.5 s apart). Purely cosmetic — the video-specific data source
+  (`GET /api/video/{id}`) is what the page actually renders from, and it was correct throughout. Not fixed
+  in this entry.
+- **First genuine confirmation of the D4 media-key path in a browser**, not just via `httpx`/curl: the video
+  `<video>` element's stream request carried `?key=...` and received `206 Partial Content`, and the
+  Download Results link's `href` carried the same key. This is what Q-027's `useConnection()`/`mediaUrl()`
+  fix (hydration-safety) was written to guarantee; this run is its first real-browser evidence.
+- Operational note, not a code defect: `systemd-run` without an explicit `WorkingDirectory` silently broke
+  every relative-path case in the smoke script and wrote its (gitignored, still real) output file into
+  `~/results/evaluations/` outside the repo. Deleted after diagnosis, per the standing disk-hygiene rule.
+
+### 4. Verification
+
+- Result files (gitignored): `results/evaluations/cloud_smoke_20260918_1141.json` (L4 first),
+  `…_1144.json` (L4 warm).
+- Browser artifacts saved to `~/Downloads/satquery_cloud_results_2026-09-17/browser_check/`:
+  `1_system_connected.png`, `2_video_result_red_car.png`, and the full job output
+  (`job_4c310c8a/{result.json,trace.json,video/…}`) pulled from the Modal results volume with
+  `modal volume get`.
+- GPU identity: `modal container exec <container-id> -- python -c "import torch; print(torch.cuda.get_device_name(0), ...)"`
+  → `NVIDIA L4 22.0 GiB` (not inferred from `/api/health`, which only reports `device: cuda`).
+
+### 5. Defence — "How do you know this ran on an L4 and not a T4 left over from before?"
+
+"We didn't take Modal's word for the deploy config — we asked the running container directly. `modal
+container exec` into it and asked PyTorch what GPU it sees; it answered 'NVIDIA L4', 22 GB, which is the L4's
+real VRAM size and not the T4's 16 GB. That's the same container that served every request in this table."
