@@ -170,6 +170,10 @@ class ModelSpec(BaseModel):
     input_size: Optional[int] = None
     max_native_side: Optional[int] = None
     model_id: Optional[str] = None
+    # Binary segmenters: the foreground class the checkpoint was trained for, and whether to
+    # average the four flips at inference (4x slower, +0.005 to +0.012 IoU — project/qna.md Q-032).
+    class_name: Optional[str] = None
+    tta: Optional[bool] = None
 
 
 class Config:

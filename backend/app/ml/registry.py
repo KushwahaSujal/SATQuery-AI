@@ -11,6 +11,9 @@ from backend.app.ml.adapters.general_rs_vlm import GeneralRSVLMAdapter
 from backend.app.ml.adapters.scene_vlm import SceneVLMAdapter
 from backend.app.ml.adapters.remoteclip import RemoteCLIPAdapter
 from backend.app.ml.adapters.bigearthnet import BigEarthNetMultimodalAdapter
+from backend.app.ml.adapters.binary_segmenter import BuildingSegmenterAdapter, RoadSegmenterAdapter
+from backend.app.ml.adapters.landcover_segmenter import LandCoverSegmenterAdapter
+from backend.app.ml.adapters.crater_detector import CraterDetectorAdapter
 from backend.app.schemas.models import ModelCapabilityInfo
 from backend.app.config import settings
 from backend.app.logging import logger
@@ -33,6 +36,12 @@ class ModelRegistry:
         "scene_vlm": SceneVLMAdapter,
         "remoteclip": RemoteCLIPAdapter,
         "bigearthnet": BigEarthNetMultimodalAdapter,
+        # Locally trained (Q-026, Q-028, Q-029, Q-030, Q-032). Registered and available, but no
+        # router or agent path reaches them yet.
+        "roads_segmenter": RoadSegmenterAdapter,
+        "buildings_segmenter": BuildingSegmenterAdapter,
+        "landcover_segmenter": LandCoverSegmenterAdapter,
+        "crater_detector": CraterDetectorAdapter,
     }
 
     MODEL_METADATA: Dict[str, Dict[str, Any]] = {
@@ -124,6 +133,42 @@ class ModelRegistry:
             "capabilities": ["multimodal_land_cover", "optical_sar_analysis"],
             "input_requirements": {"optical": "Sentinel-2 bands", "sar": "Sentinel-1 dual-pol"},
             "output_schema": {"predictions": "list[dict]"},
+            "device_requirements": {"min_vram_gb": 2.0, "preferred": "cuda"},
+        },
+        "roads_segmenter": {
+            "family": "U-Net / ResNet-50 (smp)",
+            "source": "checkpoints/roads_all_r50_seg/best.pt",
+            "license": "MIT (code); per-dataset licences for DeepGlobe, Massachusetts, SpaceNet 3",
+            "capabilities": ["road_segmentation", "binary_mask_segmentation"],
+            "input_requirements": {"image": "RGB (H, W, 3), trained at 0.5 m GSD"},
+            "output_schema": {"binary_mask": "ndarray (H, W) uint8", "probability_map": "ndarray (H, W) float32"},
+            "device_requirements": {"min_vram_gb": 2.0, "preferred": "cuda"},
+        },
+        "buildings_segmenter": {
+            "family": "U-Net / ResNet-50 (smp)",
+            "source": "checkpoints/buildings_whu_ma_r50_seg/best.pt",
+            "license": "MIT (code); per-dataset licences for WHU Building and Massachusetts",
+            "capabilities": ["building_footprint_segmentation", "binary_mask_segmentation"],
+            "input_requirements": {"image": "RGB (H, W, 3), trained at 0.5 m GSD"},
+            "output_schema": {"binary_mask": "ndarray (H, W) uint8", "probability_map": "ndarray (H, W) float32"},
+            "device_requirements": {"min_vram_gb": 2.0, "preferred": "cuda"},
+        },
+        "landcover_segmenter": {
+            "family": "U-Net / ResNet-34 (smp), 7-class head",
+            "source": "checkpoints/landcover_dg_lv_oem_seg/best.pt",
+            "license": "MIT (code); LoveDA and OpenEarthMap are non-commercial",
+            "capabilities": ["land_cover_segmentation", "per_class_area_statistics"],
+            "input_requirements": {"image": "RGB (H, W, 3), trained at 0.5 m GSD"},
+            "output_schema": {"masks": "list[{binary_mask, label, area_pct}]", "class_map": "ndarray (H, W) uint8"},
+            "device_requirements": {"min_vram_gb": 2.5, "preferred": "cuda"},
+        },
+        "crater_detector": {
+            "family": "YOLO11s (ultralytics)",
+            "source": "checkpoints/craters_yolo/weights/best.pt",
+            "license": "AGPL-3.0 (ultralytics); LU3M6TGT and Mars/Lunar dataset terms",
+            "capabilities": ["crater_detection", "planetary_object_detection"],
+            "input_requirements": {"image": "RGB (H, W, 3), lunar or Mars imagery, trained at 832 px"},
+            "output_schema": {"boxes": "List[{xyxy:[x1,y1,x2,y2](px), score:float, label:str, box_2d:[...]}]"},
             "device_requirements": {"min_vram_gb": 2.0, "preferred": "cuda"},
         },
     }

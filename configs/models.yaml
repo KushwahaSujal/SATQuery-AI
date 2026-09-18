@@ -166,6 +166,78 @@ models:
     checkpoint_path: "checkpoints/remoteclip/RemoteCLIP-ViT-B-32.pt"
     device: "auto"
 
+  # ------------------------------------------------------------------ locally trained models
+  # Trained on tiles resampled to 0.5 m (training/segmentation/datasets.py, TARGET_GSD_M).
+  # Registered and enabled, but nothing routes to them yet: see docs/models/trained_segmenters.md
+  # and project/qna.md Q-031.
+  roads_segmenter:
+    name: "RoadSegmenter"
+    version: "roads_all_r50"
+    task: "segmentation"
+    supported_tasks:
+      - "single_image_segmentation"
+    supported_modalities:
+      - "optical"
+    input_count: 1
+    input_relationship: "single"
+    enabled: true
+    checkpoint_path: "checkpoints/roads_all_r50_seg/best.pt"
+    class_name: "road"
+    # Left unset so the threshold frozen on validation inside the checkpoint (0.35) is used.
+    threshold: null
+    # 4-flip averaging: +0.012 test IoU on DeepGlobe, 4x slower (Q-032).
+    tta: false
+    device: "auto"
+
+  buildings_segmenter:
+    name: "BuildingSegmenter"
+    version: "buildings_whu_ma_r50"
+    task: "segmentation"
+    supported_tasks:
+      - "single_image_segmentation"
+    supported_modalities:
+      - "optical"
+    input_count: 1
+    input_relationship: "single"
+    enabled: true
+    checkpoint_path: "checkpoints/buildings_whu_ma_r50_seg/best.pt"
+    class_name: "building"
+    threshold: null  # checkpoint threshold: 0.45
+    tta: false
+    device: "auto"
+
+  landcover_segmenter:
+    name: "LandCoverSegmenter"
+    version: "landcover_dg_lv_oem"
+    task: "land_cover_segmentation"
+    supported_tasks:
+      - "single_image_segmentation"
+      - "land_cover_mapping"
+    supported_modalities:
+      - "optical"
+    input_count: 1
+    input_relationship: "single"
+    enabled: true
+    checkpoint_path: "checkpoints/landcover_dg_lv_oem_seg/best.pt"
+    device: "auto"
+
+  crater_detector:
+    name: "CraterDetector"
+    version: "yolo11s-craters"
+    task: "detection"
+    supported_tasks:
+      - "single_image_detection"
+    supported_modalities:
+      - "optical"
+    input_count: 1
+    input_relationship: "single"
+    enabled: true
+    checkpoint_path: "checkpoints/craters_yolo/weights/best.pt"
+    # Trained at 832 px; ultralytics confidence threshold for serving.
+    input_size: 832
+    box_threshold: 0.25
+    device: "auto"
+
   bigearthnet:
     name: "BigEarthNet-v2.0"
     version: "resnet50-all-v0.2.0"
