@@ -272,6 +272,44 @@ export default function Sidebar({ hideBrand = false, activeItem, className = "" 
         </div>
       </div>
 
+      {/* Social Links */}
+      <motion.div
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.45, duration: 0.4 }}
+        className="mt-4 flex items-center justify-between rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2"
+      >
+        <span className="text-[9px] font-semibold uppercase tracking-wider text-[var(--text-3)]">Connect with Us</span>
+        <div className="flex items-center gap-1.5">
+          <a
+            href="https://github.com/KushwahaSujal/SATQuery-AI"
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label="Open SatQuery AI on GitHub"
+            title="GitHub"
+            className="rounded-md border border-[var(--border)] bg-[var(--surface-2)] p-1.5 text-[var(--text-2)] transition hover:border-[var(--primary)]/50 hover:text-[var(--primary)]"
+          >
+            <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+              <path d="M12 .7a12 12 0 0 0-3.8 23.4c.6.1.8-.3.8-.6v-2.2c-3.3.7-4-1.4-4-1.4-.5-1.4-1.3-1.7-1.3-1.7-1.1-.8.1-.8.1-.8 1.2.1 1.8 1.2 1.8 1.2 1.1 1.8 2.8 1.3 3.5 1 .1-.8.4-1.3.8-1.6-2.7-.3-5.5-1.4-5.5-6A4.7 4.7 0 0 1 5.7 9c-.1-.3-.5-1.6.1-3.3 0 0 1-.3 3.4 1.3a11.7 11.7 0 0 1 6.2 0c2.4-1.6 3.4-1.3 3.4-1.3.6 1.7.2 3 .1 3.3a4.7 4.7 0 0 1 1.3 3.3c0 4.6-2.8 5.7-5.5 6 .4.3.8 1 .8 2v2.9c0 .3.2.7.8.6A12 12 0 0 0 12 .7Z" />
+            </svg>
+            <span className="sr-only">GitHub</span>
+          </a>
+          <a
+            href="https://www.youtube.com/@SatQueryAI"
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label="Watch SatQuery AI on YouTube"
+            title="YouTube"
+            className="rounded-md border border-[var(--border)] bg-[var(--surface-2)] p-1.5 text-[var(--text-2)] transition hover:border-[#ff0033]/50 hover:text-[#ff0033]"
+          >
+            <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+              <path d="M23.5 6.2a3 3 0 0 0-2.1-2.1C19.5 3.6 12 3.6 12 3.6s-7.5 0-9.4.5A3 3 0 0 0 .5 6.2 31 31 0 0 0 0 12a31 31 0 0 0 .5 5.8 3 3 0 0 0 2.1 2.1c1.9.5 9.4.5 9.4.5s7.5 0 9.4-.5a3 3 0 0 0 2.1-2.1A31 31 0 0 0 24 12a31 31 0 0 0-.5-5.8ZM9.6 15.6V8.4l6.3 3.6-6.3 3.6Z" />
+            </svg>
+            <span className="sr-only">YouTube</span>
+          </a>
+        </div>
+      </motion.div>
+
       {/* Bottom Mission Card */}
       <motion.div
         initial={{ opacity: 0, y: 8 }}
