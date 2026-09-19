@@ -142,7 +142,7 @@ export default function TopBar({
             onClick={() => setMode("dark")}
             className={`p-1.5 rounded-full transition-all duration-150 ${
               mounted && mode === "dark"
-                ? "bg-[var(--surface-3)] text-[var(--cyan)] shadow-sm"
+                ? "bg-[var(--surface-3)] text-[var(--accent)] shadow-sm"
                 : "text-[var(--text-3)] hover:text-[var(--heading)]"
             }`}
             title="Dark theme"

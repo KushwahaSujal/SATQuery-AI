@@ -31,6 +31,11 @@
   --accent:        #00c2a8;
   --accent-glow:   rgba(0, 194, 168, 0.12);
 
+  /* ── Legacy aliases (still referenced across pages) ── */
+  --cyan:          var(--accent);
+  --cyan-glow:     var(--accent-glow);
+  --amber-dim:     var(--amber-bg);
+
   /* ── Semantic ── */
   --green:         #34c78b;
   --green-bg:      rgba(52, 199, 139, 0.10);
@@ -526,6 +531,25 @@ body {
 }
 .thumb-change-red {
   background: radial-gradient(circle at 60% 40%, #dc2626 0%, #7f1d1d 30%, #14532d 70%, #052e16 100%);
+}
+
+/* Scene Viewport Scan Sweep (paint-only, no layout) */
+.scan-sweep {
+  background: linear-gradient(
+    to bottom,
+    transparent 0%,
+    color-mix(in oklab, var(--accent) 8%, transparent) 46%,
+    color-mix(in oklab, var(--accent) 40%, transparent) 50%,
+    color-mix(in oklab, var(--accent) 8%, transparent) 54%,
+    transparent 100%
+  );
+  background-size: 100% 220px;
+  background-repeat: no-repeat;
+  animation: scan-sweep 7s linear infinite;
+}
+@keyframes scan-sweep {
+  from { background-position: 0 -220px; }
+  to { background-position: 0 calc(100% + 220px); }
 }
 
 /* Analysis Canvas Simulation */
