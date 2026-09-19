@@ -380,12 +380,20 @@ export default function HomePage() {
               >
                 <div className="rounded-xl border border-[var(--border)] bg-[var(--surface)] overflow-hidden">
                   <div className="panel-header">
-                    <span className="panel-label">Scene viewport · Sample</span>
-                    <span className="font-mono-data text-[10px] text-[var(--text-3)] tracking-[0.1em]">DELHI SECTOR</span>
+                    <span className="panel-label">Scene viewport · Earth</span>
+                    <span className="font-mono-data text-[10px] text-[var(--text-3)] tracking-[0.1em]">AVYAN NETRA</span>
                   </div>
 
                   <div className="relative h-64 sm:h-72 lg:h-[340px] overflow-hidden">
-                    <div className="absolute inset-0 sat-crop-delhi-main" />
+                    <video
+                      className="absolute inset-0 h-full w-full object-cover"
+                      src="/4788-180289892.mp4"
+                      autoPlay
+                      muted
+                      loop
+                      playsInline
+                      aria-label="Satellite imagery viewport"
+                    />
                     {/* Fine survey grid */}
                     <div
                       aria-hidden
