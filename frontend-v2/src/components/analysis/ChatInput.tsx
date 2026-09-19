@@ -96,7 +96,7 @@ export function ChatInput({
       onDrop={handleDrop}
     >
       {/* Attached Image/Video Previews */}
-      {!disabled && (attachedImages.length > 0 || videoPreview) && (
+      {(attachedImages.length > 0 || videoPreview) && (
         <div className="mb-2 flex max-h-[76px] items-center gap-2 overflow-x-auto rounded-xl border border-[var(--border)] bg-[var(--surface-2)]/60 px-2 py-1.5">
           <div className="flex shrink-0 flex-col justify-center pr-1">
             <span className="text-[9px] font-semibold uppercase tracking-wider text-[var(--text-3)]">

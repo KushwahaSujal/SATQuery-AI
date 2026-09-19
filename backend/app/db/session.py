@@ -216,10 +216,10 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
     async with session_factory() as session:
         try:
             yield session
-            # Read-only requests should not commit a transaction opened by a
-            # failed query; this also avoids committing an invalid connection
-            # when an endpoint intentionally falls back after a DB error.
-            if session.is_active and (session.new or session.dirty or session.deleted):
+            # flush() removes objects from session.new/dirty/deleted, so
+            # checking those collections here can skip writes that still need
+            # to be committed. A successful request owns its transaction.
+            if session.is_active:
                 await session.commit()
         except Exception:
             await session.rollback()

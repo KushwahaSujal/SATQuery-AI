@@ -6,10 +6,11 @@ Split out of the former monolithic api/routes.py (1246 lines).
 import os
 import uuid
 import shutil
+import asyncio
 from pathlib import Path
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, UploadFile, status
 from fastapi.responses import FileResponse, JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -52,7 +53,7 @@ from backend.app.exceptions import (
     DatabaseUnavailableError,
 )
 from backend.app.logging import logger
-from backend.app.db.session import get_db, check_database_connection
+from backend.app.db.session import get_db, check_database_connection, get_session_maker
 from backend.app.db.repositories.job_repository import JobRepository
 from backend.app.db.repositories.video_repository import VideoRepository
 from backend.app.schemas.video import (
@@ -86,6 +87,73 @@ from PIL import Image
 import numpy as np
 
 router = APIRouter(tags=["SatQuery AI"])
+
+
+async def _run_video_analysis(
+    video_path: Path,
+    job_id: str,
+    query: str,
+    sampling_cfg: VideoSamplingConfig,
+    flagging_cfg: VideoFlagConfig,
+) -> None:
+    """Run the CPU-heavy workflow after the analyze request has returned."""
+    session_factory = get_session_maker()
+    async with session_factory() as session:
+        try:
+            response = await VideoAnalysisWorkflow.execute(
+                video_path=video_path,
+                query=query,
+                job_id=job_id,
+                sampling_config=sampling_cfg,
+                flagging_config=flagging_cfg,
+                db_session=session,
+            )
+            await JobRepository.update_job_status(
+                session,
+                job_id=job_id,
+                status=response.status.value,
+                error_message="; ".join(response.errors) if response.errors else None,
+                task_type=response.task.value,
+            )
+            artifact_manager.save_result_json(job_id, response.model_dump(mode="json"))
+            artifact_manager.save_trace_json(
+                job_id,
+                [step.model_dump(mode="json") for step in response.execution_trace],
+            )
+            await session.commit()
+        except Exception as exc:
+            await session.rollback()
+            logger.exception("Video analysis background task failed for '%s': %s", job_id, exc)
+            try:
+                await JobRepository.update_job_status(
+                    session,
+                    job_id=job_id,
+                    status=JobStatus.FAILED.value,
+                    error_message=str(exc),
+                    task_type=TaskType.VIDEO_GROUNDING.value,
+                )
+                await session.commit()
+            except Exception:
+                await session.rollback()
+
+
+def _run_video_analysis_background(
+    video_path: Path,
+    job_id: str,
+    query: str,
+    sampling_cfg: VideoSamplingConfig,
+    flagging_cfg: VideoFlagConfig,
+) -> None:
+    """Execute the async workflow in a worker thread, not the API event loop."""
+    asyncio.run(
+        _run_video_analysis(
+            video_path=video_path,
+            job_id=job_id,
+            query=query,
+            sampling_cfg=sampling_cfg,
+            flagging_cfg=flagging_cfg,
+        )
+    )
 
 router = APIRouter(tags=["SatQuery AI"])
 
@@ -160,6 +228,7 @@ async def upload_video(
 
 @router.post("/video/analyze", response_model=VideoAnalysisResponse)
 async def analyze_video(
+    background_tasks: BackgroundTasks,
     file: Optional[UploadFile] = File(None),
     request_id: Optional[str] = Form(None),
     query: str = Form(...),
@@ -230,28 +299,42 @@ async def analyze_video(
             query=query,
             status="RUNNING"
         )
+        # Persist the running state before scheduling CPU-heavy work. The
+        # request dependency commits on teardown, but the background task may
+        # begin before that happens.
+        await db.commit()
     except Exception as e:
+        await db.rollback()
         logger.warning(f"Database error updating job status: {e}")
 
-    # Execute workflow
-    response = await VideoAnalysisWorkflow.execute(
-        video_path=video_path,
-        query=query,
-        job_id=req_id,
-        sampling_config=sampling_cfg,
-        flagging_config=flagging_cfg,
-        db_session=db
+    # Do not hold the request open while Grounding DINO/SAM runs on CPU.
+    # The background task uses its own database session because this request
+    # session is closed as soon as the initial response is sent.
+    background_tasks.add_task(
+        _run_video_analysis_background,
+        video_path,
+        req_id,
+        query,
+        sampling_cfg,
+        flagging_cfg,
     )
 
-    # Image jobs write result.json and trace.json (agent/controller.py); video jobs did not, so the results
-    # ZIP for a video had frames but no machine-readable output (Q-017).
-    try:
-        artifact_manager.save_result_json(req_id, response.model_dump(mode="json"))
-        artifact_manager.save_trace_json(req_id, [s.model_dump(mode="json") for s in response.execution_trace])
-    except Exception as e:
-        logger.warning(f"Could not persist video result.json/trace.json for {req_id}: {e}")
+    with VideoDecoder(video_path) as decoder:
+        meta = decoder.metadata
 
-    return response
+    return VideoAnalysisResponse(
+        job_id=req_id,
+        status=JobStatus.RUNNING,
+        task=TaskType.VIDEO_GROUNDING,
+        workflow_reason="Video analysis queued. Waiting for model execution.",
+        video_metadata=meta,
+        flags=[],
+        models_used=["grounding_dino", "sam2"],
+        execution_trace=[],
+        warnings=[],
+        errors=[],
+        artifacts={},
+    )
 
 
 @router.get("/video/{job_id}", response_model=VideoAnalysisResponse)
@@ -270,6 +353,9 @@ async def get_video_analysis_result(
             message=f"Video analysis job '{job_id}' not found.",
             details={"job_id": job_id}
         )
+
+    job_rec = await JobRepository.get_job(db, job_id)
+    current_status = getattr(job_rec, "status", "UPLOADED") if job_rec else "UPLOADED"
 
     # Map database records to response schema
     meta = VideoMetadata(
@@ -311,7 +397,9 @@ async def get_video_analysis_result(
     # original query, and the colour gate is deterministic, so the same conclusion can
     # be restated here rather than silently degrading to a generic message.
     workflow_reason = f"Retrieved {len(flags)} persisted event flags from database."
-    if not flags:
+    if current_status not in {JobStatus.COMPLETED.value, JobStatus.FAILED.value}:
+        workflow_reason = "Video analysis is still running."
+    if not flags and current_status == JobStatus.COMPLETED.value:
         job_rec = await JobRepository.get_job(db, job_id)
         original_query = getattr(job_rec, "query", None) if job_rec else None
         if original_query:
@@ -323,9 +411,14 @@ async def get_video_analysis_result(
                     f"Candidate regions were detected but none are {parsed['color']}."
                 )
 
+    response_status = (
+        JobStatus.QUEUED
+        if current_status in {"CREATED", "UPLOADED", "PENDING", "QUEUED"}
+        else JobStatus(current_status)
+    )
     return VideoAnalysisResponse(
         job_id=job_id,
-        status=JobStatus.COMPLETED,
+        status=response_status,
         task=TaskType.VIDEO_GROUNDING,
         workflow_reason=workflow_reason,
         video_metadata=meta,

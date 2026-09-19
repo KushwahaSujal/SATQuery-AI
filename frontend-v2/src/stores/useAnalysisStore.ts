@@ -47,6 +47,7 @@ interface AnalysisState {
   rasters: UploadedRaster[];
   video: UploadedVideo | null;
   activeJobId: string | null;
+  activeJobIsVideo: boolean;
   liveJob: LiveJob | null;
   liveResult: AnalysisResult | null;
   analysisError: string | null;
@@ -65,6 +66,7 @@ export const useAnalysisStore = create<AnalysisState>((set, get) => ({
   rasters: [],
   video: null,
   activeJobId: null,
+  activeJobIsVideo: false,
   liveJob: null,
   liveResult: null,
   analysisError: null,
@@ -182,12 +184,9 @@ export const useAnalysisStore = create<AnalysisState>((set, get) => ({
         });
       }
 
-      // The submitted sources now live in the user message. Clear the composer
-      // so the next prompt starts as a fresh follow-up conversation turn.
       set({
         activeJobId: response.job_id,
-        rasters: [],
-        video: null,
+        activeJobIsVideo: hasVideo,
         liveJob: {
           job_id: response.job_id,
           status: "QUEUED",
@@ -224,6 +223,7 @@ export const useAnalysisStore = create<AnalysisState>((set, get) => ({
       rasters: [],
       video: null,
       activeJobId: null,
+      activeJobIsVideo: false,
       liveJob: null,
       liveResult: null,
       analysisError: null,

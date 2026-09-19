@@ -184,9 +184,25 @@ export default function HomePage() {
     if (e.dataTransfer.files?.length > 0) handleUploadFiles(e.dataTransfer.files);
   };
 
-  return (
+return (
     <>
-      <style dangerouslySetInnerHTML={{ __html: `body { overflow-y: auto !important; height: auto !important; }` }} />
+      {/* Background Video */}
+      <div
+        className="fixed inset-0 top-0 -z-10 overflow-hidden pointer-events-none"
+      >
+        <video
+          autoPlay
+          loop
+          muted
+          playsInline
+          className="w-full h-full object-cover"
+          src="/4788-180289892.mp4"
+        />
+        <div
+          className="absolute inset-0 bg-[rgba(2,13,25,0.6)] backdrop-blur-md"
+        />
+      </div>
+
       <div className="bg-[var(--canvas)] text-[var(--text)] font-sans min-h-screen flex antialiased">
         <Sidebar activeItem="home" hideBrand={false} className="sticky top-0 h-screen flex-shrink-0" />
 

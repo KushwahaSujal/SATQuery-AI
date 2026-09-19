@@ -5,6 +5,7 @@ from pydantic import BaseModel, Field
 
 class JobStatus(str, Enum):
     QUEUED = "QUEUED"
+    UPLOADED = "UPLOADED"
     VALIDATING = "VALIDATING"
     PLANNING = "PLANNING"
     RUNNING = "RUNNING"

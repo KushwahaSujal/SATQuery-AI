@@ -3,13 +3,11 @@
 import React, { useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
-import { useQuery } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import { useAnalysisStore } from "@/stores/useAnalysisStore";
 import { ChatThread } from "./ChatThread";
 import { ChatInput } from "./ChatInput";
 import { cn } from "@/lib/utils";
-import { api } from "@/lib/api";
 
 const SUGGESTED_PROMPTS = [
   { text: "Detect urban expansion in this region", icon: "M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4", category: "Urban" },
@@ -27,51 +25,22 @@ export function ChatView() {
   const rasters = useAnalysisStore((s) => s.rasters);
   const isSubmitting = useAnalysisStore((s) => s.isSubmittingAnalysis);
   const activeJobId = useAnalysisStore((s) => s.activeJobId);
+  const activeJobIsVideo = useAnalysisStore((s) => s.activeJobIsVideo);
   const startAnalysis = useAnalysisStore((s) => s.startAnalysis);
   const handleUpload = useAnalysisStore((s) => s.handleUpload);
   const resetAnalysis = useAnalysisStore((s) => s.resetAnalysis);
-  const updateMessage = useAnalysisStore((s) => s.updateMessage);
 
   const prevJobIdRef = useRef<string | null>(null);
-  const progressMessage = messages.find((message) => message.type === "progress");
-  const liveJobQuery = useQuery({
-    queryKey: ["chat-job", activeJobId],
-    queryFn: () => api.job(activeJobId!),
-    enabled: Boolean(activeJobId),
-    refetchInterval: (query) => {
-      const status = query.state.data?.status;
-      return status && !["COMPLETED", "FAILED", "CANCELLED"].includes(status) ? 2000 : false;
-    },
-    staleTime: 0,
-  });
-
-  useEffect(() => {
-    const status = liveJobQuery.data?.status;
-    if (!status || !progressMessage) return;
-
-    const labels: Record<string, string> = {
-      CREATED: "Preparing your analysis...",
-      UPLOADED: "Reading uploaded sources...",
-      QUEUED: "Queued for processing...",
-      PENDING: "Waiting for an available worker...",
-      VALIDATING: "Validating imagery and metadata...",
-      PLANNING: "Selecting the best analysis workflow...",
-      RUNNING: "Running computer vision models...",
-      GENERATING_EVIDENCE: "Generating evidence and findings...",
-    };
-    const nextContent = labels[status] || "Processing your analysis...";
-    if (progressMessage.content !== nextContent) {
-      updateMessage(progressMessage.id, { content: nextContent });
-    }
-  }, [liveJobQuery.data, progressMessage, updateMessage]);
 
   useEffect(() => {
     if (activeJobId && activeJobId !== prevJobIdRef.current) {
       prevJobIdRef.current = activeJobId;
       queryClient.invalidateQueries({ queryKey: ["jobs"] });
+      // Keep video and raster results in the same analysis workspace. The
+      // result page switches its content based on the persisted task type.
       router.push(`/analysis/${activeJobId}`);
     }
-  }, [activeJobId, queryClient, router]);
+  }, [activeJobId, activeJobIsVideo, queryClient, router]);
 
   const isRunning = isSubmitting || Boolean(activeJobId);
   const hasMessages = messages.length > 0;
@@ -80,12 +49,6 @@ export function ChatView() {
   const videoPreview = useAnalysisStore((s) => s.video?.preview_url);
   const uploadProgress = useAnalysisStore((s) => s.uploadProgress);
   const hasSources = attachedImages.length > 0 || Boolean(videoPreview);
-  const conversationSourceCount = messages.reduce(
-    (count, message) => count + (message.images?.length ?? 0),
-    0,
-  );
-  const composerImages = isSubmitting || activeJobId ? [] : attachedImages;
-  const composerVideo = isSubmitting || activeJobId ? null : videoPreview;
 
   return (
     <div className="h-full min-h-0 flex-1 flex flex-col bg-[var(--canvas)] overflow-hidden">
@@ -108,7 +71,7 @@ export function ChatView() {
                     {isRunning ? "Analysis in progress" : "Analysis conversation"}
                   </p>
                   <p className="text-[10px] text-[var(--text-3)]">
-                    {conversationSourceCount} source{conversationSourceCount === 1 ? "" : "s"} in conversation
+                    {rasters.length + (videoPreview ? 1 : 0)} source{rasters.length + (videoPreview ? 1 : 0) === 1 ? "" : "s"} attached
                   </p>
                 </div>
               </div>
@@ -226,9 +189,9 @@ export function ChatView() {
           <ChatInput
             onSubmit={(text, type) => startAnalysis(text, type)}
             onUpload={handleUpload}
-            attachedImages={composerImages}
+            attachedImages={attachedImages}
             attachedImageLabels={attachedImageLabels}
-            videoPreview={composerVideo}
+            videoPreview={videoPreview}
             uploadProgress={uploadProgress}
             disabled={isSubmitting}
             variant="centered"

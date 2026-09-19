@@ -344,7 +344,10 @@ async def get_job_results(request_id: str, db: AsyncSession = Depends(get_db)):
     try:
         res_rec = await JobRepository.get_analysis_result(db, request_id)
         if res_rec and res_rec.result_json:
-            return AnalyzeResponse(**res_rec.result_json)
+            data = dict(res_rec.result_json)
+            if not data.get("request_id"):
+                data["request_id"] = data.get("job_id") or request_id
+            return AnalyzeResponse(**data)
     except Exception as e:
         logger.warning(f"Database query failed for get_job_results: {e}")
 
@@ -355,6 +358,8 @@ async def get_job_results(request_id: str, db: AsyncSession = Depends(get_db)):
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"No results found for request ID '{request_id}'."
         )
+    if not data.get("request_id"):
+        data["request_id"] = data.get("job_id") or request_id
     return AnalyzeResponse(**data)
 
 

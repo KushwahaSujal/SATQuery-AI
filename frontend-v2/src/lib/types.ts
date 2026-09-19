@@ -15,6 +15,7 @@ export type TaskType =
 // Backend job status enum (matches backend/app/schemas/agent.py)
 export type JobStatus =
   | "QUEUED"
+  | "PENDING"
   | "VALIDATING"
   | "PLANNING"
   | "RUNNING"
@@ -225,6 +226,8 @@ export interface AnalysisResult {
   artifacts: Record<string, string[]>;
   visualizations: Record<string, unknown>[];
   orchestration?: Record<string, unknown>;
+  flags?: VideoFlag[];
+  video_metadata?: VideoMetadata;
 }
 
 export interface Layer {
@@ -310,6 +313,7 @@ export interface VideoFlag {
   start_timestamp: number;
   end_timestamp: number;
   label: string;
+  reason?: string;
   event_score: number;
   keyframe_url?: string;
   overlay_url?: string;
@@ -329,7 +333,7 @@ export interface VideoMetadata {
 export interface VideoJobResult {
   job_id: string;
   status: JobStatus;
-  query: string;
+  query?: string;
   flags?: VideoFlag[];
   workflow_reason?: string;
   video_metadata?: VideoMetadata;
@@ -337,4 +341,7 @@ export interface VideoJobResult {
   keyframes?: string[];
   models_used?: string[];
   execution_trace?: TraceStep[];
+  warnings?: string[];
+  errors?: string[];
+  artifacts?: Record<string, string[]>;
 }

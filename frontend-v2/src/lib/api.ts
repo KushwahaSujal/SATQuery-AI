@@ -368,6 +368,40 @@ export const api = {
   videoJob: (jobId: string) =>
     http<VideoJobResult>(endpoints.videoJob(jobId)),
 
+  videoResult: async (jobId: string): Promise<AnalysisResult> => {
+    const result = await http<VideoJobResult>(endpoints.videoResults(jobId));
+    return {
+      job_id: result.job_id,
+      request_id: result.job_id,
+      status: result.status,
+      task: "video_grounding",
+      workflow_id: "workflow_video_analysis",
+      workflow: "Video analysis",
+      workflow_reason: result.workflow_reason || "",
+      query: result.query,
+      models_used: result.models_used || [],
+      parameters: {},
+      evidence: {
+        spatial: {
+          boxes: [],
+          has_mask: false,
+          candidate_boxes: [],
+          candidate_scores: [],
+        },
+        consistency: [],
+        metadata: {},
+      },
+      execution_trace: result.execution_trace || [],
+      trace: result.execution_trace || [],
+      warnings: result.warnings || [],
+      errors: result.errors || [],
+      artifacts: result.artifacts || {},
+      visualizations: [],
+      flags: result.flags || [],
+      video_metadata: result.video_metadata,
+    };
+  },
+
   videoStreamUrl: (jobId: string) =>
     `${API_BASE}${endpoints.videoStream(jobId)}`,
 

@@ -3,7 +3,7 @@
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { useMemo, useRef, useState, useEffect } from "react";
-import { useJob, useAnalysisResult, useLayers } from "@/hooks/useSystem";
+import { useJob, useAnalysisResult, useLayers, useVideoResult } from "@/hooks/useSystem";
 import { api } from "@/lib/api";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { TopBar } from "@/components/layout/TopBar";
@@ -50,6 +50,7 @@ const STATUS_LABEL: Record<JobStatus, string> = {
   CREATED: "Created",
   UPLOADED: "Uploaded",
   QUEUED: "Queued",
+  PENDING: "Pending",
   VALIDATING: "Validating",
   PLANNING: "Planning",
   RUNNING: "Running",
@@ -62,6 +63,7 @@ const STATUS_DOT: Record<JobStatus, string> = {
   CREATED: "bg-[var(--text-4)]",
   UPLOADED: "bg-[var(--text-4)]",
   QUEUED: "bg-[var(--text-4)]",
+  PENDING: "bg-[var(--text-4)]",
   VALIDATING: "bg-[var(--cyan)]",
   PLANNING: "bg-[var(--cyan)]",
   RUNNING: "bg-[var(--cyan)] animate-pulse-dot",
@@ -74,6 +76,7 @@ const STATUS_PILL: Record<JobStatus, string> = {
   CREATED: "status-pill",
   UPLOADED: "status-pill",
   QUEUED: "status-pill",
+  PENDING: "status-pill",
   VALIDATING: "status-pill-cyan",
   PLANNING: "status-pill-cyan",
   RUNNING: "status-pill-cyan",
@@ -88,71 +91,18 @@ function formatTime(ms?: number) {
   return `${(ms / 1000).toFixed(1)}s`;
 }
 
-const PROCESS_LABELS: Record<string, string> = {
-  CREATED: "Preparing analysis",
-  UPLOADED: "Reading uploaded sources",
-  QUEUED: "Queued for processing",
-  PENDING: "Waiting for an available worker",
-  VALIDATING: "Validating imagery and metadata",
-  PLANNING: "Selecting the analysis workflow",
-  RUNNING: "Running computer vision models",
-  GENERATING_EVIDENCE: "Generating evidence and findings",
-};
-
-function AnalysisProcessCard({
-  status,
-  steps,
-}: {
-  status: JobStatus;
-  steps?: Record<string, unknown>[];
-}) {
-  const currentLabel = PROCESS_LABELS[status] || "Processing analysis";
-  const visibleSteps = (steps || []).slice(-4);
-
-  return (
-    <div className="rounded-xl border border-[var(--cyan)]/20 bg-[var(--surface-2)]/60 p-3.5">
-      <div className="mb-3 flex items-center gap-2">
-        <div className="relative flex h-7 w-7 items-center justify-center rounded-lg bg-[var(--cyan)]/10">
-          <Loader2 className="h-3.5 w-3.5 animate-spin text-[var(--cyan)]" />
-        </div>
-        <div>
-          <p className="text-xs font-semibold text-[var(--heading)]">{currentLabel}</p>
-          <p className="text-[10px] text-[var(--text-3)]">Live pipeline updates</p>
-        </div>
-      </div>
-      <div className="space-y-2">
-        {visibleSteps.length > 0 ? visibleSteps.map((step, index) => {
-          const name = String(step.step_name || step.step || step.name || "Pipeline step");
-          const stepStatus = String(step.status || "running").toLowerCase();
-          const complete = ["completed", "success", "succeeded", "done"].includes(stepStatus);
-          return (
-            <div key={`${name}-${index}`} className="flex items-center gap-2 text-[10px]">
-              {complete ? (
-                <CheckCircle2 className="h-3 w-3 text-[var(--green)]" />
-              ) : (
-                <Loader2 className="h-3 w-3 animate-spin text-[var(--cyan)]" />
-              )}
-              <span className={complete ? "text-[var(--text-3)]" : "text-[var(--text-2)]"}>{name}</span>
-            </div>
-          );
-        }) : (
-          <div className="flex items-center gap-2 text-[10px] text-[var(--text-3)]">
-            <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[var(--cyan)]" />
-            Initializing pipeline...
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
 export default function AnalysisJobPage() {
   const params = useParams<{ jobId: string }>();
   const jobId = params.jobId;
 
   const job = useJob(jobId);
-  const result = useAnalysisResult(jobId, job.data?.status === "COMPLETED");
-  const layersQuery = useLayers(jobId);
+  const isVideoJob = job.data?.task?.startsWith("video") === true;
+  const result = useAnalysisResult(jobId, job.data?.status === "COMPLETED" && !isVideoJob);
+  const videoResult = useVideoResult(jobId, job.data?.status === "COMPLETED" && isVideoJob);
+  // Do not request raster layers until the job has loaded and is known to be
+  // a raster analysis. The initial undefined task would otherwise trigger a
+  // raster request for every video job.
+  const layersQuery = useLayers(jobId, Boolean(job.data) && !isVideoJob);
 
   const [activeTab, setActiveTab] = useState<"chat" | "analysis" | "trace">("chat");
   const [followUp, setFollowUp] = useState("");
@@ -164,6 +114,10 @@ export default function AnalysisJobPage() {
   const status: JobStatus = (job.data?.status as JobStatus) || "QUEUED";
   const isFailed = status === "FAILED";
   const isRunning =
+    status === "CREATED" ||
+    status === "UPLOADED" ||
+    status === "QUEUED" ||
+    status === "PENDING" ||
     status === "RUNNING" ||
     status === "VALIDATING" ||
     status === "PLANNING" ||
@@ -176,7 +130,9 @@ export default function AnalysisJobPage() {
     return layers[0];
   }, [layers, activeLayerId]);
 
-  const data = result.data;
+  const data = isVideoJob ? videoResult.data : result.data;
+  const videoFlags = data?.flags ?? [];
+  const videoMetadata = data?.video_metadata;
   const evidence = data?.evidence;
   const spatial = evidence?.spatial;
   const statistics = spatial?.statistics;
@@ -373,7 +329,46 @@ export default function AnalysisJobPage() {
                     </div>
                   )}
 
-                  {isCompleted && currentLayer?.artifact_url && (
+                  {isCompleted && isVideoJob && (
+                    <BlurFade className="absolute inset-0 flex flex-col p-4">
+                      <div className="relative min-h-0 flex-1 overflow-hidden rounded-xl border border-[var(--border)] bg-black">
+                        <video
+                          src={api.videoStreamUrl(jobId)}
+                          controls
+                          className="absolute inset-0 h-full w-full object-contain"
+                        />
+                        {videoFlags.length > 0 && videoMetadata && (
+                          <div className="absolute bottom-14 left-4 right-4 rounded-lg border border-white/15 bg-black/70 p-2 backdrop-blur-sm">
+                            <div className="mb-1 flex items-center justify-between text-[10px] text-white/70">
+                              <span>Detected moments</span>
+                              <span>{videoFlags.length} event{videoFlags.length === 1 ? "" : "s"}</span>
+                            </div>
+                            <div className="relative h-1.5 rounded-full bg-white/20">
+                              {videoFlags.map((flag) => (
+                                <span
+                                  key={flag.flag_id}
+                                  title={`${flag.label} at ${flag.start_timestamp.toFixed(1)}s`}
+                                  className="absolute -top-0.5 h-2.5 w-2.5 -translate-x-1/2 rounded-full bg-[var(--cyan)]"
+                                  style={{
+                                    left: `${Math.min(
+                                      (flag.start_timestamp / Math.max(videoMetadata.duration_sec, 1)) * 100,
+                                      98,
+                                    )}%`,
+                                  }}
+                                />
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                      <div className="mt-3 flex items-center justify-between rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-[10px] font-mono-data text-[var(--text-3)]">
+                        <span>Video intelligence feed</span>
+                        <span>{data?.video_metadata?.duration_sec?.toFixed(1) ?? "—"}s</span>
+                      </div>
+                    </BlurFade>
+                  )}
+
+                  {isCompleted && !isVideoJob && currentLayer?.artifact_url && (
                     <BlurFade className="absolute inset-0 p-4">
                       <div ref={containerRef} className="relative w-full h-full rounded-xl overflow-hidden border border-[var(--border)] bg-[var(--canvas)]">
                         {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -401,7 +396,7 @@ export default function AnalysisJobPage() {
                     </BlurFade>
                   )}
 
-                  {isCompleted && !currentLayer?.artifact_url && (
+                  {isCompleted && !isVideoJob && !currentLayer?.artifact_url && (
                     <div className="absolute inset-0 flex items-center justify-center text-[var(--text-3)] text-xs font-mono-data">
                       No artifact URL for selected layer
                     </div>
@@ -474,7 +469,43 @@ export default function AnalysisJobPage() {
                             </div>
                             <div className="flex-1">
                               <div className="p-3.5 rounded-xl bg-[var(--surface)] border border-[var(--border)] text-xs text-[var(--text-2)] leading-relaxed space-y-3">
-                                {data?.answer || "Analysis complete. View layers and metrics in the Analysis tab."}
+                                {isVideoJob
+                                  ? data?.workflow_reason || "Video analysis completed."
+                                  : data?.answer || "Analysis complete. View layers and metrics in the Analysis tab."}
+
+                                {isVideoJob && videoMetadata && (
+                                  <div className="grid grid-cols-2 gap-2">
+                                    {[
+                                      ["Duration", `${videoMetadata.duration_sec.toFixed(1)}s`],
+                                      ["Resolution", `${videoMetadata.width} × ${videoMetadata.height}`],
+                                      ["Frame rate", `${videoMetadata.fps.toFixed(2)} fps`],
+                                      ["Events", `${videoFlags.length}`],
+                                    ].map(([label, value]) => (
+                                      <div key={label} className="rounded-lg border border-[var(--border)] bg-[var(--surface-2)] p-2">
+                                        <p className="text-[10px] text-[var(--text-3)]">{label}</p>
+                                        <p className="mt-0.5 text-xs font-semibold text-[var(--heading)]">{value}</p>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+
+                                {isVideoJob && videoFlags.length > 0 && (
+                                  <div className="space-y-2">
+                                    <p className="text-[11px] font-semibold text-[var(--cyan)]">Detected moments</p>
+                                    {videoFlags.map((flag) => (
+                                      <div key={flag.flag_id} className="rounded-lg border border-[var(--border)] bg-[var(--surface-2)] p-2.5">
+                                        <div className="flex items-center justify-between gap-2">
+                                          <span className="truncate text-[11px] font-semibold text-[var(--heading)]">{flag.label}</span>
+                                          <span className="font-mono-data text-[10px] text-[var(--cyan)]">{flag.event_score.toFixed(2)}</span>
+                                        </div>
+                                        <p className="mt-1 text-[10px] text-[var(--text-3)]">
+                                          {flag.start_timestamp.toFixed(2)}s → {flag.end_timestamp.toFixed(2)}s
+                                        </p>
+                                        {flag.reason && <p className="mt-1 text-[10px] leading-relaxed text-[var(--text-2)]">{flag.reason}</p>}
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
 
                                 {data?.confidence != null && (
                                   <div className="p-2 rounded-lg bg-[var(--surface-2)] border border-[var(--border)]">
@@ -511,10 +542,16 @@ export default function AnalysisJobPage() {
                       )}
 
                       {!isCompleted && !data?.answer && !isFailed && (
-                        <AnalysisProcessCard
-                          status={status}
-                          steps={job.data?.execution_steps as Record<string, unknown>[] | undefined}
-                        />
+                        <div className="flex items-start gap-2.5">
+                          <div className="w-6 h-6 rounded-md bg-[var(--surface-3)] flex items-center justify-center shrink-0 mt-0.5">
+                            <Loader2 className="w-3 h-3 text-[var(--cyan)] animate-spin" />
+                          </div>
+                          <div className="flex-1 space-y-2">
+                            <Skeleton className="h-3 w-full" />
+                            <Skeleton className="h-3 w-5/6" />
+                            <Skeleton className="h-3 w-2/3" />
+                          </div>
+                        </div>
                       )}
                     </TabsContent>
 
@@ -570,6 +607,43 @@ export default function AnalysisJobPage() {
                                       <span className="text-[10px] font-mono-data text-[var(--cyan)]">
                                         {(b.score * 100).toFixed(0)}%
                                       </span>
+                                    )}
+
+                                    {isVideoJob && (
+                                      <Card>
+                                        <CardHeader className="pb-2">
+                                          <CardTitle className="text-xs flex items-center gap-2">
+                                            <Clock className="w-3.5 h-3.5 text-[var(--cyan)]" />
+                                            Detected events
+                                          </CardTitle>
+                                        </CardHeader>
+                                        <CardContent>
+                                          {data?.flags && data.flags.length > 0 ? (
+                                            <div className="space-y-1.5">
+                                              {data.flags.map((flag) => (
+                                                <div
+                                                  key={flag.flag_id}
+                                                  className="rounded-md border border-[var(--border)] bg-[var(--surface-2)] p-2"
+                                                >
+                                                  <div className="flex items-center justify-between gap-2">
+                                                    <span className="truncate text-xs text-[var(--heading)]">{flag.label}</span>
+                                                    <span className="shrink-0 font-mono-data text-[10px] text-[var(--cyan)]">
+                                                      {flag.event_score.toFixed(2)}
+                                                    </span>
+                                                  </div>
+                                                  <p className="mt-1 text-[10px] text-[var(--text-3)]">
+                                                    {flag.start_timestamp.toFixed(1)}s → {flag.end_timestamp.toFixed(1)}s
+                                                  </p>
+                                                </div>
+                                              ))}
+                                            </div>
+                                          ) : (
+                                            <p className="py-3 text-center text-xs text-[var(--text-3)]">
+                                              {data?.workflow_reason || "No events detected"}
+                                            </p>
+                                          )}
+                                        </CardContent>
+                                      </Card>
                                     )}
                                   </div>
                                 ))}

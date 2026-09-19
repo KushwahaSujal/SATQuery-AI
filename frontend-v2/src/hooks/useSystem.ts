@@ -23,7 +23,28 @@ export function useModels() {
 export function useJob(jobId?: string) {
   return useQuery({
     queryKey: ["job", jobId],
-    queryFn: () => api.job(jobId!),
+    queryFn: async () => {
+      try {
+        return await api.job(jobId!);
+      } catch (jobError) {
+        // Video jobs are persisted separately from the generic analysis
+        // status in some deployments. Use the dedicated endpoint as a
+        // fallback so they never enter the raster-only page path.
+        try {
+          const video = await api.videoJob(jobId!);
+          return {
+            job_id: video.job_id,
+            status: video.status,
+            task: "video_grounding",
+            query: video.query,
+            models_used: video.models_used,
+            execution_steps: video.execution_trace,
+          };
+        } catch {
+          throw jobError;
+        }
+      }
+    },
     enabled: Boolean(jobId),
     refetchInterval: (query) => {
       const status = query.state.data?.status;
@@ -63,11 +84,22 @@ export function useAnalysisResult(jobId?: string, enabled?: boolean) {
   });
 }
 
-export function useLayers(jobId?: string) {
+export function useVideoResult(jobId?: string, enabled?: boolean) {
+  return useQuery({
+    queryKey: ["video-result", jobId],
+    queryFn: () => api.videoResult(jobId!),
+    enabled: Boolean(jobId) && Boolean(enabled),
+    staleTime: 30_000,
+    retry: 3,
+    refetchInterval: (query) => (query.state.data ? false : 2000),
+  });
+}
+
+export function useLayers(jobId?: string, enabled = true) {
   return useQuery({
     queryKey: ["layers", jobId],
     queryFn: () => api.layers(jobId!),
-    enabled: Boolean(jobId),
+    enabled: Boolean(jobId) && enabled,
   });
 }
 
