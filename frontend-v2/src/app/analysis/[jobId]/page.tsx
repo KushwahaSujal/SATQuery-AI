@@ -88,6 +88,64 @@ function formatTime(ms?: number) {
   return `${(ms / 1000).toFixed(1)}s`;
 }
 
+const PROCESS_LABELS: Record<string, string> = {
+  CREATED: "Preparing analysis",
+  UPLOADED: "Reading uploaded sources",
+  QUEUED: "Queued for processing",
+  PENDING: "Waiting for an available worker",
+  VALIDATING: "Validating imagery and metadata",
+  PLANNING: "Selecting the analysis workflow",
+  RUNNING: "Running computer vision models",
+  GENERATING_EVIDENCE: "Generating evidence and findings",
+};
+
+function AnalysisProcessCard({
+  status,
+  steps,
+}: {
+  status: JobStatus;
+  steps?: Record<string, unknown>[];
+}) {
+  const currentLabel = PROCESS_LABELS[status] || "Processing analysis";
+  const visibleSteps = (steps || []).slice(-4);
+
+  return (
+    <div className="rounded-xl border border-[var(--cyan)]/20 bg-[var(--surface-2)]/60 p-3.5">
+      <div className="mb-3 flex items-center gap-2">
+        <div className="relative flex h-7 w-7 items-center justify-center rounded-lg bg-[var(--cyan)]/10">
+          <Loader2 className="h-3.5 w-3.5 animate-spin text-[var(--cyan)]" />
+        </div>
+        <div>
+          <p className="text-xs font-semibold text-[var(--heading)]">{currentLabel}</p>
+          <p className="text-[10px] text-[var(--text-3)]">Live pipeline updates</p>
+        </div>
+      </div>
+      <div className="space-y-2">
+        {visibleSteps.length > 0 ? visibleSteps.map((step, index) => {
+          const name = String(step.step_name || step.step || step.name || "Pipeline step");
+          const stepStatus = String(step.status || "running").toLowerCase();
+          const complete = ["completed", "success", "succeeded", "done"].includes(stepStatus);
+          return (
+            <div key={`${name}-${index}`} className="flex items-center gap-2 text-[10px]">
+              {complete ? (
+                <CheckCircle2 className="h-3 w-3 text-[var(--green)]" />
+              ) : (
+                <Loader2 className="h-3 w-3 animate-spin text-[var(--cyan)]" />
+              )}
+              <span className={complete ? "text-[var(--text-3)]" : "text-[var(--text-2)]"}>{name}</span>
+            </div>
+          );
+        }) : (
+          <div className="flex items-center gap-2 text-[10px] text-[var(--text-3)]">
+            <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[var(--cyan)]" />
+            Initializing pipeline...
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function AnalysisJobPage() {
   const params = useParams<{ jobId: string }>();
   const jobId = params.jobId;
@@ -453,16 +511,10 @@ export default function AnalysisJobPage() {
                       )}
 
                       {!isCompleted && !data?.answer && !isFailed && (
-                        <div className="flex items-start gap-2.5">
-                          <div className="w-6 h-6 rounded-md bg-[var(--surface-3)] flex items-center justify-center shrink-0 mt-0.5">
-                            <Loader2 className="w-3 h-3 text-[var(--cyan)] animate-spin" />
-                          </div>
-                          <div className="flex-1 space-y-2">
-                            <Skeleton className="h-3 w-full" />
-                            <Skeleton className="h-3 w-5/6" />
-                            <Skeleton className="h-3 w-2/3" />
-                          </div>
-                        </div>
+                        <AnalysisProcessCard
+                          status={status}
+                          steps={job.data?.execution_steps as Record<string, unknown>[] | undefined}
+                        />
                       )}
                     </TabsContent>
 

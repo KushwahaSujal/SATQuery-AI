@@ -182,8 +182,12 @@ export const useAnalysisStore = create<AnalysisState>((set, get) => ({
         });
       }
 
+      // The submitted sources now live in the user message. Clear the composer
+      // so the next prompt starts as a fresh follow-up conversation turn.
       set({
         activeJobId: response.job_id,
+        rasters: [],
+        video: null,
         liveJob: {
           job_id: response.job_id,
           status: "QUEUED",

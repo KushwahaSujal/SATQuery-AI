@@ -5,6 +5,7 @@ import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
+import { useJobs } from "@/hooks/useJobs";
 import { clearLocalJobs } from "@/lib/localJobs";
 import type { AnalysisResult } from "@/lib/types";
 import Sidebar from "@/components/layout/Sidebar";
@@ -55,11 +56,8 @@ export default function HistoryPage() {
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   const [sliderPos, setSliderPos] = useState(50);
 
-  const { data: jobs = [], isLoading } = useQuery({
-    queryKey: ["jobs"],
-    queryFn: async () => {
-      const raw = await api.listJobs();
-      return raw.map((item: Record<string, unknown>) => ({
+  const { data: rawJobs = [], isLoading } = useJobs();
+  const jobs = rawJobs.map((item: Record<string, unknown>) => ({
         id: (item.job_id || item.id || "") as string,
         query: (item.query as string) || "Geospatial query",
         task: (item.task as string) || "single_image_vqa",
@@ -68,11 +66,6 @@ export default function HistoryPage() {
         confidence: (item.confidence as number) ?? undefined,
         models_used: (item.models_used as string[]) || [],
       }));
-    },
-    staleTime: 30_000,
-    refetchInterval: 30_000,
-    refetchOnWindowFocus: false,
-  });
 
   const clearMutation = useMutation({
     mutationFn: async () => {

@@ -372,12 +372,8 @@ export const api = {
     `${API_BASE}${endpoints.videoStream(jobId)}`,
 
   listJobs: async (): Promise<Record<string, unknown>[]> => {
-    try {
-      const raw = await http<Record<string, unknown>[] | Record<string, unknown>>(endpoints.jobs);
-      return Array.isArray(raw) ? raw : [];
-    } catch {
-      return [];
-    }
+    const raw = await http<Record<string, unknown>[] | Record<string, unknown>>(endpoints.jobs);
+    return Array.isArray(raw) ? raw : [];
   },
 
   clearJobs: async (): Promise<{ status: string }> => {

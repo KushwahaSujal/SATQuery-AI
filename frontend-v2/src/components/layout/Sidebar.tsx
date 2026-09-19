@@ -3,8 +3,8 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { motion } from "framer-motion";
-import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
+import { useJobs } from "@/hooks/useJobs";
 
 interface SidebarProps {
   hideBrand?: boolean;
@@ -97,20 +97,9 @@ const itemVariants = {
 
 export default function Sidebar({ hideBrand = false, activeItem, className = "" }: SidebarProps) {
   const pathname = usePathname();
-  const { data: jobs } = useQuery({
-    queryKey: ["jobs"],
-    queryFn: () => api.listJobs(),
-    staleTime: 30_000,
-    refetchInterval: 30_000,
-    refetchOnWindowFocus: false,
-  });
+  const { data: jobs } = useJobs();
 
   const recentHistory = (jobs ?? [])
-    .filter((j: Record<string, unknown>) => {
-      const status = (j.status as string) || "";
-      return status !== "FAILED" && status !== "CANCELLED";
-    })
-    .slice(0, 5)
     .map((j: Record<string, unknown>) => ({
       id: (j.job_id || j.id) as string,
       title: (j.query as string)?.slice(0, 40) || "Analysis",
@@ -130,7 +119,7 @@ export default function Sidebar({ hideBrand = false, activeItem, className = "" 
 
   return (
     <aside
-      className={`w-60 min-w-[15rem] max-w-[15rem] bg-[var(--sidebar-bg)] border-r border-[var(--sidebar-border)] flex flex-col justify-between py-4 px-3 shrink-0 z-20 overflow-y-auto select-none ${className}`}
+      className={`h-full min-h-0 w-60 min-w-[15rem] max-w-[15rem] bg-[var(--sidebar-bg)] border-r border-[var(--sidebar-border)] flex flex-col justify-between py-4 px-3 shrink-0 z-20 overflow-y-auto select-none ${className}`}
       data-purpose="sidebar"
     >
       <div>
@@ -199,7 +188,9 @@ export default function Sidebar({ hideBrand = false, activeItem, className = "" 
         {/* Recent History */}
         <div className="mt-5">
           <div className="flex items-center justify-between px-2 mb-1.5">
-            <p className="text-[10px] font-bold text-[var(--sidebar-muted)] tracking-wider uppercase">Recent</p>
+            <p className="text-[10px] font-bold text-[var(--sidebar-muted)] tracking-wider uppercase">
+              Analysis history
+            </p>
             <Link href="/history" className="text-[10px] font-medium text-[var(--cyan)] hover:opacity-80 transition-opacity">
               View all
             </Link>
@@ -208,7 +199,7 @@ export default function Sidebar({ hideBrand = false, activeItem, className = "" 
             variants={containerVariants}
             initial="hidden"
             animate="show"
-            className="space-y-0.5"
+            className="max-h-72 space-y-0.5 overflow-y-auto pr-1"
           >
             {recentHistory.map((item) => (
               <motion.div key={item.id} variants={itemVariants}>

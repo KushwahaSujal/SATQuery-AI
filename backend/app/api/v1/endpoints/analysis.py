@@ -148,33 +148,42 @@ async def analyze_query(request: AnalyzeRequest, db: AsyncSession = Depends(get_
 
 @router.get("/jobs")
 async def list_jobs(db: AsyncSession = Depends(get_db)):
-    """Retrieves recent non-failed analysis jobs from PostgreSQL (limited to 50)."""
+    """Retrieves the latest analysis jobs from PostgreSQL (limited to 50)."""
     try:
         from sqlalchemy import select
         from backend.app.db.models.job import AnalysisJob
         stmt = (
-            select(AnalysisJob)
-            .where(AnalysisJob.status.notin_(["FAILED", "CANCELLED"]))
+            select(
+                AnalysisJob.id,
+                AnalysisJob.task_type,
+                AnalysisJob.query,
+                AnalysisJob.status,
+                AnalysisJob.created_at,
+                AnalysisJob.updated_at,
+            )
             .order_by(AnalysisJob.created_at.desc())
             .limit(50)
         )
-        res = await db.execute(stmt)
-        jobs = res.scalars().all()
+        jobs = (await db.execute(stmt)).all()
         return [
             {
-                "id": j.id,
-                "job_id": j.id,
-                "task": j.task_type or "unknown",
-                "query": j.query or "",
-                "status": j.status,
-                "created_at": j.created_at.isoformat() if j.created_at else None,
-                "updated_at": j.updated_at.isoformat() if j.updated_at else None,
+                "id": job_id,
+                "job_id": job_id,
+                "task": task_type or "unknown",
+                "query": query or "",
+                "status": job_status,
+                "created_at": created_at.isoformat() if created_at else None,
+                "updated_at": updated_at.isoformat() if updated_at else None,
             }
-            for j in jobs
+            for job_id, task_type, query, job_status, created_at, updated_at in jobs
         ]
     except Exception as e:
         logger.warning(f"Failed to list jobs: {e}")
-        return []
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Job history is temporarily unavailable. Please retry shortly.",
+        ) from e
 
 
 @router.delete("/jobs")

@@ -89,7 +89,7 @@ export function ChatThread({
   }, [messages.length]);
 
   return (
-    <div className={cn("flex-1 overflow-y-auto p-4 space-y-4", className)}>
+    <div className={cn("min-h-0 flex-1 overflow-y-auto p-4 space-y-5", className)}>
       {messages.map((msg) => (
         <div key={msg.id} className={cn("flex gap-2.5", msg.role === "user" ? "justify-end" : "justify-start")}>
           {msg.role === "assistant" && (
@@ -101,7 +101,7 @@ export function ChatThread({
             </div>
           )}
 
-          <div className={cn("max-w-[80%] space-y-1.5", msg.role === "user" ? "items-end" : "items-start")}>
+          <div className={cn("max-w-[min(80%,42rem)] space-y-1.5", msg.role === "user" ? "items-end" : "items-start")}>
             {msg.role === "user" && (
               <span className="text-[10px] text-[var(--text-3)] font-mono">{formatTime(msg.timestamp)}</span>
             )}

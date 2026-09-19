@@ -10,7 +10,7 @@ function AnalysisContent() {
     <div className="h-screen w-full flex flex-col bg-[var(--canvas)] text-[var(--text-2)] font-sans overflow-hidden select-none antialiased">
       <TopBar showBrand={true} />
 
-      <div className="flex-1 flex overflow-hidden">
+      <div className="min-h-0 flex-1 flex overflow-hidden">
         <Sidebar hideBrand={true} />
         <ChatView />
       </div>

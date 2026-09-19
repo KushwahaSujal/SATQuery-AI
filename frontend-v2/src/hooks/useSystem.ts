@@ -28,7 +28,16 @@ export function useJob(jobId?: string) {
     refetchInterval: (query) => {
       const status = query.state.data?.status;
 
-      if (status === "RUNNING" || status === "PENDING") {
+      if (
+        status === "CREATED" ||
+        status === "UPLOADED" ||
+        status === "QUEUED" ||
+        status === "PENDING" ||
+        status === "VALIDATING" ||
+        status === "PLANNING" ||
+        status === "RUNNING" ||
+        status === "GENERATING_EVIDENCE"
+      ) {
         return 2000;
       }
 

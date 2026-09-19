@@ -2,10 +2,14 @@
 
 import React, { useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
+import { useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import { useAnalysisStore } from "@/stores/useAnalysisStore";
 import { ChatThread } from "./ChatThread";
 import { ChatInput } from "./ChatInput";
+import { cn } from "@/lib/utils";
+import { api } from "@/lib/api";
 
 const SUGGESTED_PROMPTS = [
   { text: "Detect urban expansion in this region", icon: "M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4", category: "Urban" },
@@ -18,30 +22,73 @@ const SUGGESTED_PROMPTS = [
 
 export function ChatView() {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const messages = useAnalysisStore((s) => s.messages);
   const rasters = useAnalysisStore((s) => s.rasters);
   const isSubmitting = useAnalysisStore((s) => s.isSubmittingAnalysis);
   const activeJobId = useAnalysisStore((s) => s.activeJobId);
   const startAnalysis = useAnalysisStore((s) => s.startAnalysis);
   const handleUpload = useAnalysisStore((s) => s.handleUpload);
+  const resetAnalysis = useAnalysisStore((s) => s.resetAnalysis);
+  const updateMessage = useAnalysisStore((s) => s.updateMessage);
 
   const prevJobIdRef = useRef<string | null>(null);
+  const progressMessage = messages.find((message) => message.type === "progress");
+  const liveJobQuery = useQuery({
+    queryKey: ["chat-job", activeJobId],
+    queryFn: () => api.job(activeJobId!),
+    enabled: Boolean(activeJobId),
+    refetchInterval: (query) => {
+      const status = query.state.data?.status;
+      return status && !["COMPLETED", "FAILED", "CANCELLED"].includes(status) ? 2000 : false;
+    },
+    staleTime: 0,
+  });
+
+  useEffect(() => {
+    const status = liveJobQuery.data?.status;
+    if (!status || !progressMessage) return;
+
+    const labels: Record<string, string> = {
+      CREATED: "Preparing your analysis...",
+      UPLOADED: "Reading uploaded sources...",
+      QUEUED: "Queued for processing...",
+      PENDING: "Waiting for an available worker...",
+      VALIDATING: "Validating imagery and metadata...",
+      PLANNING: "Selecting the best analysis workflow...",
+      RUNNING: "Running computer vision models...",
+      GENERATING_EVIDENCE: "Generating evidence and findings...",
+    };
+    const nextContent = labels[status] || "Processing your analysis...";
+    if (progressMessage.content !== nextContent) {
+      updateMessage(progressMessage.id, { content: nextContent });
+    }
+  }, [liveJobQuery.data, progressMessage, updateMessage]);
 
   useEffect(() => {
     if (activeJobId && activeJobId !== prevJobIdRef.current) {
       prevJobIdRef.current = activeJobId;
+      queryClient.invalidateQueries({ queryKey: ["jobs"] });
       router.push(`/analysis/${activeJobId}`);
     }
-  }, [activeJobId, router]);
+  }, [activeJobId, queryClient, router]);
 
   const isRunning = isSubmitting || Boolean(activeJobId);
   const hasMessages = messages.length > 0;
   const attachedImages = rasters.map((r) => r.preview_url).filter(Boolean) as string[];
+  const attachedImageLabels = rasters.map((r) => r.filename);
   const videoPreview = useAnalysisStore((s) => s.video?.preview_url);
   const uploadProgress = useAnalysisStore((s) => s.uploadProgress);
+  const hasSources = attachedImages.length > 0 || Boolean(videoPreview);
+  const conversationSourceCount = messages.reduce(
+    (count, message) => count + (message.images?.length ?? 0),
+    0,
+  );
+  const composerImages = isSubmitting || activeJobId ? [] : attachedImages;
+  const composerVideo = isSubmitting || activeJobId ? null : videoPreview;
 
   return (
-    <div className="flex-1 flex flex-col bg-[var(--canvas)] overflow-hidden">
+    <div className="h-full min-h-0 flex-1 flex flex-col bg-[var(--canvas)] overflow-hidden">
       {/* Subtle grid background */}
       <div className="absolute inset-0 opacity-[0.03] pointer-events-none"
         style={{
@@ -50,8 +97,34 @@ export function ChatView() {
         }}
       />
 
-      <div className="flex-1 flex flex-col relative">
-        <div className="flex-1 w-full max-w-4xl mx-auto flex flex-col overflow-hidden px-6">
+      <div className="relative flex min-h-0 flex-1 flex-col">
+        {hasMessages && (
+          <div className="w-full max-w-5xl mx-auto px-4 sm:px-6 pt-3">
+            <div className="flex items-center justify-between rounded-2xl border border-[var(--border)] bg-[var(--surface)]/90 px-4 py-3 shadow-sm">
+              <div className="flex min-w-0 items-center gap-2.5">
+                <span className={cn("h-2 w-2 rounded-full", isRunning ? "bg-amber-400 animate-pulse" : "bg-emerald-400")} />
+                <div className="min-w-0">
+                  <p className="truncate text-xs font-semibold text-[var(--heading)]">
+                    {isRunning ? "Analysis in progress" : "Analysis conversation"}
+                  </p>
+                  <p className="text-[10px] text-[var(--text-3)]">
+                    {conversationSourceCount} source{conversationSourceCount === 1 ? "" : "s"} in conversation
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={resetAnalysis}
+                disabled={isRunning}
+                className="shrink-0 rounded-lg border border-[var(--border)] px-2.5 py-1.5 text-[10px] font-medium text-[var(--text-2)] transition hover:border-[var(--cyan)]/40 hover:text-[var(--heading)] disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                New analysis
+              </button>
+            </div>
+          </div>
+        )}
+
+        <div className="flex min-h-0 w-full max-w-5xl mx-auto flex-1 flex-col overflow-hidden px-4 sm:px-6">
           {hasMessages ? (
             <ChatThread messages={messages} isRunning={isRunning} />
           ) : (
@@ -59,11 +132,11 @@ export function ChatView() {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               transition={{ duration: 0.5 }}
-              className="flex-1 flex flex-col justify-center py-8"
+              className="flex min-h-0 flex-1 flex-col justify-center overflow-y-auto py-5 sm:py-8"
             >
               {/* Header — left aligned, asymmetric */}
-              <div className="max-w-xl">
-                <div className="flex items-center gap-3 mb-1">
+              <div className={cn("mx-auto w-full max-w-3xl text-center", hasSources && "scale-[0.96]")}>
+                <div className="mb-4 flex items-center justify-center gap-3">
                   <div className="w-8 h-8 rounded-lg bg-[var(--cyan)]/10 border border-[var(--cyan)]/20 flex items-center justify-center">
                     <svg className="w-4 h-4 text-[var(--cyan)]" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
                       <circle cx="12" cy="12" r="9" />
@@ -75,16 +148,24 @@ export function ChatView() {
                   </div>
                   <span className="text-[10px] font-mono uppercase tracking-widest text-[var(--cyan)]">SatQuery AI</span>
                 </div>
-                <h1 className="text-3xl font-bold text-[var(--heading)] tracking-tight leading-tight">
+                <h1 className="text-3xl font-bold tracking-tight leading-tight text-[var(--heading)] sm:text-4xl">
                   What would you like to analyze?
                 </h1>
-                <p className="text-sm text-[var(--text-2)] mt-2 leading-relaxed">
+                <p className="mx-auto mt-3 max-w-2xl text-sm leading-relaxed text-[var(--text-2)]">
                   Upload satellite imagery and ask anything. Change detection, land classification, object counting, vegetation analysis.
                 </p>
+                <div className="mt-4 flex flex-wrap justify-center gap-x-4 gap-y-2 text-[10px] text-[var(--text-3)]">
+                  <span>Images + video</span>
+                  <span className="text-[var(--border)]">•</span>
+                  <span>Evidence-backed results</span>
+                  <span className="text-[var(--border)]">•</span>
+                  <span>Follow-up questions</span>
+                </div>
               </div>
 
               {/* Quick Actions — horizontal strip, not cards */}
-              <div className="mt-8 flex gap-2 flex-wrap">
+              {!hasSources && (
+              <div className="mx-auto mt-8 flex w-full max-w-3xl flex-wrap justify-center gap-2">
                 {[
                   { label: "Change Detection", icon: "M13 7h8m0 0v8m0-8l-8 8-4-4-6 6", prompt: "Detect changes between two dates" },
                   { label: "Land Classification", icon: "M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064", prompt: "Classify land cover types" },
@@ -103,28 +184,29 @@ export function ChatView() {
                   </button>
                 ))}
               </div>
+              )}
 
               {/* Divider */}
-              <div className="mt-8 pt-6 border-t border-[var(--border)]">
-                <p className="text-[10px] uppercase font-semibold text-[var(--text-3)] tracking-wider mb-4">
+              {!hasSources && <div className="mx-auto mt-8 w-full max-w-3xl border-t border-[var(--border)] pt-5">
+                <p className="mb-3 text-center text-[10px] font-semibold uppercase tracking-wider text-[var(--text-3)]">
                   Suggested analyses
                 </p>
-                <div className="grid grid-cols-1 gap-1">
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                   {SUGGESTED_PROMPTS.map((item) => (
                     <button
                       key={item.text}
                       onClick={() => startAnalysis(item.text)}
-                      className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-left hover:bg-[var(--surface)] transition group"
+                      className="group flex min-h-12 items-center gap-3 rounded-xl border border-[var(--border)] bg-[var(--surface)]/50 px-3 py-2.5 text-left transition hover:border-[var(--cyan)]/40 hover:bg-[var(--surface)]"
                     >
                       <div className="w-5 h-5 rounded bg-[var(--surface-2)] border border-[var(--border)] flex items-center justify-center shrink-0">
                         <svg className="w-2.5 h-2.5 text-[var(--text-3)] group-hover:text-[var(--cyan)] transition-colors" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
                           <path d={item.icon} strokeLinecap="round" strokeLinejoin="round" />
                         </svg>
                       </div>
-                      <span className="text-xs text-[var(--text-2)] group-hover:text-[var(--heading)] flex-1">
+                      <span className="flex-1 text-xs text-[var(--text-2)] group-hover:text-[var(--heading)]">
                         {item.text}
                       </span>
-                      <span className="text-[9px] text-[var(--text-4)] font-mono uppercase tracking-wider shrink-0">
+                      <span className="hidden shrink-0 text-[9px] font-mono uppercase tracking-wider text-[var(--text-4)] sm:block">
                         {item.category}
                       </span>
                       <svg className="w-3 h-3 text-[var(--text-4)] opacity-0 group-hover:opacity-100 transition-opacity shrink-0" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
@@ -133,22 +215,25 @@ export function ChatView() {
                     </button>
                   ))}
                 </div>
-              </div>
+              </div>}
             </motion.div>
           )}
         </div>
 
         {/* Chat Input */}
-        <div className="w-full max-w-3xl mx-auto px-6 pb-6">
+        <div className="w-full shrink-0 border-t border-[var(--border)] bg-[var(--canvas)]/95 px-3 pb-3 pt-2 backdrop-blur sm:px-6 sm:pb-4 sm:pt-3">
+          <div className="mx-auto max-w-4xl">
           <ChatInput
             onSubmit={(text, type) => startAnalysis(text, type)}
             onUpload={handleUpload}
-            attachedImages={attachedImages}
-            videoPreview={videoPreview}
+            attachedImages={composerImages}
+            attachedImageLabels={attachedImageLabels}
+            videoPreview={composerVideo}
             uploadProgress={uploadProgress}
             disabled={isSubmitting}
             variant="centered"
           />
+          </div>
         </div>
       </div>
     </div>

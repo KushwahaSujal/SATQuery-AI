@@ -4,8 +4,8 @@ import { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { motion, useInView } from "framer-motion";
-import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
+import { useJobs } from "@/hooks/useJobs";
 import Sidebar from "@/components/layout/Sidebar";
 import TopBar from "@/components/layout/TopBar";
 import { ShimmerButton } from "@/components/ui/shimmer-button";
@@ -137,13 +137,7 @@ export default function HomePage() {
   const statsRef = useRef(null);
   const statsInView = useInView(statsRef, { once: true, margin: "-80px" });
 
-  const { data: jobs } = useQuery({
-    queryKey: ["jobs"],
-    queryFn: () => api.listJobs(),
-    staleTime: 30_000,
-    refetchInterval: 30_000,
-    refetchOnWindowFocus: false,
-  });
+  const { data: jobs } = useJobs();
 
   const recentAnalyses = (jobs ?? []).slice(0, 4).map((j: Record<string, unknown>, i: number) => ({
     title: (j.query as string)?.slice(0, 50) || "Analysis",

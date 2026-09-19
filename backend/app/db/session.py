@@ -103,7 +103,13 @@ def get_async_engine() -> AsyncEngine:
                 "pool_size": settings.database.pool_size,
                 "max_overflow": settings.database.max_overflow,
                 "pool_timeout": settings.database.pool_timeout,
+                "pool_recycle": 1800,
+                "pool_use_lifo": True,
                 "pool_pre_ping": True,
+                "connect_args": {
+                    "timeout": 10,
+                    "command_timeout": 30,
+                },
             })
 
             # Transaction-mode connection poolers (pgBouncer, Supabase :6543, PgCat)
@@ -210,11 +216,13 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
     async with session_factory() as session:
         try:
             yield session
-            if session.is_active:
+            # Read-only requests should not commit a transaction opened by a
+            # failed query; this also avoids committing an invalid connection
+            # when an endpoint intentionally falls back after a DB error.
+            if session.is_active and (session.new or session.dirty or session.deleted):
                 await session.commit()
         except Exception:
-            if session.is_active:
-                await session.rollback()
+            await session.rollback()
             raise
         finally:
             await session.close()

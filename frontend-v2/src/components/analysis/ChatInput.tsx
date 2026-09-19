@@ -24,6 +24,7 @@ export function ChatInput({
   onSubmit,
   onUpload,
   attachedImages = [],
+  attachedImageLabels = [],
   videoPreview,
   uploadProgress,
   disabled = false,
@@ -33,6 +34,7 @@ export function ChatInput({
   onSubmit: (text: string, type?: AnalysisType) => void;
   onUpload: (files: FileList) => void;
   attachedImages?: string[];
+  attachedImageLabels?: string[];
   videoPreview?: string | null;
   uploadProgress?: number | null;
   disabled?: boolean;
@@ -85,7 +87,7 @@ export function ChatInput({
   return (
     <div
       className={cn(
-        isCentered ? "px-4 pb-6" : "p-3 border-t border-[var(--border)]",
+        isCentered ? "px-0 pb-0" : "p-3 border-t border-[var(--border)]",
         isDragging && "ring-2 ring-[var(--cyan)]/50 ring-offset-2 ring-offset-[var(--canvas)]",
         className
       )}
@@ -94,11 +96,20 @@ export function ChatInput({
       onDrop={handleDrop}
     >
       {/* Attached Image/Video Previews */}
-      {(attachedImages.length > 0 || videoPreview) && (
-        <div className="flex gap-2 mb-2 pb-2 border-b border-[var(--border)]">
+      {!disabled && (attachedImages.length > 0 || videoPreview) && (
+        <div className="mb-2 flex max-h-[76px] items-center gap-2 overflow-x-auto rounded-xl border border-[var(--border)] bg-[var(--surface-2)]/60 px-2 py-1.5">
+          <div className="flex shrink-0 flex-col justify-center pr-1">
+            <span className="text-[9px] font-semibold uppercase tracking-wider text-[var(--text-3)]">
+              Sources
+            </span>
+            <span className="text-[9px] text-[var(--text-3)]">
+              {attachedImages.length + (videoPreview ? 1 : 0)} attached
+            </span>
+          </div>
+          <div className="flex shrink-0 gap-2">
           {videoPreview && (
             <div className="relative group">
-              <div className="w-14 h-14 rounded-lg overflow-hidden border border-purple-500/30 bg-[var(--surface-2)]">
+              <div className="h-12 w-12 rounded-lg overflow-hidden border border-purple-500/30 bg-[var(--surface-2)] sm:h-14 sm:w-14">
                 <img src={videoPreview} alt="Video" className="w-full h-full object-cover" />
               </div>
               <div className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-purple-500 text-white flex items-center justify-center shadow">
@@ -110,19 +121,35 @@ export function ChatInput({
           )}
           {attachedImages.map((src, i) => (
             <div key={i} className="relative group">
-              <div className="w-14 h-14 rounded-lg overflow-hidden border border-[var(--cyan)]/30 bg-[var(--surface-2)]">
-                <img src={src} alt={`Attached ${i + 1}`} className="w-full h-full object-cover" />
+              <div className="h-12 w-12 rounded-lg overflow-hidden border border-[var(--cyan)]/30 bg-[var(--surface-2)] sm:h-14 sm:w-14">
+                <img
+                  src={src}
+                  alt={attachedImageLabels[i] || `Attached ${i + 1}`}
+                  className="relative z-10 h-full w-full object-cover"
+                  onError={(event) => {
+                    event.currentTarget.style.display = "none";
+                  }}
+                />
+                <div className="absolute inset-0 z-0 flex flex-col items-center justify-center gap-1 p-1 text-center">
+                  <svg className="h-5 w-5 text-[var(--cyan)]/70" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path d="M4 5a2 2 0 012-2h8l6 6v10a2 2 0 01-2 2H6a2 2 0 01-2-2V5zM14 3v6h6" strokeWidth="1.5" />
+                  </svg>
+                  <span className="max-w-full truncate text-[8px] text-[var(--text-3)]">
+                    {attachedImageLabels[i] || `Raster ${i + 1}`}
+                  </span>
+                </div>
               </div>
               <div className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-[var(--cyan)] text-white flex items-center justify-center text-[8px] font-bold shadow">
                 {i + 1}
               </div>
             </div>
           ))}
-          <div className="w-14 h-14 rounded-lg border-2 border-dashed border-[var(--border)] flex items-center justify-center text-[var(--text-3)] hover:border-[var(--cyan)]/50 hover:text-[var(--cyan)] transition cursor-pointer" onClick={() => fileRef.current?.click()}>
+          <div className="h-12 w-12 rounded-lg border-2 border-dashed border-[var(--border)] flex items-center justify-center text-[var(--text-3)] hover:border-[var(--cyan)]/50 hover:text-[var(--cyan)] transition cursor-pointer sm:h-14 sm:w-14" onClick={() => fileRef.current?.click()}>
             <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
               <line x1="12" x2="12" y1="5" y2="19" />
               <line x1="5" x2="19" y1="12" y2="12" />
             </svg>
+          </div>
           </div>
         </div>
       )}
@@ -149,7 +176,7 @@ export function ChatInput({
           isDragging
             ? "border-[var(--cyan)] shadow-[0_0_20px_rgba(6,182,212,0.15)]"
             : "border-[var(--border)] focus-within:border-[var(--cyan)]/50 focus-within:shadow-[0_0_15px_rgba(6,182,212,0.1)]",
-          isCentered ? "rounded-2xl p-4" : "rounded-xl p-2.5"
+          isCentered ? "rounded-2xl p-3 sm:p-4" : "rounded-xl p-2.5"
         )}
       >
         {/* Drag overlay */}
@@ -183,7 +210,7 @@ export function ChatInput({
             )}
             placeholder={isCentered ? "Describe what you want to analyze from your satellite imagery..." : "Ask a follow-up question..."}
             disabled={disabled}
-            style={{ minHeight: isCentered ? "40px" : "32px" }}
+            style={{ minHeight: isCentered ? "36px" : "32px" }}
           />
 
           <button
@@ -209,7 +236,9 @@ export function ChatInput({
             <div className="flex items-center gap-1.5">
               {/* Attach button */}
               <button
+                type="button"
                 onClick={() => fileRef.current?.click()}
+                disabled={disabled}
                 className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-[var(--surface-2)] border border-[var(--border)] hover:border-[var(--cyan)]/40 hover:bg-[var(--surface-hover)] text-[10px] text-[var(--text-2)] transition"
               >
                 <svg className="w-3.5 h-3.5 text-[var(--cyan)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -223,7 +252,9 @@ export function ChatInput({
               {/* Analysis Type Selector */}
               <div className="relative">
                 <button
+                  type="button"
                   onClick={() => setShowTypeSelector(!showTypeSelector)}
+                  disabled={disabled}
                   className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-[var(--surface-2)] border border-[var(--border)] hover:border-[var(--cyan)]/40 hover:bg-[var(--surface-hover)] text-[10px] text-[var(--text-2)] transition"
                 >
                   <svg className="w-3.5 h-3.5 text-[var(--cyan)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -277,7 +308,7 @@ export function ChatInput({
                 )}
               </div>
 
-              <span className="text-[9px] text-[var(--text-3)] ml-1">.tif .png .jpg .mp4</span>
+              <span className="text-[9px] text-[var(--text-3)] ml-1">.tif · .png · .jpg · .mp4</span>
             </div>
 
             <div className="flex items-center gap-2 text-[9px] text-[var(--text-3)]">
