@@ -10,6 +10,7 @@ from fastapi import APIRouter
 from backend.app.api.v1.endpoints import (
     analysis,
     artifacts,
+    documentation,
     system,
     uploads,
     video,
@@ -26,5 +27,6 @@ router.include_router(video.router)
 router.include_router(visualization.router)
 router.include_router(artifacts.router)
 router.include_router(analysis.router)
+router.include_router(documentation.router)
 
 __all__ = ["router"]

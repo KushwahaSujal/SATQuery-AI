@@ -32,7 +32,7 @@ export function useJobs() {
         return analyzedJobs;
       } catch (error) {
         if (cachedJobs.length > 0) {
-          return cachedJobs.filter(isAnalyzedJob) as unknown as JobRecord[];
+          return cachedJobs.filter((job) => Boolean(job.query?.trim())) as unknown as JobRecord[];
         }
         throw error;
       }

@@ -56,13 +56,11 @@ export default function TopBar({
         <div className="flex items-center gap-3 w-56 shrink-0">
           <Link href="/" className="flex items-center gap-3 group">
             <div className="w-8 h-8 rounded-lg bg-[var(--surface-2)] border border-[var(--border)] flex items-center justify-center shrink-0 group-hover:border-[var(--border-strong)] transition-colors">
-              <svg className="w-4 h-4 text-[var(--primary)]" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                <circle cx="12" cy="12" r="9" />
-                <line x1="12" y1="2" x2="12" y2="6" />
-                <line x1="12" y1="18" x2="12" y2="22" />
-                <line x1="2" y1="12" x2="6" y2="12" />
-                <line x1="18" y1="12" x2="22" y2="12" />
-              </svg>
+              <img
+                  src="/satquery.svg"
+                  alt="SatQuery AI"
+                  className="w-6 h-6 rounded-md object-cover"
+              />
             </div>
             <div>
               <div className="flex items-center gap-1.5 leading-none">

@@ -4,6 +4,8 @@ export const API_BASE =
 export const endpoints = {
   health: "/api/health",
   models: "/api/models",
+  documentation: "/api/documentation",
+  documentationContent: (path: string) => `/api/documentation/content?path=${encodeURIComponent(path)}`,
 
   upload: "/api/upload",
   analyze: "/api/analyze",

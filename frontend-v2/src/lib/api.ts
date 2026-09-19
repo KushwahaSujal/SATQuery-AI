@@ -118,6 +118,14 @@ export const api = {
     }));
   },
 
+  documentation: async (): Promise<{
+    documents: { path: string; title: string; summary: string; bytes: number; sections: number; updated_at: number; search_text: string }[];
+    count: number;
+  }> => http(endpoints.documentation),
+
+  documentationContent: async (path: string): Promise<{ path: string; content: string }> =>
+    http(endpoints.documentationContent(path)),
+
   uploadRasters: async (files: File[]): Promise<{ rasters: UploadedRaster[] }> => {
     const formData = new FormData();
     for (const file of files) {
