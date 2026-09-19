@@ -70,10 +70,11 @@ export function ChatInput({
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     setIsDragging(false);
+    if (disabled) return;
     if (e.dataTransfer.files.length > 0) {
       onUpload(e.dataTransfer.files);
     }
-  }, [onUpload]);
+  }, [disabled, onUpload]);
 
   const handleTextareaChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     setText(e.target.value);
@@ -89,6 +90,7 @@ export function ChatInput({
       className={cn(
         isCentered ? "px-0 pb-0" : "p-3 border-t border-[var(--border)]",
         isDragging && "ring-2 ring-[var(--cyan)]/50 ring-offset-2 ring-offset-[var(--canvas)]",
+        disabled && "opacity-70",
         className
       )}
       onDragOver={handleDragOver}
@@ -130,18 +132,18 @@ export function ChatInput({
                     event.currentTarget.style.display = "none";
                   }}
                 />
-                <div className="absolute inset-0 z-0 flex flex-col items-center justify-center gap-1 p-1 text-center">
-                  <svg className="h-5 w-5 text-[var(--cyan)]/70" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path d="M4 5a2 2 0 012-2h8l6 6v10a2 2 0 01-2 2H6a2 2 0 01-2-2V5zM14 3v6h6" strokeWidth="1.5" />
-                  </svg>
-                  <span className="max-w-full truncate text-[8px] text-[var(--text-3)]">
-                    {attachedImageLabels[i] || `Raster ${i + 1}`}
-                  </span>
-                </div>
+                {/*<div className="absolute inset-0 z-0 flex flex-col items-center justify-center gap-1 p-1 text-center">*/}
+                {/*  <svg className="h-5 w-5 text-[var(--cyan)]/70" fill="none" stroke="currentColor" viewBox="0 0 24 24">*/}
+                {/*    <path d="M4 5a2 2 0 012-2h8l6 6v10a2 2 0 01-2 2H6a2 2 0 01-2-2V5zM14 3v6h6" strokeWidth="1.5" />*/}
+                {/*  </svg>*/}
+                {/*  <span className="max-w-full truncate text-[8px] text-[var(--text-3)]">*/}
+                {/*    {attachedImageLabels[i] || `Raster ${i + 1}`}*/}
+                {/*  </span>*/}
+                {/*</div>*/}
               </div>
-              <div className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-[var(--cyan)] text-white flex items-center justify-center text-[8px] font-bold shadow">
-                {i + 1}
-              </div>
+              {/*<div className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-[var(--cyan)] text-white flex items-center justify-center text-[8px] font-bold shadow">*/}
+              {/*  {i + 1}*/}
+              {/*</div>*/}
             </div>
           ))}
           <div className="h-12 w-12 rounded-lg border-2 border-dashed border-[var(--border)] flex items-center justify-center text-[var(--text-3)] hover:border-[var(--cyan)]/50 hover:text-[var(--cyan)] transition cursor-pointer sm:h-14 sm:w-14" onClick={() => fileRef.current?.click()}>
@@ -208,7 +210,11 @@ export function ChatInput({
               "flex-1 bg-transparent border-0 text-[var(--heading)] placeholder-[var(--text-3)] focus:outline-none resize-none leading-relaxed",
               isCentered ? "text-sm" : "text-xs"
             )}
-            placeholder={isCentered ? "Describe what you want to analyze from your satellite imagery..." : "Ask a follow-up question..."}
+            placeholder={disabled
+              ? "Analysis in progress…"
+              : isCentered
+                ? "Describe what you want to analyze from your satellite imagery..."
+                : "Ask a follow-up question..."}
             disabled={disabled}
             style={{ minHeight: isCentered ? "36px" : "32px" }}
           />
@@ -327,6 +333,7 @@ export function ChatInput({
         multiple
         accept=".tif,.tiff,.png,.jpg,.jpeg,.mp4,.avi,.mov,.mkv,.webm"
         className="hidden"
+        disabled={disabled}
         onChange={(e) => {
           if (e.target.files) onUpload(e.target.files);
           e.target.value = "";

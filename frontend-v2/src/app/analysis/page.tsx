@@ -1,11 +1,18 @@
 "use client";
 
-import React, { Suspense } from "react";
+import React, { Suspense, useEffect } from "react";
 import { TopBar } from "@/components/layout/TopBar";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { ChatView } from "@/components/analysis/ChatView";
+import { useAnalysisStore } from "@/stores/useAnalysisStore";
 
 function AnalysisContent() {
+  const resetAnalysis = useAnalysisStore((state) => state.resetAnalysis);
+
+  useEffect(() => {
+    resetAnalysis();
+  }, [resetAnalysis]);
+
   return (
     <div className="h-screen w-full flex flex-col bg-[var(--canvas)] text-[var(--text-2)] font-sans overflow-hidden select-none antialiased">
       <TopBar showBrand={true} />

@@ -161,6 +161,7 @@ async def list_jobs(db: AsyncSession = Depends(get_db)):
                 AnalysisJob.created_at,
                 AnalysisJob.updated_at,
             )
+            .where(AnalysisJob.query.is_not(None), AnalysisJob.query != "")
             .order_by(AnalysisJob.created_at.desc())
             .limit(50)
         )
@@ -207,10 +208,10 @@ async def delete_all_jobs(db: AsyncSession = Depends(get_db)):
         await db.execute(delete(AnalysisJob))
         await db.commit()
 
-        # Clean workspace jobs dir
-        jobs_dir = artifact_manager.workspace_root / "jobs"
-        if jobs_dir.exists():
-            for item in jobs_dir.iterdir():
+        # Clean filesystem artifacts after the database transaction succeeds.
+        results_dir = artifact_manager.base_dir
+        if results_dir.exists():
+            for item in results_dir.iterdir():
                 if item.is_dir():
                     shutil.rmtree(item, ignore_errors=True)
 
@@ -248,8 +249,8 @@ async def delete_job(job_id: str, db: AsyncSession = Depends(get_db)):
         await db.execute(delete(AnalysisJob).where(AnalysisJob.id == job_id))
         await db.commit()
 
-        # Clean workspace job dir
-        job_dir = artifact_manager.workspace_root / "jobs" / job_id
+        # Clean filesystem artifacts after the database transaction succeeds.
+        job_dir = artifact_manager.get_job_dir(job_id)
         if job_dir.exists():
             shutil.rmtree(job_dir, ignore_errors=True)
 

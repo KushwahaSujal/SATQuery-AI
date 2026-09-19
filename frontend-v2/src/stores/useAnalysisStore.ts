@@ -123,12 +123,14 @@ export const useAnalysisStore = create<AnalysisState>((set, get) => ({
     if (!promptText) return;
 
     const hasVideo = Boolean(state.video);
+    const rasters = state.rasters;
+    const video = state.video;
 
     const previews: string[] = [];
-    if (hasVideo && state.video?.preview_url) {
-      previews.push(state.video.preview_url);
+    if (hasVideo && video?.preview_url) {
+      previews.push(video.preview_url);
     }
-    state.rasters.forEach((r) => {
+    rasters.forEach((r) => {
       if (r.preview_url) previews.push(r.preview_url);
     });
 
@@ -152,6 +154,11 @@ export const useAnalysisStore = create<AnalysisState>((set, get) => ({
           type: "progress",
         },
       ],
+      // Submitted sources belong to this conversation message. Clear the
+      // composer immediately so the next analysis starts with a clean slate.
+      rasters: [],
+      video: null,
+      uploadProgress: null,
     }));
 
     set({ isSubmittingAnalysis: true });
@@ -159,14 +166,14 @@ export const useAnalysisStore = create<AnalysisState>((set, get) => ({
     try {
       let response: { job_id: string };
 
-      if (hasVideo && state.video) {
+      if (hasVideo && video) {
         response = await api.analyzeVideo({
-          video_id: state.video.id,
+          video_id: video.id,
           query: promptText,
         });
       } else {
-        const requestId = state.rasters.find((r) => r.request_id)?.request_id;
-        const imageFilenames = state.rasters.map((r) => r.filename).filter(Boolean);
+        const requestId = rasters.find((r) => r.request_id)?.request_id;
+        const imageFilenames = rasters.map((r) => r.filename).filter(Boolean);
 
         let resolvedTask: string | undefined;
         if (taskType && taskType !== "auto") {
@@ -179,7 +186,7 @@ export const useAnalysisStore = create<AnalysisState>((set, get) => ({
           query: promptText,
           request_id: requestId,
           image_filenames: imageFilenames,
-          raster_ids: state.rasters.map((r) => r.id),
+          raster_ids: rasters.map((r) => r.id),
           task: resolvedTask as import("@/lib/types").TaskType | undefined,
         });
       }
@@ -196,7 +203,7 @@ export const useAnalysisStore = create<AnalysisState>((set, get) => ({
 
       addLocalJob({
         job_id: response.job_id,
-        task: hasVideo ? "video_vqa" : state.rasters.length >= 2 ? "bi_temporal_change_vqa" : "auto",
+        task: hasVideo ? "video_vqa" : rasters.length >= 2 ? "bi_temporal_change_vqa" : "auto",
         query: promptText,
         status: "QUEUED",
         created_at: new Date().toISOString(),

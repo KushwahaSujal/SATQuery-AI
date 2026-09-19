@@ -2,7 +2,7 @@
 
 import { useParams } from "next/navigation";
 import Link from "next/link";
-import { useMemo, useRef, useState, useEffect } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useJob, useAnalysisResult, useLayers, useVideoResult } from "@/hooks/useSystem";
 import { api } from "@/lib/api";
 import { Sidebar } from "@/components/layout/Sidebar";
@@ -28,7 +28,6 @@ import {
 import {
   AlertCircle,
   ArrowLeft,
-  ArrowLeftRight,
   CheckCircle2,
   ChevronRight,
   Clock,
@@ -40,6 +39,7 @@ import {
   Loader2,
   MapPin,
   Maximize2,
+  Minimize2,
   Send,
   Sparkles,
   Target,
@@ -107,8 +107,7 @@ export default function AnalysisJobPage() {
   const [activeTab, setActiveTab] = useState<"chat" | "analysis" | "trace">("chat");
   const [followUp, setFollowUp] = useState("");
   const [activeLayerId, setActiveLayerId] = useState<string | null>(null);
-  const [splitPos, setSplitPos] = useState(50);
-  const [isDragging, setIsDragging] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
   const status: JobStatus = (job.data?.status as JobStatus) || "QUEUED";
@@ -116,7 +115,6 @@ export default function AnalysisJobPage() {
   const isRunning =
     status === "CREATED" ||
     status === "UPLOADED" ||
-    status === "QUEUED" ||
     status === "PENDING" ||
     status === "RUNNING" ||
     status === "VALIDATING" ||
@@ -138,40 +136,21 @@ export default function AnalysisJobPage() {
   const statistics = spatial?.statistics;
   const trace = data?.trace || data?.execution_trace || [];
 
-  // Splitter dragging logic
-  const handleMouseDown = () => setIsDragging(true);
-
-  useEffect(() => {
-    const handleMouseMove = (e: MouseEvent) => {
-      if (!isDragging || !containerRef.current) return;
-      const rect = containerRef.current.getBoundingClientRect();
-      const x = e.clientX - rect.left;
-      const pct = Math.max(10, Math.min(90, (x / rect.width) * 100));
-      setSplitPos(pct);
-    };
-    const handleMouseUp = () => setIsDragging(false);
-
-    if (isDragging) {
-      window.addEventListener("mousemove", handleMouseMove);
-      window.addEventListener("mouseup", handleMouseUp);
-    }
-    return () => {
-      window.removeEventListener("mousemove", handleMouseMove);
-      window.removeEventListener("mouseup", handleMouseUp);
-    };
-  }, [isDragging]);
+  const toggleFullscreen = () => {
+    setIsFullscreen((fullscreen) => !fullscreen);
+  };
 
   return (
     <TooltipProvider delayDuration={120}>
-      <div className="h-screen w-full flex flex-col bg-[var(--canvas)] text-[var(--text)] font-sans overflow-hidden antialiased">
-        <TopBar showBrand={true} />
+      <div className={`${isFullscreen ? "fixed inset-0 z-50" : "h-screen w-full"} flex flex-col bg-[var(--canvas)] text-[var(--text)] font-sans overflow-hidden antialiased`}>
+        {!isFullscreen && <TopBar showBrand={true} />}
 
         <div className="flex-1 flex overflow-hidden">
-          <Sidebar hideBrand={true} />
+          {!isFullscreen && <Sidebar hideBrand={true} />}
 
           <main className="flex-1 flex flex-col min-w-0 overflow-hidden">
             {/* Sub-header */}
-            <div className="border-b border-[var(--border)] bg-[var(--surface)] px-6 py-3 flex items-center justify-between gap-4 shrink-0">
+            {!isFullscreen && <div className="border-b border-[var(--border)] bg-[var(--surface)] px-6 py-3 flex items-center justify-between gap-4 shrink-0">
               <div className="flex items-center gap-3 min-w-0">
                 <Link
                   href="/history"
@@ -211,34 +190,35 @@ export default function AnalysisJobPage() {
                   Export
                 </a>
               </div>
-            </div>
+            </div>}
 
             {/* Body */}
             <div className="flex-1 grid grid-cols-1 lg:grid-cols-[1fr_400px] overflow-hidden">
               {/* Center workspace */}
               <div className="flex flex-col overflow-hidden bg-[var(--workspace)] border-r border-[var(--border)]">
                 {/* Layer toolbar */}
-                <div className="h-10 border-b border-[var(--border)] bg-[var(--surface)] flex items-center justify-between px-4 shrink-0">
-                  <div className="flex items-center gap-3 text-xs">
-                    <div className="flex items-center gap-1.5">
+                <div className="min-h-14 border-b border-[var(--border)] bg-[var(--surface)] flex items-stretch justify-between px-4 shrink-0">
+                  <div className="flex min-w-0 flex-1 items-stretch gap-3 text-xs">
+                    <div className="flex shrink-0 items-center gap-1.5">
                       <Layers className="w-3.5 h-3.5 text-[var(--cyan)]" />
                       <span className="font-medium text-[var(--heading)]">Layer</span>
                     </div>
                     {isCompleted && layers.length > 0 ? (
-                      <div className="flex items-center gap-1.5">
+                      <div className="flex min-w-0 flex-1 items-stretch gap-1 overflow-x-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-[var(--border)]">
                         {layers.map((layer) => {
                           const active = layer.id === currentLayer?.id;
                           return (
                             <button
                               key={layer.id}
                               onClick={() => setActiveLayerId(layer.id)}
-                              className={`px-2 py-1 rounded-md text-[11px] transition border ${
+                              title={layer.name}
+                              className={`min-w-[92px] max-w-[190px] shrink-0 px-2.5 py-1.5 text-center text-[11px] leading-4 transition border border-b-2 ${
                                 active
-                                  ? "bg-[var(--cyan)]/10 border-[var(--cyan)]/40 text-[var(--cyan)] font-medium"
-                                  : "border-transparent text-[var(--text-2)] hover:text-[var(--heading)] hover:bg-[var(--surface-2)]"
+                                  ? "bg-[var(--cyan)]/10 border-[var(--cyan)]/40 border-b-[var(--cyan)] text-[var(--cyan)] font-medium"
+                                  : "border-transparent text-[var(--text-2)] hover:border-[var(--border)] hover:text-[var(--heading)] hover:bg-[var(--surface-2)]"
                               }`}
                             >
-                              {layer.name}
+                              <span className="line-clamp-3">{layer.name}</span>
                             </button>
                           );
                         })}
@@ -249,35 +229,18 @@ export default function AnalysisJobPage() {
                       </span>
                     )}
                   </div>
-                  <div className="flex items-center gap-1">
+                  <div className="flex shrink-0 items-center gap-1 border-l border-[var(--border)] pl-2">
                     <Tooltip>
                       <TooltipTrigger asChild>
-                        <button className="w-7 h-7 rounded-md hover:bg-[var(--surface-2)] text-[var(--text-3)] hover:text-[var(--heading)] transition flex items-center justify-center">
-                          <ArrowLeftRight className="w-3.5 h-3.5" />
-                        </button>
-                      </TooltipTrigger>
-                      <TooltipContent>Compare split</TooltipContent>
-                    </Tooltip>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <button className="w-7 h-7 rounded-md hover:bg-[var(--surface-2)] text-[var(--text-3)] hover:text-[var(--heading)] transition flex items-center justify-center">
-                          <Maximize2 className="w-3.5 h-3.5" />
-                        </button>
-                      </TooltipTrigger>
-                      <TooltipContent>Fullscreen</TooltipContent>
-                    </Tooltip>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <a
-                          href={currentLayer?.artifact_url ? api.exportUrl(jobId, currentLayer.id, "png") : "#"}
-                          target="_blank"
-                          rel="noopener"
+                        <button
+                          onClick={toggleFullscreen}
+                          aria-label={isFullscreen ? "Exit fullscreen" : "View layer fullscreen"}
                           className="w-7 h-7 rounded-md hover:bg-[var(--surface-2)] text-[var(--text-3)] hover:text-[var(--heading)] transition flex items-center justify-center"
                         >
-                          <Download className="w-3.5 h-3.5" />
-                        </a>
+                          {isFullscreen ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
+                        </button>
                       </TooltipTrigger>
-                      <TooltipContent>Download layer</TooltipContent>
+                      <TooltipContent>{isFullscreen ? "Exit fullscreen" : "Fullscreen"}</TooltipContent>
                     </Tooltip>
                   </div>
                 </div>
@@ -370,7 +333,10 @@ export default function AnalysisJobPage() {
 
                   {isCompleted && !isVideoJob && currentLayer?.artifact_url && (
                     <BlurFade className="absolute inset-0 p-4">
-                      <div ref={containerRef} className="relative w-full h-full rounded-xl overflow-hidden border border-[var(--border)] bg-[var(--canvas)]">
+                      <div
+                        ref={containerRef}
+                        className="relative w-full h-full rounded-xl overflow-hidden border border-[var(--border)] bg-[var(--canvas)]"
+                      >
                         {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img
                           src={currentLayer.artifact_url}
@@ -387,11 +353,6 @@ export default function AnalysisJobPage() {
                             />
                           </div>
                         )}
-                        {/* Split divider overlay (visual cue) */}
-                        <div
-                          style={{ left: `${splitPos}%` }}
-                          className="absolute top-0 bottom-0 -translate-x-1/2 w-px bg-[var(--cyan)]/40 pointer-events-none"
-                        />
                       </div>
                     </BlurFade>
                   )}
@@ -402,7 +363,7 @@ export default function AnalysisJobPage() {
                     </div>
                   )}
 
-                  {!job.isLoading && !isRunning && !isFailed && !isCompleted && (
+                  {!job.isLoading && status !== "QUEUED" && !isRunning && !isFailed && !isCompleted && (
                     <div className="absolute inset-0 flex items-center justify-center">
                       <BlurFade className="text-center">
                         <div className="relative w-16 h-16 mx-auto mb-4">

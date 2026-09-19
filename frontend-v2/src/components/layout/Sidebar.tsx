@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { motion } from "framer-motion";
 import { api } from "@/lib/api";
 import { useJobs } from "@/hooks/useJobs";
+import { useAnalysisStore } from "@/stores/useAnalysisStore";
 
 interface SidebarProps {
   hideBrand?: boolean;
@@ -98,6 +99,7 @@ const itemVariants = {
 export default function Sidebar({ hideBrand = false, activeItem, className = "" }: SidebarProps) {
   const pathname = usePathname();
   const { data: jobs } = useJobs();
+  const resetAnalysis = useAnalysisStore((state) => state.resetAnalysis);
 
   const recentHistory = (jobs ?? [])
     .map((j: Record<string, unknown>) => ({
@@ -110,7 +112,7 @@ export default function Sidebar({ hideBrand = false, activeItem, className = "" 
 
   const current = activeItem || (
     pathname === "/" ? "home" :
-    pathname.startsWith("/analysis") ? "analysis" :
+    pathname === "/analysis" ? "analysis" :
     pathname.startsWith("/history") ? "history" :
     pathname.startsWith("/datasets") ? "datasets" :
     pathname.startsWith("/reports") ? "reports" :
@@ -132,13 +134,11 @@ export default function Sidebar({ hideBrand = false, activeItem, className = "" 
             className="flex items-center gap-3 px-2 py-3 mb-3"
           >
             <div className="w-8 h-8 rounded-lg bg-[var(--surface-2)] border border-[var(--border)] flex items-center justify-center shrink-0">
-              <svg className="w-4 h-4 text-[var(--primary)]" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                <circle cx="12" cy="12" r="9" />
-                <line x1="12" y1="2" x2="12" y2="6" />
-                <line x1="12" y1="18" x2="12" y2="22" />
-                <line x1="2" y1="12" x2="6" y2="12" />
-                <line x1="18" y1="12" x2="22" y2="12" />
-              </svg>
+              <img
+                src="/satquery.svg"
+                alt="SatQuery AI"
+                className="w-6 h-6 rounded-md object-cover"
+              />
             </div>
             <div>
               <div className="flex items-center gap-1.5 leading-none">
@@ -163,6 +163,7 @@ export default function Sidebar({ hideBrand = false, activeItem, className = "" 
               <motion.div key={key} variants={itemVariants}>
                 <Link
                   href={href}
+                  onClick={key === "analysis" ? resetAnalysis : undefined}
                   className={`relative flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-150 overflow-hidden ${
                     isActive
                       ? "bg-[var(--sidebar-active-bg)] text-[var(--sidebar-active-text)] font-semibold"
@@ -205,7 +206,11 @@ export default function Sidebar({ hideBrand = false, activeItem, className = "" 
               <motion.div key={item.id} variants={itemVariants}>
                 <Link
                   href={`/analysis/${item.id}`}
-                  className="flex items-start gap-2.5 px-2.5 py-2 rounded-lg hover:bg-[var(--surface-hover)] transition-all duration-150 group"
+                  className={`flex items-start gap-2.5 px-2.5 py-2 rounded-lg transition-all duration-150 group ${
+                    pathname === `/analysis/${item.id}`
+                      ? "bg-[var(--sidebar-active-bg)]"
+                      : "hover:bg-[var(--surface-hover)]"
+                  }`}
                 >
                   <div className="w-5 h-5 rounded bg-[var(--cyan-glow)] border border-[var(--cyan)]/20 flex items-center justify-center shrink-0 mt-0.5">
                     <svg className="w-2.5 h-2.5 text-[var(--cyan)]" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">

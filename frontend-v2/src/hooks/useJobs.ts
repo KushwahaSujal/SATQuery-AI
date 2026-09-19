@@ -7,6 +7,10 @@ import { getLocalJobs, saveLocalJobs } from "@/lib/localJobs";
 export const JOBS_QUERY_KEY = ["jobs"] as const;
 type JobRecord = Record<string, unknown>;
 
+function isAnalyzedJob(job: JobRecord): boolean {
+  return typeof job.query === "string" && job.query.trim().length > 0;
+}
+
 export function useJobs() {
   return useQuery({
     queryKey: JOBS_QUERY_KEY,
@@ -15,8 +19,9 @@ export function useJobs() {
 
       try {
         const remoteJobs = await api.listJobs();
+        const analyzedJobs = remoteJobs.filter(isAnalyzedJob);
         saveLocalJobs(
-          remoteJobs.map((job) => ({
+          analyzedJobs.map((job) => ({
             job_id: String(job.job_id || job.id || ""),
             task: String(job.task || "Analysis"),
             query: String(job.query || ""),
@@ -24,10 +29,10 @@ export function useJobs() {
             created_at: String(job.created_at || new Date().toISOString()),
           })),
         );
-        return remoteJobs;
+        return analyzedJobs;
       } catch (error) {
         if (cachedJobs.length > 0) {
-          return cachedJobs as unknown as JobRecord[];
+          return cachedJobs.filter(isAnalyzedJob) as unknown as JobRecord[];
         }
         throw error;
       }

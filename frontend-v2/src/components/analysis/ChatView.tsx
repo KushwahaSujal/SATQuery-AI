@@ -8,6 +8,7 @@ import { useAnalysisStore } from "@/stores/useAnalysisStore";
 import { ChatThread } from "./ChatThread";
 import { ChatInput } from "./ChatInput";
 import { cn } from "@/lib/utils";
+import {Sparkles} from "lucide-react";
 
 const SUGGESTED_PROMPTS = [
   { text: "Detect urban expansion in this region", icon: "M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4", category: "Urban" },
@@ -100,14 +101,10 @@ export function ChatView() {
               {/* Header — left aligned, asymmetric */}
               <div className={cn("mx-auto w-full max-w-3xl text-center", hasSources && "scale-[0.96]")}>
                 <div className="mb-4 flex items-center justify-center gap-3">
-                  <div className="w-8 h-8 rounded-lg bg-[var(--cyan)]/10 border border-[var(--cyan)]/20 flex items-center justify-center">
-                    <svg className="w-4 h-4 text-[var(--cyan)]" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                      <circle cx="12" cy="12" r="9" />
-                      <line x1="12" y1="2" x2="12" y2="6" />
-                      <line x1="12" y1="18" x2="12" y2="22" />
-                      <line x1="2" y1="12" x2="6" y2="12" />
-                      <line x1="18" y1="12" x2="22" y2="12" />
-                    </svg>
+                  <div className="w-6 h-6 rounded-lg bg-[var(--cyan)]/10 border border-[var(--cyan)]/20 flex items-center justify-center">
+                    <div className="w-6 h-6 rounded-md bg-gradient-to-tr from-[var(--cyan)] to-[var(--teal)] flex items-center justify-center shrink-0 mt-0.5">
+                      <Sparkles className="w-4 h-4 text-[var(--canvas)]" />
+                    </div>
                   </div>
                   <span className="text-[10px] font-mono uppercase tracking-widest text-[var(--cyan)]">SatQuery AI</span>
                 </div>
@@ -193,7 +190,7 @@ export function ChatView() {
             attachedImageLabels={attachedImageLabels}
             videoPreview={videoPreview}
             uploadProgress={uploadProgress}
-            disabled={isSubmitting}
+            disabled={isRunning}
             variant="centered"
           />
           </div>

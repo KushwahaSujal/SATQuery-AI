@@ -3,6 +3,7 @@
 import React, { useEffect, useRef } from "react";
 import { cn } from "@/lib/utils";
 import type { ChatMessage } from "@/stores/useAnalysisStore";
+import {Sparkles} from "lucide-react";
 
 function formatTime(ts: number) {
   return new Date(ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
@@ -93,12 +94,9 @@ export function ChatThread({
       {messages.map((msg) => (
         <div key={msg.id} className={cn("flex gap-2.5", msg.role === "user" ? "justify-end" : "justify-start")}>
           {msg.role === "assistant" && (
-            <div className="w-6 h-6 rounded-lg bg-gradient-to-tr from-cyan-500 to-sky-500 flex items-center justify-center text-white shrink-0 mt-0.5">
-              <svg className="w-3.5 h-3.5 -rotate-45" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
-                <ellipse cx="12" cy="12" rx="9" ry="4" />
-                <circle cx="12" cy="12" fill="currentColor" r="2" />
-              </svg>
-            </div>
+              <div className="w-6 h-6 rounded-md bg-gradient-to-tr from-[var(--cyan)] to-[var(--teal)] flex items-center justify-center shrink-0 mt-0.5">
+                  <Sparkles className="w-3 h-3 text-[var(--canvas)]" />
+              </div>
           )}
 
           <div className={cn("max-w-[min(80%,42rem)] space-y-1.5", msg.role === "user" ? "items-end" : "items-start")}>
