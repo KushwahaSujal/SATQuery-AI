@@ -1,22 +1,24 @@
 # Locally trained segmenters and the crater detector
 
-Four models trained on this project's own data pipeline, now reachable through the model registry.
-**Nothing routes to them yet.** The router, the agent and the workflows are unchanged: this layer is
-the adapters, the config entries and the tests only. Wiring prompts to them is a separate change and
-gets its own QNA entry (project/qna.md Q-031 lists the gate each capability must pass).
-
-**Update:** the router and agent are still unchanged, but `run_grounding_pipeline` itself now routes
-plain "mark all roads" / "segment buildings" style requests straight to `roads_segmenter` /
-`buildings_segmenter`. See the "Wired in" section at the end of this file (project/qna.md Q-038).
+Models trained on this project's own data pipeline, reachable through the model registry. The
+capability router (`intent_classifier.py`) and the agent are unchanged; routing happens one level
+down, inside `run_grounding_pipeline`, which dispatches plain whole-image category masks to a
+trained segmenter. **Roads, buildings, water and cloud route; land cover and the two ISPRS models
+are registered and callable but deliberately do not.** See the two "Wired in" sections at the end of
+this file (project/qna.md Q-038 and the water/cloud/land-cover/ISPRS change that follows it).
 
 All numbers below are copied from the QNA transcript. Nothing here is estimated.
 
-| Registry key | Checkpoint | Architecture | QNA |
-|---|---|---|---|
-| `roads_segmenter` | `checkpoints/roads_all_r50_seg/best.pt` | smp U-Net, ResNet-50, 1 class | Q-025, Q-030, Q-032 |
-| `buildings_segmenter` | `checkpoints/buildings_whu_ma_r50_seg/best.pt` | smp U-Net, ResNet-50, 1 class | Q-026, Q-032 |
-| `landcover_segmenter` | `checkpoints/landcover_dg_lv_oem_seg/best.pt` | smp U-Net, ResNet-34, 7 classes | Q-029 |
-| `crater_detector` | `checkpoints/craters_yolo/weights/best.pt` | ultralytics YOLO11s, 1 class | Q-028 |
+| Registry key | Checkpoint | Architecture | Routed? | QNA |
+|---|---|---|---|---|
+| `roads_segmenter` | `checkpoints/roads_all_r50_seg/best.pt` | smp U-Net, ResNet-50, 1 class | yes | Q-025, Q-030, Q-032 |
+| `buildings_segmenter` | `checkpoints/buildings_whu_ma_r50_seg/best.pt` | smp U-Net, ResNet-50, 1 class | yes | Q-026, Q-032 |
+| `water_segmenter` | `checkpoints/water_seg/best.pt` | smp U-Net, ResNet-34, 1 class | yes | Q-035 |
+| `cloud_segmenter` | `checkpoints/cloud_seg/best.pt` | smp U-Net, ResNet-34, 1 class | yes | Q-035 |
+| `landcover_segmenter` | `checkpoints/landcover_full_r50_seg/best.pt` | smp U-Net, ResNet-50, 7 classes | no | Q-029, Q-037 |
+| `isprs_potsdam_segmenter` | `checkpoints/isprs_potsdam_seg/best.pt` | smp U-Net, ResNet-34, 6 classes | no | Q-036 |
+| `isprs_vaihingen_segmenter` | `checkpoints/isprs_vaihingen_seg/best.pt` | smp U-Net, ResNet-34, 6 classes | no | Q-036 |
+| `crater_detector` | `checkpoints/craters_yolo/weights/best.pt` | ultralytics YOLO11s, 1 class | no | Q-028 |
 
 ## The 0.5 m assumption
 
@@ -75,11 +77,26 @@ terminals were rare in training and have not been measured.
 
 ## Land cover — `landcover_segmenter`
 
-`landcover_dg_lv_oem`: U-Net / ResNet-34 with a 7-class head on DeepGlobe Land Cover + LoveDA +
-OpenEarthMap, best epoch 32, val mIoU 0.706. Classes come from the checkpoint:
+**As of this change `landcover_segmenter` points at `landcover_full_r50`**, not the older
+`landcover_dg_lv_oem`. `landcover_full_r50`: U-Net / **ResNet-50** with a 7-class head on DeepGlobe
+Land Cover + the **complete** 2522-tile LoveDA train set + OpenEarthMap, best epoch 34, val mIoU
+0.649. Classes come from the checkpoint:
 `other, built_up, agriculture, rangeland, forest, water, barren` (255 = ignore in training).
 
-| Test split | mIoU | pixel acc | built_up | agriculture | rangeland | forest | water | barren | other |
+Test mIoU, new checkpoint vs the one it replaces (project/qna.md Q-037):
+
+| Test split | `landcover_dg_lv_oem` (R-34, partial LoveDA) | `landcover_full_r50` (R-50, full LoveDA) |
+|---|---|---|
+| DeepGlobe (38) | 0.682 | **0.698** |
+| OpenEarthMap (500) | 0.600 | **0.603** |
+| LoveDA (1669) | 0.428 | **0.488** |
+
+Better on all three splits, so the repoint has no measured downside. Two changes landed in that one
+training run (encoder *and* the corrected dataset), so their individual contributions to the +0.060
+LoveDA gain are not separated. Per-class test IoU for the new checkpoint is in
+`checkpoints/landcover_full_r50_seg/report.json`; the older per-class breakdown was:
+
+| Test split (old ckpt) | mIoU | pixel acc | built_up | agriculture | rangeland | forest | water | barren | other |
 |---|---|---|---|---|---|---|---|---|---|
 | DeepGlobe (38) | 0.682 | 0.881 | 0.647 | 0.885 | 0.265 | 0.807 | 0.793 | 0.698 | — |
 | OpenEarthMap (500) | 0.600 | 0.805 | 0.823 | 0.684 | 0.498 | 0.654 | 0.654 | 0.286 | — |
@@ -89,12 +106,13 @@ OpenEarthMap, best epoch 32, val mIoU 0.706. Classes come from the checkpoint:
 against (BigEarthNet gives scene-level multi-label tags on Sentinel-2). The taxonomy merge is lossy
 by design — LoveDA's building and road both become `built_up`, as do OpenEarthMap's developed space,
 road and building — so these numbers are not comparable to published leaderboards. Weak classes:
-rangeland (0.27 on DeepGlobe) and barren (0.29 on OpenEarthMap and LoveDA). LoveDA is weak overall,
-trained on about half of its official train set (the HF mirror has 1366 of 2522 tiles).
+rangeland (0.27 on DeepGlobe) and barren (0.29 on OpenEarthMap and LoveDA) in the old checkpoint.
+The old checkpoint's LoveDA weakness was partly a data problem: it trained on about half of LoveDA's
+official train set (the HF mirror held 1366 of 2522 tiles, rural only), which the current checkpoint
+fixes.
 
-A ResNet-50 variant (`landcover_full_r50`) is queued behind the full LoveDA download. The adapter
-reads `arch`, `encoder` and `classes` from the checkpoint, so it will load that one too; only the
-`checkpoint_path` in `configs/models.yaml` needs changing.
+The repoint needed no adapter change — `arch`, `encoder` and `classes` all come from the checkpoint,
+so only `checkpoint_path` in `configs/models.yaml` moved.
 
 ## Craters — `crater_detector`
 
@@ -327,3 +345,147 @@ explicitly. A caller that knows its image's GSD should resample to 0.5 m before 
 a ground-truth fraction of 0.64%, IoU 0.746 against that tile's ground truth. This is one tile, not
 the held-out test split Q-032 scores (DeepGlobe test IoU 0.557-0.569) — it checks the wiring is
 correct, not the model's accuracy.
+
+## Wired in — water and cloud; deliberately not wired — land cover and ISPRS
+
+This section extends the roads/buildings dispatch above to the remaining trained checkpoints. The
+mechanism is unchanged: `classify_trained_segmenter_target` in
+`backend/app/workflows/trained_segmenter.py` maps a parsed query onto a registry key, or returns
+`None` and lets the existing Grounding DINO + V4 + SAM 2 path handle it.
+
+### What routes now
+
+| Query shape | Model | Strategy string | Trained at |
+|---|---|---|---|
+| "mark all roads", "find every road", "show me the streets" | `roads_segmenter` | `trained_segmenter_roads` | 0.5 m |
+| "segment buildings", "mask all the buildings" | `buildings_segmenter` | `trained_segmenter_buildings` | 0.5 m |
+| "mask all water", "mask water bodies", "mask all lakes/rivers/ponds", "mask the reservoir" | `water_segmenter` | `trained_segmenter_water` | **10 m** (Sentinel-2) |
+| "mask the clouds", "mask all clouds", "segment clouds", "mask cloud cover" | `cloud_segmenter` | `trained_segmenter_cloud` | **30 m** (Landsat 8) |
+
+### Cloud is reachable — measured, not assumed
+
+"Cloud" appears in no `OBJECT_PATTERNS` group in `intent_classifier.py`, which raises the fair
+question of whether a cloud query ever reaches `run_grounding_pipeline` at all. It does, and the
+split is a useful one. Measured against the real classifier:
+
+| Query | `classify_intent` task | Reaches grounding? |
+|---|---|---|
+| "mask the clouds" | `single_image_grounding` | yes — category `clouds` |
+| "mask all clouds" | `single_image_grounding` | yes |
+| "segment clouds" | `single_image_grounding` | yes |
+| "mask cloud cover" | `single_image_grounding` | yes |
+| "is this scene cloudy" | `single_image_vqa` | no |
+| "how cloudy is this image" | `single_image_vqa` | no |
+| "remove the clouds" | `single_image_vqa` | no |
+
+The mask-phrased queries arrive through the router's *fallback noun-phrase extractor*, which pulls
+the noun following a grounding verb when the object dictionary misses. The genuinely
+preprocessing/quality phrasings classify as VQA and never reach this dispatch — which is the
+behaviour we want, and it needs no change to the capability router. Cloud masking is therefore wired
+as an object query; "how cloudy is this scene?" remains a VQA question and is unaffected.
+
+### Compound-noun exclusions
+
+Bare `water` and `cloud` are in the vocabulary because "mask all water" and "mask the clouds" are
+the canonical phrasings. That makes a small exclusion list necessary, since some compound nouns
+contain a target word but name a different object entirely
+(`TRAINED_SEGMENTER_EXCLUSIONS`):
+
+| Query | Parsed category | Result |
+|---|---|---|
+| "mask all water tanks" | `water tanks` | falls back — a storage tank is the detector's job |
+| "mask the water tower" | `water tower` | falls back |
+| "mask the cloud shadows" | `cloud shadow` | falls back — 95-Cloud labels cloud, not its shadow |
+| "mask water and roads" | `water roads` | falls back — two trained classes, ambiguous |
+| "mask all waterfront buildings" | `waterfront buildings` | not water; `\b` already excludes it |
+| "mask all cloudy areas" | `cloudy areas` | not cloud; `\b` already excludes it |
+
+### Resolution caveats, per model
+
+The binary adapter no longer reports a single hard-coded 0.5 m for every checkpoint. `train_seg.py`
+writes `--target-gsd` into `report.json` only, never into the checkpoint dict, so
+`configs/models.yaml`'s `trained_gsd_m` is the source for binary models (the multi-class checkpoints
+do store `target_gsd`, which takes precedence). Without this fix the water answer would have claimed
+"trained at 0.5 m/px" — wrong by 20x.
+
+Water and cloud are the first routed models whose training imagery is a different *kind* of image
+from the sub-metre aerial photography a user is most likely to upload, so their answers carry an
+extra sentence naming the sensor and stating plainly that accuracy on high-resolution imagery has
+not been measured. **No head-to-head measurement exists for water or cloud against the Grounding
+DINO + SAM 2 path** — the Q-025t/Q-026t comparisons that justified routing roads and buildings were
+never run for these two classes. They are routed on the same structural argument (a whole-image
+region class is a poor fit for an open-vocabulary box detector), not on a measured win.
+
+Water's headline pooled test IoU of 0.475 understates it: that figure is pixel-weighted over tiles
+spanning ~4000x in area, and 7 of 131 test tiles dominate the total. Per tile the median is 0.866
+and the mean 0.772 (Q-035). The per-tile number is the one that describes what a user sees on one
+uploaded image.
+
+### Land cover — registered, callable, deliberately not routed
+
+`landcover_segmenter` returns a 7-class class-index map plus per-class area shares. It is **not**
+auto-routed, for two independent reasons:
+
+1. **The response contract cannot carry it.** `run_grounding_pipeline` returns one
+   `segmentation_mask`, and every consumer treats it as a single binary mask:
+   `backend/app/evidence/fusion.py::build_grounding_evidence` passes it to
+   `calculate_area_statistics`, to `mask_to_geojson(binary_mask=...)`, and writes the PNG as
+   `(segmentation_mask > 0) * 255`. Handing that a 7-class index map would silently reinterpret it
+   as "class 0 is background, classes 1-6 are one object" — merging built-up, agriculture,
+   rangeland, forest, water and barren into a single blob and producing area statistics and
+   polygons that are wrong rather than merely unhelpful. Returning the dominant class alone, or
+   `segmentation_mask = None`, both answer a different question than the user asked.
+2. **Almost no land-cover phrasing reaches this dispatch anyway.** Measured: "show land cover",
+   "what is this area used for", "land use map" and "classify land cover" all classify as
+   `single_image_vqa`. Of the phrasings that do reach grounding, only "mask land cover" also sets
+   `_wants_all_instances`; "segment land cover" and "show me the land cover" do not. Routing would
+   cover one phrasing while risking the contract problem above.
+
+Carrying a multi-class result properly needs a response field that does not exist yet (per-class
+masks plus a class map), which is a change to the pipeline's contract and its consumers — out of
+scope here, and recorded rather than improvised.
+
+### ISPRS Potsdam / Vaihingen — registered, callable, deliberately not routed
+
+`isprs_potsdam_segmenter` and `isprs_vaihingen_segmenter` are 6-class urban models at 0.1 m
+(impervious, building, low_vegetation, tree, car, clutter; test mIoU 0.700 over 4 tiles and 0.729
+over 6 tiles — small test sets, wide uncertainty, Q-036). They are registered so they can be called
+directly, but nothing auto-selects them:
+
+- **This is model selection, not vocabulary.** An ISPRS model answers the same "mask the buildings"
+  question as `buildings_segmenter`, just at 5-9 cm instead of 0.5 m. Choosing between them requires
+  knowing the image's GSD, and `run_grounding_pipeline` has none — the same known limitation that
+  makes the roads/buildings path run at native resolution (Q-038). A resolution guesser was
+  considered and rejected: there is no validated way to infer GSD from pixels alone, and a wrong
+  guess silently selects a model trained on imagery 5x finer than the input.
+- **The two cities are not interchangeable.** Potsdam is RGB, Vaihingen is IRRG. On channel 0,
+  Potsdam's vegetation is *darker* than roofs (ratio 0.65) and Vaihingen's is *brighter* (1.23), so
+  feeding one model the other's band order is a band mismatch, not a domain shift (Q-036). Nothing
+  in the pipeline reports band composition either, so even with a GSD there would be no basis to
+  pick a city.
+
+The honest position is that these are a 0.1 m capability awaiting a caller that knows its own
+imagery — not something the grounding pipeline can select on its own.
+
+### Adapter generalisation needed for ISPRS
+
+`LandCoverSegmenterAdapter` already read `classes`, `arch` and `encoder` from the checkpoint, but it
+also *rejected* any checkpoint whose class count differed from the trainer's 7-element
+`LANDCOVER_CLASSES`, which excluded the 6-class ISPRS checkpoints. The comment justifying that check
+said `infer_logits()` sizes its windowed accumulator from the trainer's `K`. That is not what it
+does — `train_landcover.infer_logits` reads `K = model.segmentation_head[0].out_channels`, i.e. from
+the model the adapter itself builds out of `len(classes)`. The check was therefore unnecessary and
+its only effect was to lock the adapter to one taxonomy; it is now a non-empty check. With
+`model_key` parameterised, `IsprsPotsdamSegmenterAdapter` and `IsprsVaihingenSegmenterAdapter` are
+each a three-line subclass. Verified: both ISPRS checkpoints load with 6 classes and run inference.
+
+### Tests
+
+- `tests/unit/test_trained_segmenter_dispatch.py` — 46 tests (was 20), no weights needed: every new
+  route, every compound-noun exclusion, the word-boundary cases, and explicit fallback assertions
+  for land cover and the ISPRS classes so the "deliberately not routed" decision is pinned rather
+  than implicit.
+- `tests/models/test_grounding_trained_segmenter.py` — 2 real end-to-end tests. The water one runs
+  `run_grounding_pipeline(image, "mask all water")` on a genuinely held-out tile (the trainer's own
+  `hash_split`) and asserts the route, the checkpoint-frozen threshold 0.20, and that the answer
+  reports 10 m/px rather than 0.5 m.
