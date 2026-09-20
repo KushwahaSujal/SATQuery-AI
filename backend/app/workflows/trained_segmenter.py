@@ -29,17 +29,39 @@ from backend.app.ml.registry import model_registry
 from backend.app.logging import logger
 
 # Duplicated, not imported, from backend/app/orchestration/intent_classifier.py's OBJECT_PATTERNS
-# road/building groups (and its plural-forming `(?:e?s)?` suffix trick). Duplicating instead of
+# road/building/water groups (and its plural-forming `(?:e?s)?` suffix trick). Duplicating instead of
 # importing keeps backend/app/workflows/ decoupled from backend/app/orchestration/ (the capability
 # router), which the instructions for this change explicitly leave untouched. If the two vocabularies
 # ever drift, tests/unit/test_trained_segmenter_dispatch.py's word-list assertions will fail.
+# "cloud" has no OBJECT_PATTERNS group at all: mask-phrased cloud queries still reach this pipeline
+# because the router's fallback noun-phrase extractor picks the noun out after a grounding verb
+# (measured: "mask the clouds" -> single_image_grounding, category "clouds"), while the
+# quality-question phrasings that should *not* segment anything ("is this scene cloudy", "how cloudy
+# is this image", "remove the clouds") classify as single_image_vqa and never arrive here.
 _ROAD_WORDS = r"\b(road|highway|street|runway|bridge|railway|track)(?:e?s)?\b"
 _BUILDING_WORDS = r"\b(building|structure|house|facility|warehouse|terminal|hangar|shed|roof)(?:e?s)?\b"
+# Water: `intent_classifier.py`'s own "water body|lake|river|pond|reservoir|coastline" group, plus
+# bare "water" — "mask all water" is the canonical phrasing and parses to category "water".
+_WATER_WORDS = r"\b(water|waterway|lake|river|pond|reservoir|lagoon|coastline)(?:e?s)?\b"
+_CLOUD_WORDS = r"\b(cloud)(?:e?s)?\b"
+
+# Compound nouns that contain a target's vocabulary word but name a *different* object, measured
+# against the real parser rather than guessed: "mask all water tanks" parses to category
+# "water tanks" and "mask the water tower" to "water tower", both of which bare `\bwater\b` would
+# otherwise capture — and a storage tank is the detector's job, not a water segmenter's.
+# "cloud shadow" is likewise a distinct class from cloud; 95-Cloud labels the cloud, not its shadow.
+# ("waterfront", "watershed" and "cloudy" need no entry — `\b` already keeps them out.)
+TRAINED_SEGMENTER_EXCLUSIONS: Dict[str, str] = {
+    "water_segmenter": r"\bwater\s+(tank|tower|treatment|pump|pipe|main)",
+    "cloud_segmenter": r"\bcloud\s+shadow",
+}
 
 # Registry key -> the vocabulary that query must match (and match *only*) to dispatch to it.
 TRAINED_SEGMENTER_TARGETS: Dict[str, str] = {
     "roads_segmenter": _ROAD_WORDS,
     "buildings_segmenter": _BUILDING_WORDS,
+    "water_segmenter": _WATER_WORDS,
+    "cloud_segmenter": _CLOUD_WORDS,
 }
 
 # Registry key -> the strategy string returned instead of "V4_RELATIONAL", so this path is
@@ -47,6 +69,32 @@ TRAINED_SEGMENTER_TARGETS: Dict[str, str] = {
 STRATEGY_BY_MODEL: Dict[str, str] = {
     "roads_segmenter": "trained_segmenter_roads",
     "buildings_segmenter": "trained_segmenter_buildings",
+    "water_segmenter": "trained_segmenter_water",
+    "cloud_segmenter": "trained_segmenter_cloud",
+}
+
+# What the mask is called in the answer. "the road network" reads naturally; "the water network"
+# does not, so each model names its own product.
+MASK_NOUN_BY_MODEL: Dict[str, str] = {
+    "roads_segmenter": "road network",
+    "buildings_segmenter": "building footprints",
+    "water_segmenter": "water extent",
+    "cloud_segmenter": "cloud cover",
+}
+
+# An extra sentence for models whose training imagery is a different *kind* of image from the
+# sub-metre aerial photography a user is most likely to upload, not merely a different scale.
+# Roads and buildings need no entry: at 0.5 m they are already in that regime.
+SENSOR_CAVEAT_BY_MODEL: Dict[str, str] = {
+    "water_segmenter": (
+        " This model was trained on Sentinel-2 satellite imagery at 10 m/px, roughly 20x coarser "
+        "than typical sub-metre aerial photography; its accuracy on high-resolution imagery has "
+        "not been measured."
+    ),
+    "cloud_segmenter": (
+        " This model was trained on Landsat 8 scenes at 30 m/px, far coarser than typical aerial "
+        "photography; its accuracy on high-resolution imagery has not been measured."
+    ),
 }
 
 
@@ -62,11 +110,27 @@ def classify_trained_segmenter_target(
     text check), not a second, divergent classifier. `parsed` is `parse_v4_query(norm_query)`'s
     output.
 
+    Returns one of "roads_segmenter", "buildings_segmenter", "water_segmenter" or
+    "cloud_segmenter".
+
     Falls through (returns None) to the existing Grounding DINO + SAM 2 path for: single-target,
     ordinal, size/position qualifiers (via `wants_all_instances=False`); relational qualifiers
     ("the road near the school") and colour qualifiers ("mask red buildings") — neither is a signal
     `_wants_all_instances` checks, so they are checked explicitly here; multiple classes in one query
-    ("roads and buildings") or any class without a trained segmenter (cars, ships, planes, water, ...).
+    ("roads and buildings", "mask water and roads"); a compound noun that merely contains a target
+    word but names another object ("water tanks", "cloud shadows" — `TRAINED_SEGMENTER_EXCLUSIONS`);
+    and any class without a trained segmenter (cars, ships, planes, ...).
+
+    Deliberately *not* routed, though checkpoints and adapters exist for them — see
+    docs/models/trained_segmenters.md for the full argument:
+      - **land cover** (7-class): its result is a class-index map, and every consumer of this
+        pipeline's `segmentation_mask` treats that field as one binary mask (`fusion.py` does
+        `segmentation_mask > 0` for the PNG and hands it to `mask_to_geojson(binary_mask=...)`), so
+        a 7-class map would be silently reinterpreted as "class 0 is background, classes 1-6 are
+        one object" and produce wrong area statistics and wrong polygons.
+      - **ISPRS Potsdam / Vaihingen** (6-class, 0.1 m): choosing between them and the 0.5 m
+        road/building models is a resolution-and-band decision, and no GSD or band metadata reaches
+        this function. Guessing would be worse than falling through.
     """
     if not settings.trained_segmenter_routing.enabled:
         return None
@@ -78,7 +142,11 @@ def classify_trained_segmenter_target(
         return None
 
     category_text = str(parsed.get("category") or "").lower()
-    matches = [key for key, pattern in TRAINED_SEGMENTER_TARGETS.items() if re.search(pattern, category_text)]
+    matches = [
+        key for key, pattern in TRAINED_SEGMENTER_TARGETS.items()
+        if re.search(pattern, category_text)
+        and not re.search(TRAINED_SEGMENTER_EXCLUSIONS.get(key, r"(?!)"), category_text)
+    ]
     if len(matches) != 1:
         return None  # no recognised class, or more than one ("roads and buildings")
     return matches[0]
@@ -134,12 +202,14 @@ def run_trained_segmenter_path(
     })
 
     answer = (
-        f"Segmented the {class_label} network: {coverage_pct:.2f}% of the image "
+        f"Segmented the {MASK_NOUN_BY_MODEL.get(model_key, f'{class_label} mask')}: "
+        f"{coverage_pct:.2f}% of the image "
         f"({pixel_count:,} px), using the trained {class_label} segmenter "
         f"(checkpoint {Path(checkpoint_path).name if checkpoint_path else 'unknown'}, "
         f"threshold {threshold:.2f} from {threshold_source}). Trained and validated at "
         f"{trained_gsd_m} m/px ground sampling distance; this image was run at its native "
         f"resolution, with no GSD metadata available to resample it (docs/models/trained_segmenters.md)."
+        f"{SENSOR_CAVEAT_BY_MODEL.get(model_key, '')}"
     )
 
     evidence: Dict[str, Any] = {

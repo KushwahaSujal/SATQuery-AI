@@ -1,7 +1,7 @@
-"""Real end-to-end test for the trained-segmenter dispatch inside `run_grounding_pipeline`
-(project/qna.md Q-025t, Q-026t, Q-038). Runs on CPU, on one small DeepGlobe tile already on disk;
-skips when the tile or the checkpoint is missing (both are gitignored), matching the convention in
-tests/models/test_trained_adapters.py.
+"""Real end-to-end tests for the trained-segmenter dispatch inside `run_grounding_pipeline`
+(project/qna.md Q-025t, Q-026t, Q-035, Q-038). Runs on CPU, on tiles already on disk — one
+DeepGlobe road tile and one held-out water tile; skips when a tile or checkpoint is missing (both
+are gitignored), matching the convention in tests/models/test_trained_adapters.py.
 
 This checks that "mark all roads" through the *full* pipeline entry point routes to the trained
 segmenter, not just that the adapter works in isolation (already covered by
@@ -92,5 +92,82 @@ def test_mark_all_roads_routes_to_the_trained_segmenter_end_to_end():
     # Steps unique to the old detector + SAM 2 path never ran.
     assert "call_grounding_dino" not in trace_steps
     assert "call_sam2" not in trace_steps
+
+    adapter.unload()
+
+
+def water_test_tile():
+    """A genuinely held-out water tile: the trainer's own `hash_split` picks the split, so this is
+    never a tile the checkpoint trained on.
+
+    Median-sized rather than smallest, because water's pooled test IoU (0.475) is dominated by a
+    handful of very large tiles while the per-tile median is 0.866 (project/qna.md Q-035) — a tiny
+    tile would not be representative of either number.
+    """
+    root = RAW / "water_bodies_s2/Water Bodies Dataset"
+    if not (root / "Images").is_dir():
+        pytest.skip(f"Water Bodies dataset not under {root}")
+    try:
+        from training.segmentation.datasets import hash_split
+    except ImportError:
+        pytest.skip("training.segmentation not importable")
+
+    tiles = [p for p in sorted((root / "Images").glob("*.jpg"))
+             if hash_split(p.stem) == "test" and (root / "Masks" / p.name).is_file()]
+    if not tiles:
+        pytest.skip("No held-out water tile on disk")
+    tiles.sort(key=lambda p: p.stat().st_size)
+    sat = tiles[len(tiles) // 2]
+    img = cv2.cvtColor(cv2.imread(str(sat), cv2.IMREAD_COLOR), cv2.COLOR_BGR2RGB)
+    # Masks are jpg-compressed greyscale, so values are not exactly 0/255 (datasets.py `_finish`).
+    gt = cv2.imread(str(root / "Masks" / sat.name), cv2.IMREAD_GRAYSCALE)
+    return sat.stem, img, gt
+
+
+def test_mask_all_water_routes_to_the_trained_segmenter_end_to_end():
+    """Water is the second family wired into the live path, and the first at a GSD far from the
+    0.5 m the roads/buildings models assume (10 m, Sentinel-2)."""
+    tile_id, img, gt = water_test_tile()
+
+    adapter = model_registry.get_adapter("water_segmenter")
+    if not adapter.is_available():
+        pytest.skip(f"water_segmenter checkpoint not available at {adapter.checkpoint_path}")
+    adapter.device = torch.device("cpu")
+
+    result = run_grounding_pipeline(image=img, query="mask all water")
+
+    assert result["strategy"] == "trained_segmenter_water"
+    assert result["detector"] == "water_segmenter"
+    assert result["selected_box"] is None
+    assert result["grounding_score"] is None
+
+    mask = result["segmentation_mask"]
+    assert mask is not None
+    assert mask.shape == img.shape[:2]
+
+    ts = result["evidence"]["trained_segmenter"]
+    assert ts["model_key"] == "water_segmenter"
+    # The threshold frozen on validation, read from the checkpoint rather than a code default.
+    assert ts["threshold"] == pytest.approx(0.20)
+    assert ts["threshold_source"] == "checkpoint"
+    # The GSD must be water's own 10 m, not the 0.5 m module default the binary adapter used to
+    # hard-code — a 20x misstatement in the user-facing answer if this regresses (Q-035).
+    assert ts["trained_gsd_m"] == pytest.approx(10.0)
+    assert "10.0 m/px" in result["answer"]
+    assert "Sentinel-2" in result["answer"]
+
+    trace_steps = [step["step"] for step in result["trace"]]
+    assert "call_trained_segmenter" in trace_steps
+    assert "call_grounding_dino" not in trace_steps
+    assert "call_sam2" not in trace_steps
+
+    pred = np.squeeze(mask) > 0
+    truth = gt > 127
+    iou = float((pred & truth).sum()) / float(max((pred | truth).sum(), 1))
+    print(f"\nwater tile {tile_id} {img.shape[1]}x{img.shape[0]}: "
+          f"pred {100.0 * pred.mean():.2f}% of pixels, truth {100.0 * truth.mean():.2f}%, IoU {iou:.3f}")
+    # Loose bound on a single tile, as in the roads test: this rules out broken wiring (an empty
+    # prediction, or the wrong image reaching the model), it does not re-measure Q-035.
+    assert iou > 0.05
 
     adapter.unload()

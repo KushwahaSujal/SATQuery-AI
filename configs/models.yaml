@@ -187,6 +187,7 @@ models:
     threshold: null
     # 4-flip averaging: +0.012 test IoU on DeepGlobe, 4x slower (Q-032).
     tta: false
+    trained_gsd_m: 0.5
     device: "auto"
 
   buildings_segmenter:
@@ -204,11 +205,56 @@ models:
     class_name: "building"
     threshold: null  # checkpoint threshold: 0.45
     tta: false
+    trained_gsd_m: 0.5
+    device: "auto"
+
+  water_segmenter:
+    name: "WaterSegmenter"
+    version: "water_bodies_r34"
+    task: "segmentation"
+    supported_tasks:
+      - "single_image_segmentation"
+    supported_modalities:
+      - "optical"
+      - "multispectral"
+    input_count: 1
+    input_relationship: "single"
+    enabled: true
+    checkpoint_path: "checkpoints/water_seg/best.pt"
+    class_name: "water"
+    threshold: null  # checkpoint threshold: 0.20, frozen on validation
+    tta: false
+    # Sentinel-2. Pooled test IoU 0.475 is pixel-weighted across tiles spanning ~4000x in area;
+    # per-tile median 0.866 / mean 0.772 (Q-035).
+    trained_gsd_m: 10.0
+    device: "auto"
+
+  cloud_segmenter:
+    name: "CloudSegmenter"
+    version: "cloud95_r34"
+    task: "segmentation"
+    supported_tasks:
+      - "single_image_segmentation"
+    supported_modalities:
+      - "optical"
+      - "multispectral"
+    input_count: 1
+    input_relationship: "single"
+    enabled: true
+    checkpoint_path: "checkpoints/cloud_seg/best.pt"
+    class_name: "cloud"
+    threshold: null  # checkpoint threshold: 0.50, frozen on validation
+    tta: false
+    # Landsat 8, 95-Cloud. Pooled test IoU 0.703, split by scene id (Q-035).
+    trained_gsd_m: 30.0
     device: "auto"
 
   landcover_segmenter:
     name: "LandCoverSegmenter"
-    version: "landcover_dg_lv_oem"
+    # Repointed from landcover_dg_lv_oem (ResNet-34, partial rural-only LoveDA mirror, LoveDA mIoU
+    # 0.428) to the ResNet-50 run on the complete 2522-tile LoveDA train set: LoveDA 0.488,
+    # DeepGlobe 0.698, OpenEarthMap 0.603 — better on all three (project/qna.md Q-037).
+    version: "landcover_full_r50"
     task: "land_cover_segmentation"
     supported_tasks:
       - "single_image_segmentation"
@@ -218,7 +264,48 @@ models:
     input_count: 1
     input_relationship: "single"
     enabled: true
-    checkpoint_path: "checkpoints/landcover_dg_lv_oem_seg/best.pt"
+    checkpoint_path: "checkpoints/landcover_full_r50_seg/best.pt"
+    # The checkpoint stores target_gsd 0.5 and takes precedence; kept here for readability.
+    trained_gsd_m: 0.5
+    device: "auto"
+
+  # ISPRS 2D semantic labelling, 6 classes at 0.1 m (project/qna.md Q-036). Registered so they are
+  # callable, but deliberately NOT auto-routed: picking between these and the 0.5 m road/building
+  # models needs GSD and band metadata that never reaches the grounding pipeline, and the two
+  # cities are not interchangeable (Potsdam RGB vs Vaihingen IRRG).
+  isprs_potsdam_segmenter:
+    name: "IsprsPotsdamSegmenter"
+    version: "isprs_potsdam"
+    task: "land_cover_segmentation"
+    supported_tasks:
+      - "single_image_segmentation"
+      - "urban_semantic_labelling"
+    supported_modalities:
+      - "optical"
+    input_count: 1
+    input_relationship: "single"
+    enabled: true
+    checkpoint_path: "checkpoints/isprs_potsdam_seg/best.pt"
+    # True-colour RGB. Test mIoU 0.700 over 4 held-out tiles.
+    trained_gsd_m: 0.1
+    device: "auto"
+
+  isprs_vaihingen_segmenter:
+    name: "IsprsVaihingenSegmenter"
+    version: "isprs_vaihingen"
+    task: "land_cover_segmentation"
+    supported_tasks:
+      - "single_image_segmentation"
+      - "urban_semantic_labelling"
+    supported_modalities:
+      - "optical"
+      - "multispectral"
+    input_count: 1
+    input_relationship: "single"
+    enabled: true
+    checkpoint_path: "checkpoints/isprs_vaihingen_seg/best.pt"
+    # IRRG (infrared/red/green), NOT RGB. Test mIoU 0.729 over 6 held-out tiles.
+    trained_gsd_m: 0.1
     device: "auto"
 
   crater_detector:
