@@ -182,6 +182,12 @@ class ModelSpec(BaseModel):
     # average the four flips at inference (4x slower, +0.005 to +0.012 IoU — project/qna.md Q-032).
     class_name: Optional[str] = None
     tta: Optional[bool] = None
+    # Ground sampling distance the checkpoint was trained at, in metres/pixel. The binary trainer
+    # does not write its --target-gsd into the checkpoint dict (only into report.json's args), so
+    # for those models this config field is the only machine-readable source: roads/buildings 0.5,
+    # water 10 (Sentinel-2), cloud 30 (Landsat 8) — project/qna.md Q-032, Q-035. The multi-class
+    # checkpoints do store `target_gsd` and it takes precedence over this value.
+    trained_gsd_m: Optional[float] = None
 
 
 class Config:

@@ -11,8 +11,17 @@ from backend.app.ml.adapters.general_rs_vlm import GeneralRSVLMAdapter
 from backend.app.ml.adapters.scene_vlm import SceneVLMAdapter
 from backend.app.ml.adapters.remoteclip import RemoteCLIPAdapter
 from backend.app.ml.adapters.bigearthnet import BigEarthNetMultimodalAdapter
-from backend.app.ml.adapters.binary_segmenter import BuildingSegmenterAdapter, RoadSegmenterAdapter
-from backend.app.ml.adapters.landcover_segmenter import LandCoverSegmenterAdapter
+from backend.app.ml.adapters.binary_segmenter import (
+    BuildingSegmenterAdapter,
+    CloudSegmenterAdapter,
+    RoadSegmenterAdapter,
+    WaterSegmenterAdapter,
+)
+from backend.app.ml.adapters.landcover_segmenter import (
+    IsprsPotsdamSegmenterAdapter,
+    IsprsVaihingenSegmenterAdapter,
+    LandCoverSegmenterAdapter,
+)
 from backend.app.ml.adapters.crater_detector import CraterDetectorAdapter
 from backend.app.schemas.models import ModelCapabilityInfo
 from backend.app.config import settings
@@ -36,11 +45,19 @@ class ModelRegistry:
         "scene_vlm": SceneVLMAdapter,
         "remoteclip": RemoteCLIPAdapter,
         "bigearthnet": BigEarthNetMultimodalAdapter,
-        # Locally trained (Q-026, Q-028, Q-029, Q-030, Q-032). Registered and available, but no
-        # router or agent path reaches them yet.
+        # Locally trained (Q-026, Q-028, Q-029, Q-030, Q-032, Q-035, Q-036, Q-037).
+        # Auto-routed from backend/app/workflows/trained_segmenter.py:
         "roads_segmenter": RoadSegmenterAdapter,
         "buildings_segmenter": BuildingSegmenterAdapter,
+        "water_segmenter": WaterSegmenterAdapter,
+        "cloud_segmenter": CloudSegmenterAdapter,
+        # Registered and callable, but deliberately not auto-routed — a multi-class class-index map
+        # does not fit the grounding pipeline's single-binary-mask response contract, and the ISPRS
+        # pair cannot be auto-selected without GSD/band metadata. See
+        # docs/models/trained_segmenters.md.
         "landcover_segmenter": LandCoverSegmenterAdapter,
+        "isprs_potsdam_segmenter": IsprsPotsdamSegmenterAdapter,
+        "isprs_vaihingen_segmenter": IsprsVaihingenSegmenterAdapter,
         "crater_detector": CraterDetectorAdapter,
     }
 
@@ -153,12 +170,48 @@ class ModelRegistry:
             "output_schema": {"binary_mask": "ndarray (H, W) uint8", "probability_map": "ndarray (H, W) float32"},
             "device_requirements": {"min_vram_gb": 2.0, "preferred": "cuda"},
         },
+        "water_segmenter": {
+            "family": "U-Net / ResNet-34 (smp)",
+            "source": "checkpoints/water_seg/best.pt",
+            "license": "MIT (code); Kaggle Water Bodies Dataset terms (Sentinel-2)",
+            "capabilities": ["water_segmentation", "binary_mask_segmentation"],
+            "input_requirements": {"image": "RGB (H, W, 3), trained at 10 m GSD (Sentinel-2)"},
+            "output_schema": {"binary_mask": "ndarray (H, W) uint8", "probability_map": "ndarray (H, W) float32"},
+            "device_requirements": {"min_vram_gb": 2.0, "preferred": "cuda"},
+        },
+        "cloud_segmenter": {
+            "family": "U-Net / ResNet-34 (smp)",
+            "source": "checkpoints/cloud_seg/best.pt",
+            "license": "MIT (code); 95-Cloud / Landsat 8 dataset terms",
+            "capabilities": ["cloud_segmentation", "binary_mask_segmentation"],
+            "input_requirements": {"image": "RGB (H, W, 3), trained at 30 m GSD (Landsat 8)"},
+            "output_schema": {"binary_mask": "ndarray (H, W) uint8", "probability_map": "ndarray (H, W) float32"},
+            "device_requirements": {"min_vram_gb": 2.0, "preferred": "cuda"},
+        },
         "landcover_segmenter": {
-            "family": "U-Net / ResNet-34 (smp), 7-class head",
-            "source": "checkpoints/landcover_dg_lv_oem_seg/best.pt",
+            "family": "U-Net / ResNet-50 (smp), 7-class head",
+            "source": "checkpoints/landcover_full_r50_seg/best.pt",
             "license": "MIT (code); LoveDA and OpenEarthMap are non-commercial",
             "capabilities": ["land_cover_segmentation", "per_class_area_statistics"],
             "input_requirements": {"image": "RGB (H, W, 3), trained at 0.5 m GSD"},
+            "output_schema": {"masks": "list[{binary_mask, label, area_pct}]", "class_map": "ndarray (H, W) uint8"},
+            "device_requirements": {"min_vram_gb": 2.5, "preferred": "cuda"},
+        },
+        "isprs_potsdam_segmenter": {
+            "family": "U-Net / ResNet-34 (smp), 6-class ISPRS head",
+            "source": "checkpoints/isprs_potsdam_seg/best.pt",
+            "license": "MIT (code); ISPRS/DGPF data, cite Cramer (2010)",
+            "capabilities": ["urban_semantic_labelling", "per_class_area_statistics"],
+            "input_requirements": {"image": "true-colour RGB (H, W, 3), trained at 0.1 m GSD"},
+            "output_schema": {"masks": "list[{binary_mask, label, area_pct}]", "class_map": "ndarray (H, W) uint8"},
+            "device_requirements": {"min_vram_gb": 2.5, "preferred": "cuda"},
+        },
+        "isprs_vaihingen_segmenter": {
+            "family": "U-Net / ResNet-34 (smp), 6-class ISPRS head",
+            "source": "checkpoints/isprs_vaihingen_seg/best.pt",
+            "license": "MIT (code); ISPRS/DGPF data, cite Cramer (2010)",
+            "capabilities": ["urban_semantic_labelling", "per_class_area_statistics"],
+            "input_requirements": {"image": "IRRG (infrared/red/green) (H, W, 3), NOT RGB, trained at 0.1 m GSD"},
             "output_schema": {"masks": "list[{binary_mask, label, area_pct}]", "class_map": "ndarray (H, W) uint8"},
             "device_requirements": {"min_vram_gb": 2.5, "preferred": "cuda"},
         },

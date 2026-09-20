@@ -6,11 +6,13 @@ The architecture, encoder and threshold are read from the checkpoint dict writte
 ({"model", "arch", "encoder", "threshold", "epoch", "val"}), so a re-trained checkpoint with a
 different encoder loads without a code change.
 
-Both checkpoints were trained on tiles resampled to 0.5 m ground sampling distance
-(`training/segmentation/datasets.py`, TARGET_GSD_M). Inputs far from that resolution are outside
-the measured range; see docs/models/trained_segmenters.md.
+Each checkpoint has its own training resolution, carried by `configs/models.yaml`'s
+`trained_gsd_m` (the binary trainer records `--target-gsd` in report.json only, not in the
+checkpoint): roads and buildings 0.5 m, water 10 m (Sentinel-2), cloud 30 m (Landsat 8). Inputs far
+from a model's own resolution are outside its measured range; see docs/models/trained_segmenters.md.
 
-Nothing routes to these adapters yet — the router and agent are unchanged (project/qna.md Q-031).
+Routing: roads and buildings (Q-038), and water and cloud (this change), dispatch from
+`backend/app/workflows/trained_segmenter.py`.
 """
 import importlib.util
 from pathlib import Path
@@ -127,6 +129,22 @@ class BinarySegmenterAdapter(BaseModelAdapter):
             return float(self._threshold)
         return self._FALLBACK_THRESHOLD
 
+    @property
+    def trained_gsd_m(self) -> float:
+        """Metres/pixel this checkpoint was trained at.
+
+        `train_seg.py` writes `--target-gsd` only into `report.json`'s args, never into the
+        checkpoint dict, so unlike `threshold` there is nothing to read back from the weights:
+        `configs/models.yaml` is the only machine-readable source. Getting this from config rather
+        than the module-level default matters — roads and buildings are 0.5 m, but water is 10 m
+        (Sentinel-2) and cloud 30 m (Landsat 8), so the old hard-coded `TARGET_GSD_M` would have
+        under-reported water's training scale by 20x in the answer text (project/qna.md Q-035).
+        """
+        from training.segmentation.datasets import TARGET_GSD_M
+
+        configured = getattr(self.config, "trained_gsd_m", None) if self.config else None
+        return float(configured) if configured is not None else float(TARGET_GSD_M)
+
     def load(self) -> None:
         """Public load interface, as on the other adapters."""
         self.load_model()
@@ -233,7 +251,6 @@ class BinarySegmenterAdapter(BaseModelAdapter):
         thr = self.threshold if thr_override is None else thr_override
         tta = self.tta if tta_override is None else tta_override
 
-        from training.segmentation.datasets import TARGET_GSD_M
         from training.segmentation.train_seg import infer_prob
 
         img = to_rgb_array(raw)
@@ -283,7 +300,7 @@ class BinarySegmenterAdapter(BaseModelAdapter):
                 "tta": tta,
                 "arch": self._arch,
                 "encoder": self._encoder,
-                "trained_gsd_m": TARGET_GSD_M,
+                "trained_gsd_m": self.trained_gsd_m,
                 "output_shape": [h, w],
                 "device": str(self.device),
                 "model_class": "smp.Unet",
@@ -303,3 +320,28 @@ class BuildingSegmenterAdapter(BinarySegmenterAdapter):
 
     def __init__(self) -> None:
         super().__init__("buildings_segmenter", class_name="building")
+
+
+class WaterSegmenterAdapter(BinarySegmenterAdapter):
+    """`water_seg`: U-Net / ResNet-34 on the Kaggle Water Bodies set, Sentinel-2 at 10 m (Q-035).
+
+    Headline pooled test IoU is 0.475, but that number is a pixel-weighted artefact of a tile set
+    whose areas span ~4000x: per tile the median is 0.866 and the mean 0.772, with 1 of 131 test
+    tiles below 0.05 IoU (Q-035 §2). The per-tile figures are the ones that describe what a user
+    sees on one image.
+    """
+
+    def __init__(self) -> None:
+        super().__init__("water_segmenter", class_name="water")
+
+
+class CloudSegmenterAdapter(BinarySegmenterAdapter):
+    """`cloud_seg`: U-Net / ResNet-34 on 95-Cloud, Landsat 8 at 30 m (Q-035).
+
+    Pooled test IoU 0.703, split by Landsat scene id so neighbouring patches cannot leak across
+    splits. The val->test recall drop (0.93 -> 0.74) is recorded as an open question in Q-035, not
+    an explained effect.
+    """
+
+    def __init__(self) -> None:
+        super().__init__("cloud_segmenter", class_name="cloud")
