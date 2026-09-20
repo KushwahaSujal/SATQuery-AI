@@ -3518,3 +3518,84 @@ sides. The same review caught two user-facing bugs: an answer string that would 
 resolution by a factor of 20 to 60, and an evaluation script that had quietly started grading the model
 against itself. Neither was in the brief; both were found by re-running the work rather than reading
 the summary."
+
+## Q-040 · LAE-DINO checkpoints are MMDetection-format: adopting them is not a quick win, and neither is the LAE-1M fine-tune
+
+**Recorded** 2026-09-20, atop `prototype` 196e017. Closes the open question from Q-031's roadmap:
+"Grounding DINO fine-tuned on LAE-1M — needs the cloud GPU". **Recommendation: do neither, for now.**
+
+### 1. What was checked
+
+Q-031 listed a LAE-1M fine-tune of Grounding DINO as the largest remaining planned capability and the
+only one needing a cloud GPU. Before paying for that, the authors' own released weights were examined,
+on the theory that their checkpoint might already be what we would have trained.
+
+Two checkpoints were downloaded (kept at `checkpoints/lae_dino/`, ~694 MB each):
+- `lae_dino_swint_lae1m-28ca3a15.pth` — **trained on LAE-1M itself**, i.e. precisely the target of the
+  planned fine-tune. Its existence was not previously known to this project; it was found while
+  surveying the HF repos.
+- `lae_dino_swint_fintune_dior-e612b298.pth` — the DIOR-fine-tuned variant.
+
+### 2. Finding: wrong framework, not merely a different file layout
+
+Both are **bare MMDetection state dicts**, not HF `transformers` checkpoints. Evidence (key names):
+
+```
+level_embed
+backbone.patch_embed.projection.weight
+backbone.stages.0.blocks.0.attn.w_msa.relative_position_bias_table
+```
+
+`stages.N.blocks.N.attn.w_msa` and `patch_embed.projection` are open-mmlab `SwinTransformer` naming;
+`level_embed` is the MMDet DINO head. HF's `GroundingDinoForObjectDetection` uses an entirely different
+module tree (`model.backbone.conv_encoder...`, `model.encoder.layers.N.self_attn...`). 1004 and 1053
+tensors respectively, with **no `meta` key** — so no embedded config either; their repo's config file
+would also be required.
+
+Consequences:
+- Running them needs `mmdet` + `mmcv` + `mmengine`. `mmcv`'s compiled ops track specific PyTorch
+  versions; this project is on torch 2.14 with CUDA 13. That is an isolated-environment build with a
+  real chance of not resolving, and it was not attempted here (two prior attempts at this task were
+  killed — one by an API rate limit, one by the machine freeze in Q-039).
+- The alternative, writing an MMDet→HF key-mapping converter, is not a rename job: the two
+  implementations differ structurally, and a wrong mapping produces plausible-looking garbage rather
+  than an error, so it would need its own validation against published numbers.
+- Either way the product would carry a second inference stack, or a converted model nobody upstream
+  validates.
+
+### 3. Why this also argues against our own LAE-1M fine-tune
+
+The planned cloud fine-tune would produce approximately what `lae_dino_swint_lae1m` already is. If
+their artefact is impractical to serve here, ours would face the same problem from the other
+direction: we would either train inside their MMDet codebase (inheriting the same stack) or implement
+Grounding DINO fine-tuning against HF transformers ourselves — more work than the GPU time it would
+have bought. The cloud GPU was never the bottleneck; the serving stack is.
+
+### 4. What we give up, stated plainly
+
+LAE-DINO addresses **open-vocabulary** detection — arbitrary phrases like "storage tanks", "helipads",
+"roundabouts" — which is a different capability from the class-specific segmenters now shipping. The
+measured wins to date (Q-038, Q-039: roads, buildings, water, cloud at 4x to 20x over the detector
+path) came from small task-specific models, not from better open-vocabulary detection. Queries outside
+the trained classes still fall through to zero-shot Grounding DINO with its known weakness (Q-028:
+AP50 0.024 on craters).
+
+**Not measured:** whether either LAE-DINO checkpoint actually beats zero-shot Grounding DINO on our
+data. The format finding blocked the comparison; no accuracy claim is made here in either direction.
+
+### 5. Recommendation
+
+1. **No cloud GPU for training.** Every model now shipping was trained on the local RTX 3070.
+2. **Keep both checkpoints** (1.4 GB, `checkpoints/lae_dino/`) rather than re-download later; the
+   LAE-1M one is the relevant artefact if this is ever revisited.
+3. **Revisit only if** open-vocabulary detection becomes a demo requirement, and then budget it as an
+   environment/integration task, not a training task.
+
+### 6. Defence — "You planned a fine-tune and then didn't do it. Was that a reversal?"
+
+"It was the result of checking before spending. The plan assumed the blocker was GPU hours. Inspecting
+the authors' released weights showed the blocker is the serving framework: their artefacts are
+MMDetection, ours is HF transformers on torch 2.14, and that gap costs the same whether we train the
+model ourselves or download theirs. We also found they had already published a LAE-1M-trained
+checkpoint, which is what our fine-tune would have reproduced. The honest conclusion is that the cloud
+GPU would not have bought the capability we wanted."
