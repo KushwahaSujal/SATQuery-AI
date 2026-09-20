@@ -22,10 +22,11 @@ from PIL import Image
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
+from backend.app.config import settings  # noqa: E402
 from backend.app.ml.adapters.grounding_dino import GroundingDINOAdapter  # noqa: E402
 from backend.app.ml.adapters.sam2 import SAM2Adapter  # noqa: E402
 from backend.app.workflows.grounding import run_grounding_pipeline  # noqa: E402
-from training.segmentation.datasets import MEAN, SOURCES, STD, read_pair  # noqa: E402
+from training.segmentation.datasets import MEAN, SOURCES, STD, TARGET_GSD_M, read_pair  # noqa: E402
 from training.segmentation.train_seg import build_model, infer_prob  # noqa: E402
 
 
@@ -61,8 +62,21 @@ def main() -> None:
     ap.add_argument("--n", type=int, default=100, help="random test tiles (seeded)")
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--checkpoint", default=None, help="also score this trained model on the same tiles")
+    ap.add_argument("--target-gsd", type=float, default=TARGET_GSD_M,
+                    help="metres/px to resample tiles to. The 0.5 default matches how the road and "
+                         "building models were trained; pass the source's own GSD for coarse imagery "
+                         "(10 for water_bodies, 30 for cloud95) so it is not upsampled 20-60x per axis "
+                         "-- doing that by accident exhausted system RAM and crashed the machine once "
+                         "(project/qna.md Q-035).")
     ap.add_argument("--out", default=None)
     args = ap.parse_args()
+
+    # The whole point of this script is comparing the *detector* pipeline against a trained
+    # checkpoint. Since Q-038/Q-039 wired several classes to route straight to their trained model,
+    # run_grounding_pipeline would otherwise return the trained model's own mask as the "baseline"
+    # -- both columns then measure the same thing (observed: identical IoU to 4 dp, 0.03 s/tile
+    # instead of ~1.0). Force the routing off so the baseline is genuinely GroundingDINO + SAM 2.
+    settings.trained_segmenter_routing.enabled = False
 
     items = SOURCES[args.source]("test")
     items = random.Random(args.seed).sample(items, min(args.n, len(items)))
@@ -74,7 +88,7 @@ def main() -> None:
     rows, base_sec = [], 0.0
     for i, item in enumerate(items, 1):
         img_path = item[0]
-        img, gt, valid = read_pair(*item)
+        img, gt, valid = read_pair(*item, target_gsd=args.target_gsd)
         ts = time.time()
         res = run_grounding_pipeline(Image.fromarray(img), args.query,
                                      grounding_adapter=gd, sam2_adapter=sam)
@@ -94,6 +108,7 @@ def main() -> None:
 
     summary = {
         "source": args.source, "query": args.query, "tiles": len(items), "seed": args.seed,
+        "target_gsd": args.target_gsd,
         "baseline": {"pipeline": "GroundingDINO + V4 reasoning + SAM2 (run_grounding_pipeline defaults)",
                      **metrics(*base), "sec_per_tile": round(base_sec / max(len(items), 1), 2)},
     }

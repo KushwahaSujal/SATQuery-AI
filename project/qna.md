@@ -3409,3 +3409,112 @@ only failures are three that already failed before this work existed. The new pa
 four independent conditions all agree, it reuses the pipeline's own category signal rather than a second
 opinion that could drift, and it can be switched off in config with no code change. A reviewer who
 distrusts it can set `trained_segmenter_routing.enabled: false` and get the exact previous behaviour."
+
+## Q-039 · Water and cloud routed (measured 4.2x and 16x over the detector path); land cover and ISPRS deliberately not routed
+
+**Recorded** 2026-09-20, atop `prototype` 74e65c2. Extends Q-038, which wired the first two classes
+(roads, buildings). Also records a third system crash and the safety hole that allowed it.
+
+### 1. What now routes, and the measurement behind it
+
+Q-038's dispatch gained `water_segmenter` and `cloud_segmenter`. Unlike roads/buildings — which were
+justified by Q-025t/Q-026t before wiring — these were initially routed on a *structural* argument only
+(a whole-image region class suits a class segmenter better than an open-vocabulary box detector). That
+gap is now closed; both were measured on held-out test tiles, same script, same tiles, both methods:
+
+| Query | Detector path (GroundingDINO + V4 + SAM 2) | Trained segmenter | Tiles |
+|---|---|---|---|
+| "mask all water" (`water_bodies`, 10 m) | IoU **0.0942** (P 0.588 / R 0.101, 1.0 s/tile) | IoU **0.3944** (P 0.975 / R 0.398) | 60 |
+| "mask all clouds" (`cloud95`, 30 m) | IoU **0.0404** (P 0.720 / R 0.041, 0.6 s/tile) | IoU **0.6424** (P 0.874 / R 0.708) | 60 |
+
+Water's 0.394 is the pixel-weighted pooled metric whose behaviour Q-035 explains (per-tile median is
+0.866); both columns are computed identically, so the comparison is fair even where the absolute
+number understates the model.
+
+Vocabulary needed a **compound-noun exclusion list**: bare `water`/`cloud` must be in the vocabulary,
+but measured against the real parser `mask all water tanks` → category "water tanks", `mask the water
+tower` → "water tower", `mask the cloud shadows` → "cloud shadow" would all have been captured by the
+class segmenter. `waterfront`/`watershed`/`cloudy` need no entry (word boundaries handle them).
+
+Cloud reachability was **measured, not assumed**: `mask the clouds` / `mask all clouds` / `segment
+clouds` reach `single_image_grounding` via the router's fallback noun-phrase extractor, while the
+quality phrasings that should *not* segment (`is this scene cloudy`, `how cloudy is this image`,
+`remove the clouds`) classify as `single_image_vqa` and never reach the dispatch. No router change was
+needed.
+
+### 2. Deliberately NOT routed, with reasons
+
+- **Land cover (7-class)** — the response contract genuinely cannot carry it, verified in source:
+  `backend/app/evidence/fusion.py` does `(segmentation_mask > 0).astype(np.uint8) * 255` and passes the
+  result to `mask_to_geojson(binary_mask=...)`. A 7-class index map would be silently reinterpreted as
+  "class 0 background, classes 1-6 one single object" — wrong area statistics and wrong polygons, not
+  merely unhelpful output. Reachability is near-nil anyway: "show land cover", "what is this area used
+  for", "land use map" all classify as VQA.
+- **ISPRS Potsdam / Vaihingen** — registered and callable, not auto-routed. ISPRS answers the *same*
+  "buildings"/"roads" questions as the 0.5 m models but at 5-9 cm, and no GSD (nor band composition,
+  which would distinguish Potsdam RGB from Vaihingen IRRG, Q-036) reaches the dispatch function. There
+  is no basis to auto-select even a city. No resolution guesser was invented.
+
+### 3. Two bugs found while wiring, both user-facing
+
+1. **A 20x/60x false accuracy claim.** `BinarySegmenterAdapter` hard-coded the trainer's
+   `TARGET_GSD_M` (0.5 m) as `trained_gsd_m` for *every* checkpoint, and that value is interpolated
+   into the answer text ("Trained and validated at {x} m/px"). Water is 10 m and cloud 30 m, so routing
+   them unchanged would have told users a resolution 20x/60x wrong. Fixed with a `trained_gsd_m`
+   ModelSpec field (the binary trainer writes `--target-gsd` to `report.json` only, never into the
+   checkpoint dict); multi-class checkpoints do store `target_gsd` and it takes precedence. Asserted in
+   the end-to-end test.
+2. **The evaluation script had started comparing the trained model against itself.** After Q-038 wired
+   roads/buildings, `eval_road_baseline.py`'s "baseline" call to `run_grounding_pipeline` was itself
+   routed to the trained model for any routed class. The first cloud run returned *identical* IoU to 4
+   decimal places for both columns at 0.03 s/tile (versus ~1.0 s/tile for a real detector run) — the
+   tell that caught it. The script now forces `settings.trained_segmenter_routing.enabled = False` for
+   the baseline. **The water numbers in §1 predate the merge and are unaffected**; the cloud numbers in
+   §1 are from the corrected run. Any future head-to-head on a routed class must use the fixed script.
+
+`LandCoverSegmenterAdapter` also hard-rejected any class count ≠ 7, which excluded the 6-class ISPRS
+checkpoints; the comment justifying it was factually wrong (`infer_logits` reads K from the model the
+adapter builds, not from the trainer). Now a non-empty check.
+
+`configs/models.yaml` `landcover_segmenter` repointed from `landcover_dg_lv_oem_seg` (ResNet-34) to
+`landcover_full_r50_seg` — better on all three splits, no measured downside (Q-037).
+
+### 4. Third system crash, and the safety hole behind it
+
+The desktop froze again on 2026-09-20, requiring a hard reboot. No OOM record and a 19-minute gap in
+`sysmon.log` — the same signature as 2026-09-17. Unproven trigger; the last sample before the gap shows
+6.9 GB available with 3.8 GB of swap already in use, after which an agent downloaded two ~700 MB
+checkpoints (HF's Xet backend was measured holding 4.7 GB for one download earlier in this project).
+
+The **structural** cause is certain even though the trigger is not: `satquery.slice` had
+`MemoryMax=14056M` on a 14 GB machine — an aggregate limit that permitted essentially all RAM. Three
+individually-capped jobs (a 5 GB eval plus two agents) summed past physical memory. Per-job caps never
+bounded the total. Fixed:
+
+| | Before | After |
+|---|---|---|
+| `satquery.slice` aggregate | 13.7 G (no real limit) | **`MemoryMax=8G`, `MemoryHigh=6G`** |
+| `satquery-mem-guard` fires at | 1 GB available | **2.5 GB available** |
+| HF transfer backend | Xet (measured 4.7 GB for one file) | **disabled** (`HF_HUB_DISABLE_XET=1`) |
+
+Subagent shell commands do not inherit the slice, so an agent's own `pip install` / `hf download` is
+unguarded — which is why *concurrency*, not any single job's size, was the real hazard. Operating rule
+now: one heavy job at a time.
+
+### 5. Verification
+
+Full capped suite **352 passed, 3 failed** (up from 326 in Q-038; +26 are the new dispatch tests). The
+3 are the same pre-existing `test_geotiff_georeferencing.py` GDAL failures and remain the only
+failures. End-to-end on a held-out tile: `run_grounding_pipeline(img, "mask all water")` →
+`trained_segmenter_water`, threshold 0.20 from the checkpoint, `trained_gsd_m` 10.0, "Sentinel-2" in
+the answer, no `call_grounding_dino`/`call_sam2` steps, IoU 0.840 against truth. Head-to-head JSONs in
+`results/training/{water,cloud}_h2h.json`.
+
+### 6. Defence — "You routed water and cloud before measuring them. Why should we trust the rest?"
+
+"The subagent that wired them said so in its own report rather than hiding it, and the routing was not
+accepted until both were measured — 4.2x and 16x, on held-out tiles, with the same script scoring both
+sides. The same review caught two user-facing bugs: an answer string that would have claimed the wrong
+resolution by a factor of 20 to 60, and an evaluation script that had quietly started grading the model
+against itself. Neither was in the brief; both were found by re-running the work rather than reading
+the summary."
