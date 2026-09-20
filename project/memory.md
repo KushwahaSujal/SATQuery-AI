@@ -8,16 +8,21 @@
 
 ---
 
-## 0. Current state — 2026-09-14
+## 0. Current state — 2026-09-20
 
 | | |
 |---|---|
-| Branch | `refactor/s0-remove-dead-layers` → pushed to `origin` (`github.com/KushwahaSujal/SATQuery-AI`) |
-| Tests | `pytest -q` → **215 passed, 0 failed** |
+| Branch | `prototype` at `d0daed7` (`github.com/KushwahaSujal/SATQuery-AI`), plus uncommitted work below |
+| Tests | `pytest -m "not models" -q` → **430 passed, 3 failed** — the 3 are pre-existing GDAL failures in `tests/unit/test_geotiff_georeferencing.py` |
 | GPU | RTX 3070 8 GB — models are released and reloaded on out-of-memory (Q-010) |
-| Measured status | [`pre-demo.md`](pre-demo.md) → "Progress log 2026-09-14" |
-| Change record | [`qna.md`](qna.md) Q-007 … Q-011 |
+| Measured status | [`pre-demo.md`](pre-demo.md) → "Progress log 2026-09-14"; newer measurements are in `qna.md` |
+| Change record | [`qna.md`](qna.md) Q-007 … **Q-041** |
 | Who does what next | [`split-ushnik-ayushman.md`](split-ushnik-ayushman.md) |
+
+> **Test collection was broken at `d0daed7`** and is fixed here: `tests/__init__.py` had never been
+> tracked in git, so `tests/unit/test_mask_all_instances.py` failed to import `tests.models` and
+> collection aborted. Earlier "352 passed" runs relied on an untracked local file. The empty
+> `tests/__init__.py` must be committed.
 
 **Done 2026-09-14** (commits on the branch, oldest first)
 - `dee8e53` ChangeFormer fixed: Ayushman's epoch-20 checkpoint on vendored upstream architecture.
@@ -39,11 +44,32 @@
 - `45e745e` HTTP demo rehearsal 10/10 COMPLETED; found a silent 512-px window fallback (Q-011's AOI 14,101 px
   was windowed; native is 13,902), and the inference mode is now reported. Q-014.
 
+**Done 2026-09-20 — Ayushman's delivery (uncommitted; `qna.md` Q-041)**
+- **EuroSAT land cover** (`eurosat_classifier`): EfficientNet-B0, 10 classes, **closes mandatory
+  requirement #1**. Test accuracy **0.9832** over 4050 samples, balanced accuracy 0.9824 —
+  independently recomputed from his per-sample predictions, matching to 10 dp. Registered and serving;
+  scene-level only, so deliberately **not routed**. `docs/models/eurosat.md`.
+- **Flood segmentation** (`flood_segmenter`): real checkpoint, loads `strict=True` into a 16-channel
+  U-Net reconstructed from its own state_dict — but the training normalisation was never documented and
+  **could not be recovered** (17 schemes swept over the official 90-scene Sen1Floods11 test split; none
+  reproduced his IoU 0.6292; the best needs the DEM channel zeroed, and his 0.30 threshold does not
+  transfer). Registered but returns **NOT_CONFIGURED** and reports no flood extent. Q-041 §5.
+- **Burn scars** (Prithvi-EO-2.0 300M): checkpoint staged and documented, **not registered**. Needs
+  `terratorch`/`lightning`/`einops`, which would risk downgrading torch 2.14 under the eight working
+  adapters — decision taken **not** to install. Trained **from scratch** (`backbone_pretrained: false`),
+  so it must never be called foundation-model adaptation. Two of his metric files disagree for the same
+  264-scene test set. Q-041 §6.
+- Removed `checkpoints/locate_anything_3b` (7.2 GB) — dead since Q-023, zero code references.
+
 **Still open — owners in `split-ushnik-ayushman.md`**
 - Optical–SAR fusion still emits output from an untrained head — **do not demo**; return NOT_CONFIGURED,
   then rule-based fusion. **Ayushman.**
 - Real georeferenced demo GeoTIFF pair + AOI + expected answers. **Ayushman**; rehearse again with them.
-- RS adaptation evidence (BigEarthNet) — mandatory req #1. **Ayushman**, wired by Ushnik.
+- ~~RS adaptation evidence (BigEarthNet) — mandatory req #1.~~ **Closed 2026-09-20 by EuroSAT.**
+  BigEarthNet itself is still unwired, but the requirement no longer depends on it.
+- **Flood preprocessing + burn-scar version list and metric fix — blocking, waiting on Ayushman.** The
+  exact asks are written up ready to send:
+  [`handoff/request-to-ayushman-2026-09-20.md`](handoff/request-to-ayushman-2026-09-20.md).
 - Captions are one or two words (BLIP-VQA prompted as a captioner).
 - Image restoration agents + confidence critique agent + learned SR — post-demo.
 
@@ -56,6 +82,15 @@
 - Close Chrome before the demo: it held 333 MB of GPU memory.
 - Don't demo VRSBench `05865` "find the vehicle": wrong box, labelled verified (Q-008 §3, Q-014 §3).
 - On LEVIR-like imagery CDVQA is at chance; change answers come from ChangeFormer (Q-012).
+- EuroSAT land cover is **scene-level**: one label per tile, no localisation, and it was trained on
+  Sentinel-2 at 10 m/px, so results on sub-metre aerial imagery are out of its measured range.
+- The flood model does **not** work — say NOT_CONFIGURED, not "coming soon". The frontend still shows a
+  "Flood extent" suggestion chip that routes nowhere (`QueryBar.tsx:18`).
+- The burn-scar model was trained **from scratch**, not fine-tuned from Prithvi's pretrained backbone.
+  Never present it as foundation-model adaptation. Its burn IoU 0.657 is pooled; **10 of 264 test scenes
+  are complete misses at IoU 0.0**, 6 of them predicting no burn pixels at all on scenes 1.4–5.2% burned
+  (Q-042 §1). Never quote its `val/mIoU` 0.8308 as a burn-scar score — that is the 2-class mean,
+  dominated by the background class (Q-042 §2).
 
 ---
 

@@ -342,3 +342,46 @@ models:
     checkpoint_path: "checkpoints/bigearthnet/model.safetensors"
     config_path: "checkpoints/bigearthnet/config.json"
     device: "auto"
+
+  eurosat_classifier:
+    name: "EuroSatLandCover"
+    version: "eurosat_efficientnet_b0"
+    task: "classification"
+    supported_tasks:
+      - "single_image_classification"
+    supported_modalities:
+      - "optical"
+      - "multispectral"
+    input_count: 1
+    input_relationship: "single"
+    enabled: true
+    checkpoint_path: "checkpoints/eurosat_efficientnet_b0/best_model.pt"
+    # EuroSAT RGB, 10 classes. Held-out test accuracy 0.9832 over 4050 samples (Q-041). Scene-level
+    # only: one label for the whole tile, no mask and no box, so it is not routed from grounding.
+    input_size: 224
+    trained_gsd_m: 10.0
+    device: "auto"
+
+  flood_segmenter:
+    name: "FloodSegmenter"
+    version: "sen1floods11_unet16ch"
+    task: "segmentation"
+    supported_tasks:
+      - "single_image_segmentation"
+    supported_modalities:
+      - "multispectral"
+      - "sar"
+    input_count: 1
+    input_relationship: "single"
+    enabled: true
+    checkpoint_path: "checkpoints/flood_seg/best.pt"
+    class_name: "flood"
+    # NOT SERVING. The checkpoint loads strict=True, but the delivery never documented the
+    # training-time normalisation and none of 17 swept preprocessing/threshold combinations
+    # reproduced the delivered global flood IoU 0.6292 over the Sen1Floods11 official test split
+    # (90 scenes) and validation split (89 scenes); closest raw-value scheme 0.5403. The delivered
+    # 0.30 threshold provably does not transfer, so it is NOT set here (Q-041 §5).
+    threshold: null
+    tta: false
+    trained_gsd_m: 10.0
+    device: "auto"

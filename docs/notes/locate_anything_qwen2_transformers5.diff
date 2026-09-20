@@ -1,0 +1,84 @@
+--- /home/natsu/Downloads/ayushman/locate_anything_3b_extras/modeling_qwen2.py.upstream	2026-09-20 22:33:10.366630976 +0530
++++ checkpoints/locate_anything_3b/modeling_qwen2.py	2026-09-16 14:15:59.674412576 +0530
+@@ -115,38 +115,49 @@
+ 
+ # Copied from transformers.models.llama.modeling_llama.LlamaRotaryEmbedding with Llama->Qwen2
+ class Qwen2RotaryEmbedding(nn.Module):
++    # SatQuery patch: the cos/sin tables are built lazily as plain attributes, not
++    # non-persistent buffers. transformers 5.x instantiates the model on the meta
++    # device and never re-runs __init__, so buffers computed here were materialised
++    # as zeros / NaN, which zeroes q and k and makes attention uniform.
++    _MIN_CACHE_LEN = 4096
++
+     def __init__(self, dim, max_position_embeddings=2048, base=10000, device=None):
+         super().__init__()
+ 
+         self.dim = dim
+         self.max_position_embeddings = max_position_embeddings
+         self.base = base
+-        inv_freq = 1.0 / (self.base ** (torch.arange(0, self.dim, 2).float().to(device) / self.dim))
+-        self.register_buffer("inv_freq", inv_freq, persistent=False)
+-
+-        # Build here to make `torch.jit.trace` work.
+-        self._set_cos_sin_cache(
+-            seq_len=max_position_embeddings, device=self.inv_freq.device, dtype=torch.get_default_dtype()
+-        )
++        self.max_seq_len_cached = 0
++        self._cos_cached = None
++        self._sin_cached = None
+ 
+     def _set_cos_sin_cache(self, seq_len, device, dtype):
+-        self.max_seq_len_cached = seq_len
+-        t = torch.arange(self.max_seq_len_cached, device=device, dtype=self.inv_freq.dtype)
+-
+-        freqs = torch.outer(t, self.inv_freq)
++        inv_freq = 1.0 / (
++            self.base ** (torch.arange(0, self.dim, 2, device=device, dtype=torch.float32) / self.dim)
++        )
++        t = torch.arange(seq_len, device=device, dtype=torch.float32)
++        freqs = torch.outer(t, inv_freq)
+         # Different from paper, but it uses a different permutation in order to obtain the same calculation
+         emb = torch.cat((freqs, freqs), dim=-1)
+-        self.register_buffer("cos_cached", emb.cos().to(dtype), persistent=False)
+-        self.register_buffer("sin_cached", emb.sin().to(dtype), persistent=False)
++        self.max_seq_len_cached = seq_len
++        self._cos_cached = emb.cos().to(dtype)
++        self._sin_cached = emb.sin().to(dtype)
+ 
+     def forward(self, x, seq_len=None):
+         # x: [bs, num_attention_heads, seq_len, head_size]
+-        if seq_len > self.max_seq_len_cached:
+-            self._set_cos_sin_cache(seq_len=seq_len, device=x.device, dtype=x.dtype)
++        if (
++            self._cos_cached is None
++            or seq_len > self.max_seq_len_cached
++            or self._cos_cached.device != x.device
++            or self._cos_cached.dtype != x.dtype
++        ):
++            self._set_cos_sin_cache(
++                seq_len=max(seq_len, self._MIN_CACHE_LEN), device=x.device, dtype=x.dtype
++            )
+ 
+         return (
+-            self.cos_cached[:seq_len].to(dtype=x.dtype),
+-            self.sin_cached[:seq_len].to(dtype=x.dtype),
++            self._cos_cached[:seq_len],
++            self._sin_cached[:seq_len],
+         )
+ 
+ 
+@@ -239,7 +250,13 @@
+         self.num_key_value_heads = config.num_key_value_heads
+         self.num_key_value_groups = self.num_heads // self.num_key_value_heads
+         self.max_position_embeddings = config.max_position_embeddings
+-        self.rope_theta = getattr(config, "rope_theta", 10000.0)
++        # SatQuery patch: transformers 5.x moved rope_theta into config.rope_parameters.
++        # Never fall back to a default: the checkpoint is trained with 1e6, and a
++        # silent 1e4 produces fluent-looking garbage.
++        rope_parameters = getattr(config, "rope_parameters", None) or {}
++        self.rope_theta = rope_parameters.get("rope_theta", getattr(config, "rope_theta", None))
++        if self.rope_theta is None:
++            raise ValueError("Qwen2 config has no rope_theta (checked rope_parameters and rope_theta).")
+         self.is_causal = True
+         self.attention_dropout = config.attention_dropout
+ 

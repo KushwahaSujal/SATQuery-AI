@@ -1,0 +1,13 @@
+{
+  "model_name": "efficientnet_b0",
+  "task": "land_cover_classification",
+  "dataset": "EuroSAT RGB",
+  "test_samples": 4050,
+  "num_classes": 10,
+  "accuracy": 0.9832098765432099,
+  "balanced_accuracy": 0.9824222222222222,
+  "roc_auc_ovr_macro": 0.9995958032249936,
+  "roc_auc_ovr_weighted": 0.9996152613308699,
+  "pr_auc_macro": 0.9967362499341972,
+  "pr_auc_weighted": 0.9968799110618954
+}

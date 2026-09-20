@@ -1,0 +1,5 @@
+{
+  "selected_threshold": 0.30000000000000004,
+  "selection_metric": "global_validation_flood_iou",
+  "threshold_results_path": "C:\\Users\\user\\Desktop\\Satq_Prithvi\\results\\floods\\training\\validation_threshold_calibration.csv"
+}

@@ -3599,3 +3599,299 @@ MMDetection, ours is HF transformers on torch 2.14, and that gap costs the same 
 model ourselves or download theirs. We also found they had already published a LAE-1M-trained
 checkpoint, which is what our fine-tune would have reproduced. The honest conclusion is that the cloud
 GPU would not have bought the capability we wanted."
+
+---
+
+## Q-041 · Ayushman's 2026-09-20 delivery: EuroSAT verified and wireable, flood preprocessing unrecoverable, burn scars blocked on terratorch
+
+**Recorded** 2026-09-20, working tree on `prototype` (not yet rebased onto `d0daed7`). Work was paused
+mid-task at the user's request; nothing is committed. Full state and the resume list:
+[`project/handoff/ayushman-delivery-2026-09-20.md`](handoff/ayushman-delivery-2026-09-20.md).
+
+### 1. What was delivered, and what of it is new
+
+`~/Downloads/ayushman/` held ~22 GB of archives containing **three new models** plus two already in
+the repo. `checkpoints/locate_anything_3b/` and `checkpoints/changeformer/` already carried the
+delivered LocateAnything and ChangeFormer artefacts (the ChangeFormer checkpoint byte-size matches at
+492,691,833, and its reports are already at `docs/models/changeformer/`), so those are re-deliveries.
+
+**EuroSAT was nested inside another archive.** `drive-download-20260920T125749Z-1-003.zip` (1 GB) is a
+superset bundle containing `eurosat_efficientnet_b0.zip`. Extracting only the top-level archives
+misses an entire model — worth knowing for the next hand-off.
+
+All four delivered checkpoints were hashed and matched their manifests:
+`burnscars … bb1ce3b5…a8dc8` ✅, `flood best.pt … 5d6a26b6…274f6` ✅, `flood last.pt … 281c86c4…92554` ✅.
+The EuroSAT checkpoint shipped with no manifest; its hash is recorded as
+`dbbfa69d48baa47ee813ae0465ce46e72c412159a5564e8e26d6d5044f012347`.
+
+### 2. Mechanism — what the code does, step by step
+
+Two modules were written, neither yet registered:
+
+- `backend/app/ml/adapters/eurosat.py` — `EuroSatLandCoverAdapter`. Builds
+  `torchvision.efficientnet_b0`, replaces `classifier[1]` with `Linear(1280, len(class_names))`, and
+  loads `ckpt["model_state_dict"]` with **`strict=True`**. Class names, training image size, epoch and
+  best validation accuracy are read from the checkpoint, not hard-coded, and the load refuses if the
+  head's output width disagrees with the length of `class_names` (that mismatch would silently mislabel
+  every prediction). `confidence` is the real softmax probability of the winning class; the full
+  distribution and the ranked top-k go in `metadata`.
+- `backend/app/ml/adapters/flood_unet.py` — `UNetFromScratch`, reconstructed from the checkpoint's 118
+  state_dict entries because the training script was not delivered: encoder 16→32→64→128, bottleneck
+  256, `ConvTranspose2d` decoder, `output_layer` 1×1 → 2 classes, every conv `bias=False`, ReLUs at
+  `block` indices 2 and 5 so the stored `block.0/1/3/4` line up. `strict=True` is what proves the
+  reconstruction, and it passes.
+
+### 3. Rationale — why this over the rejected alternative
+
+**EuroSAT is registered but deliberately not routed.** The grounding pipeline's response contract is a
+mask or a box; a scene-level classifier produces neither, so routing it there would mean inventing a
+localisation it cannot do. Same reasoning the crater detector is unrouted (Q-028) and agreed with the
+local-GPU session for flood and burn scars.
+
+**`terratorch` was not installed for the burn-scar model.** This venv is `torch 2.14.0+cu130`;
+terratorch pins tightly and a plain install risks downgrading torch/torchvision under the eight working
+adapters. Trading eight working models for one unverified one is not a call to make unilaterally.
+
+### 4. EuroSAT — verification, and why it closes mandatory requirement #1
+
+`memory.md` §0 lists "RS adaptation evidence (BigEarthNet) — mandatory req #1" as open. EuroSAT closes
+it with a measured score on a held-out split.
+
+Recomputed independently from the delivered per-sample predictions
+(`docs/models/eurosat/evaluation/predictions/y_{true,pred,prob}.npy`, 4050 samples):
+
+| Metric | Delivered | Recomputed |
+|---|---|---|
+| accuracy | 0.9832098765432099 | 0.9832098765 |
+| balanced accuracy | 0.9824222222222222 | 0.9824222222 |
+
+Also verified: `y_prob` rows sum to 1, and `argmax(y_prob) == y_pred` for all 4050 rows. The report is
+internally consistent and was not written by hand.
+
+**The limit, stated plainly:** the EuroSAT images are not in this repository, so this is a recomputation
+of the delivered predictions, **not** a re-measurement from pixels. Tiles are Sentinel-2 at 10 m/px,
+64×64, upsampled to 224. Accuracy on sub-metre aerial photography is **NOT MEASURED**.
+
+### 5. Flood — the preprocessing could not be recovered, and the delivered threshold is not transferable
+
+The delivery fixes the 16-channel order (S1 VV/VH, 13 S2 bands, DEM) but **never states the training-time
+normalisation**; `training_config.json`, `model_metadata.json` and the checkpoint's embedded `config` all
+omit it. On a BatchNorm network a wrong input scale does not crash, it just predicts badly.
+
+Measured on the **official** Sen1Floods11 test split (90 scenes, all four modalities verified present).
+Ayushman's report uses a 67-scene "multimodal eligible" subset whose manifest is on his Windows machine,
+so the sets are not identical. Scripts: `scripts/flood_preproc_recovery/`; per-scene confusion counts at
+both thresholds: `results/evaluations/flood_preproc_recovery_20260920/flood_per_scene.json`.
+
+Sweep 1, seven schemes scored on test:
+
+| scheme | global IoU | per-scene IoU | precision | recall |
+|---|---|---|---|---|
+| raw, no normalisation | **0.5403** | 0.3557 | 0.5695 | 0.9133 |
+| per-scene min-max | 0.4528 | 0.3327 | 0.9742 | 0.4583 |
+| S2 ÷ 10000 | 0.3043 | 0.1228 | 0.4279 | 0.5130 |
+| *delivered (67 scenes)* | *0.6292* | *0.4075* | *0.7873* | *0.7580* |
+
+Sweep 2, ten schemes selected on **validation** (89 scenes) then scored once on test — selecting on test
+and quoting that number would be selection on the test set:
+
+- Best on validation: `s1clip30_s2/10k_dem0` (S1 clipped to [−30, 0] dB → [0, 1], S2 ÷ 10000, **DEM
+  replaced with zeros**), validation IoU 0.6307.
+- That scheme on test: **IoU 0.7034 argmax, 0.7273 at threshold 0.30.**
+
+**Three reasons this is not a reproduction:**
+
+1. The winning scheme needs the **DEM channel zeroed**. A model genuinely trained on DEM would not
+   prefer it removed, so the DEM handling is wrong or unknown — and a 16-channel model fed zeros in
+   channel 15 is not the model that was evaluated.
+2. Under every scheme tried here, argmax and threshold 0.30 land in the same place (0.5403 vs 0.5402 for
+   raw). The delivery reports a genuine difference (0.6292 → 0.6211, precision 0.787 → 0.722, recall
+   0.758 → 0.816). Different threshold behaviour means different probability calibration, so **the
+   delivered 0.30 threshold does not transfer.**
+3. Scoring *above* the report (0.703 vs 0.629) is not good news. On a different scene set under a
+   different preprocessing it only confirms we are not running the delivered configuration.
+
+No subset of the 90 scenes reproduced 0.6292 either — tried no-label-nodata (16 scenes, 0.5407),
+has-flood-GT (83, 0.5443), no-all-zero-S2 (86, 0.5479), s2_min>0 (86, 0.5479).
+
+**Disposition: do not ship as a working capability.** Ask Ayushman for the normalisation constants (or
+the training script) — one message unblocks a real capability, everything else is guesswork. Note also
+that `frontend/src/components/query/QueryBar.tsx:18` already advertises a "Flood extent" chip that
+routes nowhere, which `FRONTEND_POLISH.md:153` had already flagged.
+
+### 6. Burn scars — genuine checkpoint, three problems in the evidence
+
+The checkpoint is real and fully consistent with the delivered `model_config.yaml`: PL 2.6.6,
+`terratorch.tasks.SemanticSegmentationTask`, `EncoderDecoderFactory`, backbone `prithvi_eo_v2_300`
+(ViT-L: 24 blocks, width 1024, `patch_embed` a **Conv3d** `(1024, 6, 1, 16, 16)`, `pos_embed` 197 → 224×224),
+necks `SelectIndices[5,11,17,23]` → `ReshapeTokensToImage` → `LearnedInterpolateToPyramidal`, decoder
+`UNetDecoder` 512/256/128/64, head 1×1 → 2 classes. 355 tensors, ~324.4 M params. Missing from `.venv`:
+`terratorch`, `lightning`, `einops`.
+
+Three things that must be settled before any burn-scar number is claimed:
+
+1. **Two delivered metric files disagree for the same claimed test set.** Both state 264 scenes and
+   68,627,952 valid pixels. `final_test_metrics.json`: precision 0.8246 / recall 0.7601 / F1 0.7910,
+   matrix `[[61248239, 1027123], [1524085, 4828505]]`. `final_test_metrics_threshold_040.json` (the one
+   the manifest embeds): precision 0.7857 / recall 0.8000 / F1 0.7928 / IoU 0.6567, a different matrix.
+   Most likely the first is the argmax/0.5 run mislabelled rather than fabricated — but quote one and
+   say which.
+2. **It was trained from scratch** (`backbone_pretrained: false`). A Prithvi-EO-2.0 300M ViT-L trained
+   from scratch on 432 scenes is **not** evidence of geospatial-foundation-model adaptation — the
+   pretrained backbone is the whole point of Prithvi. Do not describe it as foundation-model transfer.
+3. **The pooled IoU hides per-scene collapse.** In `failure_analysis/lowest_recall_summary.csv`, 15 test
+   scenes have burn IoU ≈ 0 and **7 predict literally zero burn pixels** against 1.2–5.2% ground-truth
+   burn fraction (193, 198, 203, 223, 224, 234, and 261/260/236 below 0.05%).
+
+   > **SUPERSEDED by Q-042 (2026-09-20).** Every count in the paragraph above is wrong: it was read
+   > off `lowest_recall_summary.csv` (15 rows = the 15 *lowest-recall* scenes, not a count of
+   > IoU≈0) instead of the full 264-row `per_scene_metrics_threshold_040.csv`. The correct figures,
+   > recomputed from all 264 rows, are in **Q-042 §1**. The qualitative claim — that the pooled IoU
+   > hides whole scenes the model misses entirely — holds and is if anything understated.
+
+### 7. Blast radius — what breaks if this is wrong
+
+Nothing in the serving path yet: neither new adapter is registered, `configs/models.yaml`,
+`registry.py`, `intent_classifier.py` and `trained_segmenter.py` are untouched, so the 352-passing
+suite and every existing capability are unaffected. The staged checkpoints sit under gitignored
+`checkpoints/`. The risk is **documentary**: if the flood or burn-scar numbers were quoted as ours, the
+flood threshold would be wrong and the burn-scar model would be misdescribed as foundation-model
+adaptation. That is what §5 and §6 exist to prevent.
+
+### 8. Verification — the specific checks that were run
+
+- `sha256sum` on all four checkpoints against the delivered manifests (§1).
+- EuroSAT: `strict=True` load into `torchvision.efficientnet_b0` + a real forward pass to `(1, 10)`;
+  accuracy and balanced accuracy recomputed from the delivered `.npy` predictions and matching to 10 dp;
+  `y_prob` rows sum to 1; `argmax(y_prob) == y_pred` on all 4050 rows.
+- Flood: `strict=True` load of the reconstructed `UNetFromScratch`; 17 preprocessing/threshold
+  evaluations over 90 test and 89 validation scenes on real Sen1Floods11 imagery and hand labels.
+- Burn scars: checkpoint inspected with `mmap=True, weights_only=True` (no 3.6 GB ever resident);
+  `hyper_parameters` cross-checked against the delivered yaml; prefix census of the 355 tensors.
+
+### 9. Defence — answering a challenging reviewer
+
+*"You measured the flood model higher than its own report — why not claim that?"* Because it is not the
+same measurement. Different scene set, and a preprocessing that only wins with the DEM channel zeroed,
+which cannot be what a 16-channel DEM-trained model did. A higher number obtained under a configuration
+the authors did not use is not a better result, it is a different experiment. The delivered threshold
+provably does not transfer, since argmax and 0.30 coincide here and diverge in their report.
+
+*"Then why keep the checkpoint at all?"* The architecture is proven exact by a `strict=True` load of a
+118-entry state_dict, and the hashes match. What is missing is four numbers' worth of normalisation
+metadata, which the author can supply.
+
+*"Is the burn-scar model foundation-model adaptation?"* No. `backbone_pretrained: false` — it is a
+Prithvi-shaped ViT-L trained from scratch on 432 scenes. It is a legitimate segmentation result and an
+illegitimate transfer-learning claim, and the transcript says so before anyone asks.
+
+---
+
+## Q-042 · Correcting Q-041 §6.3, and four further findings in Ayushman's delivered evidence
+
+**Recorded** 2026-09-20, same session as Q-041, before either was committed. **This entry supersedes
+Q-041 §6.3**, which is annotated in place and left standing. Nothing else in Q-041 changes.
+
+The error was caught while writing `docs/models/burnscars.md` from the delivered CSVs, by reading the
+full 264-row `per_scene_metrics_threshold_040.csv` rather than the 15-row
+`failure_analysis/lowest_recall_summary.csv` that Q-041 had used.
+
+### 1. The corrected per-scene failure counts
+
+Q-041 §6.3 made three mistakes at once: it treated the row count of a *lowest-recall* extract as a
+count of IoU≈0 scenes, conflated "predicted no burn pixels" with "got no true positives", and quoted
+a ground-truth range belonging to the wrong group.
+
+| claim | Q-041 §6.3 said | actually (all 264 rows) |
+|---|---|---|
+| scenes at burn IoU exactly 0.0 | "15 … ≈ 0" | **10** |
+| scenes predicting **zero** burn pixels | "7" | **6** — 193, 198, 203, 223, 224, 234 |
+| scenes with **zero true positives** | conflated with the above | **10** — the six above plus 211, 236, 260, 261 |
+| GT burn fraction of the zero-prediction scenes | "1.2–5.2%" | **1.438% – 5.194%** |
+| "261/260/236 below 0.05%" predicted | three scenes | only **260 (0.047%)** and **261 (0.034%)**; **236 is 0.154%**, ~3x that, and 211 is 0.795% |
+
+Verified by recomputation from `docs/models/burnscars/per_scene_metrics_threshold_040.csv`:
+`predicted_burn_pixels == 0` → 6 scenes; `true_positive == 0` → 10 scenes; `burn_iou == 0.0` → 10.
+Distribution of per-scene burn IoU: 11 below 0.01, 23 below 0.05, 30 below 0.10.
+
+**Not delivered, computed here:** mean per-scene burn IoU **0.5634**, median **0.6584**, against the
+pooled **0.6567**. So for burn scars the pooled and per-scene figures happen to agree closely — unlike
+the flood model, where they diverge sharply (0.629 vs 0.407). The correct criticism of the burn-scar
+number is therefore not that the average is inflated, but that **10 of 264 scenes are complete
+misses**, 6 of them predicting no burn at all on scenes that are 1.4–5.2% burned.
+
+### 2. `val/mIoU` 0.8308 is not a burn-scar IoU and must never be quoted as one
+
+The `ModelCheckpoint` callback state inside the checkpoint selected epoch 08 on `val/mIoU = 0.8308`
+(epoch 06 was 0.8276). That is the **2-class mean** IoU, averaged over "Not burned" and "Burn scar",
+and it is dominated by the background class, which is ~88% of pixels. The burn-scar IoU at threshold
+0.40 is **0.7128** on internal validation and **0.6567** on the held-out test set. Anyone quoting
+0.83 as the model's segmentation accuracy would be overstating it by ~0.17 IoU.
+
+### 3. Stronger evidence on which of the two conflicting metric files is the threshold-0.40 run
+
+Q-041 §6.1 recorded the conflict and guessed that `final_test_metrics.json` is a mislabelled
+argmax/0.5 run. Two pieces of evidence now settle it:
+
+- Its **ROC-AUC is byte-identical** to the 0.40 file's (0.9774894441090206). ROC-AUC is
+  threshold-independent, so both files describe the **same model and the same scenes**, differing only
+  in the operating point — which rules out a different evaluation run or a different split.
+- Its precision is higher and recall lower than the 0.40 file (0.8246/0.7601 vs 0.7857/0.8000), which
+  is exactly the direction a **higher** threshold moves them.
+
+Also: `final_test_metrics.json` reports no IoU and no pixel accuracy at all, while
+`final_test_metrics_threshold_040.json` does and is the one `model_manifest.json` embeds. **Quote the
+0.40 file.** Ayushman should still confirm, but the delivery is now self-consistent rather than
+contradictory.
+
+### 4. The delivered burn-scar `model_config.yaml` is a config, not a run log
+
+It disagrees with the manifest in four places, so it must not be cited as a record of what ran:
+`max_epochs: 50` with EarlyStopping patience 15 against the manifest's 10 epochs; `seed_everything: 2`
+against `split_seed: 42`; and the checkpoint's task hparam `lr` is 1e-3 while the yaml optimiser block
+says 1e-4 (the scheduler's `_last_lr` confirms 1e-4 was actually in force). Independent confirmation
+of the split size: `global_step` 3888 = 9 epochs x 432 scenes at batch size 1.
+
+Separately, `failure_analysis/failure_panel_index.csv` has **broken pixel columns** (scene 248 shows
+`valid_pixels = 2`) and disagrees with `lowest_recall_summary.csv`. Do not take numbers from it; use
+`per_scene_metrics_threshold_040.csv`.
+
+### 5. A new flood attack surface: the delivered test IoU exceeds its own validation IoU
+
+The delivered test global flood IoU is **0.6292**, but the same checkpoint's own recorded
+**validation** flood IoU at the same epoch is **0.4358** (`best.pt["metrics"]`, the only place it
+appears — it is in no delivered JSON). Test scoring 0.19 higher than validation is not impossible, but
+it is unexplained by the delivery and is the kind of gap a reviewer will ask about.
+
+The likely explanation is a **reduction mismatch, not a real generalisation gain**: 0.4358 sits right
+next to the test **per-scene mean** of 0.4075, not the test **global** 0.6292 — even though the
+validation metric is named `global_validation_flood_iou`. If the "global" validation metric is in fact
+a per-scene average, the two numbers are not comparable at all. This is recorded as **NOT
+ESTABLISHED**; neither figure should be quoted without naming its reduction.
+
+### 6. Q-041's flood sweep tables were partial, and the gaps are now marked
+
+Q-041 §5 quotes 3 of the 7 sweep-1 rows and 1 of the 10 sweep-2 validation IoUs. The remaining scheme
+*names* are recoverable from `scripts/flood_preproc_recovery/`, but four sweep-1 numbers were never
+written down (`s2/10k+dem/1k`, `s1shift+s2/10k+dem/1k`, `per_scene_z`, `s2/10k+z(s1,dem)`).
+`docs/models/flood.md` lists every scheme and marks those cells `NOT RECORDED` rather than inventing
+them. The seven subset scores in Q-041 were re-derived from
+`results/evaluations/flood_preproc_recovery_20260920/flood_per_scene.json` and **reproduce exactly**
+(0.5403 / 0.5402 / 0.5407 / 0.5443 / 0.5479 / 0.5479), plus one Q-041 omitted: "no nodata AND flood
+GT", 14 scenes, IoU 0.5407.
+
+### 7. EuroSAT held up, with one wording correction
+
+Every EuroSAT number in Q-041 §4 matched the delivered sources. The recomputation is in fact tighter
+than claimed — accuracy and balanced accuracy agree to **16 decimal places**, not 10. One correction:
+Q-041 says the `y_prob` rows "sum to 1"; they sum to 1 **within 2.1e-07** (float32 probabilities
+widened to float64). The claim stands, the wording was loose.
+
+### 8. Why this matters more than the arithmetic
+
+Three of the errors in Q-041 §6.3 all pushed the same way: they made the burn-scar failure sound
+*worse and more specific* than the data supports ("15 scenes", "7 predict zero", a tidy "1.2–5.2%").
+A transcript that overstates a weakness is as bad as one that launders a strength — both mean the
+numbers cannot be trusted, and a reviewer who checks the CSV finds the record wrong. The cause was
+reading a 15-row summary extract instead of the 264-row source. **Rule going forward: quote per-scene
+statistics only from `per_scene_metrics_*.csv`, never from a `*_summary.csv` extract.**

@@ -1,6 +1,11 @@
-"""Construction, config parsing and input validation for the four locally trained adapters.
+"""Construction, config parsing and input validation for the locally trained adapters.
 
 No weights and no imagery: everything here runs with the checkpoints absent.
+
+Covers every locally trained adapter in the registry: the four aerial/planetary models, the water
+and cloud segmenters (registered in Q-035 but never added here), and the two from Q-041 — the
+EuroSAT scene classifier and the flood segmenter, which loads a real checkpoint but deliberately
+never serves a mask. Flood-specific behaviour is in tests/unit/test_flood_segmenter.py.
 """
 
 import numpy as np
@@ -8,26 +13,39 @@ import pytest
 from PIL import Image
 
 from backend.app.config import settings
-from backend.app.exceptions import InvalidInputError, ModelUnavailableError
+from backend.app.exceptions import InferenceError, InvalidInputError, ModelUnavailableError
 from backend.app.ml.adapters import binary_segmenter as binary_module
 from backend.app.ml.adapters import crater_detector as crater_module
 from backend.app.ml.adapters import landcover_segmenter as landcover_module
 from backend.app.ml.adapters.binary_segmenter import (
     BinarySegmenterAdapter,
     BuildingSegmenterAdapter,
+    CloudSegmenterAdapter,
     RoadSegmenterAdapter,
+    WaterSegmenterAdapter,
     to_rgb_array,
 )
 from backend.app.ml.adapters.crater_detector import CraterDetectorAdapter
+from backend.app.ml.adapters.eurosat import EuroSatLandCoverAdapter
+from backend.app.ml.adapters.flood_segmenter import FloodSegmenterAdapter
 from backend.app.ml.adapters.landcover_segmenter import LandCoverSegmenterAdapter
 from backend.app.ml.registry import model_registry
 
 ADAPTERS = {
     "roads_segmenter": RoadSegmenterAdapter,
     "buildings_segmenter": BuildingSegmenterAdapter,
+    "water_segmenter": WaterSegmenterAdapter,
+    "cloud_segmenter": CloudSegmenterAdapter,
     "landcover_segmenter": LandCoverSegmenterAdapter,
     "crater_detector": CraterDetectorAdapter,
+    "eurosat_classifier": EuroSatLandCoverAdapter,
+    "flood_segmenter": FloodSegmenterAdapter,
 }
+
+#: Everything above except the flood segmenter, which needs all 16 S1+S2+DEM bands and rejects a
+#: plain RGB tile by design, and which reports NOT_CONFIGURED instead of raising on a bad request
+#: (project/qna.md Q-041 §5). Its own contract is asserted in tests/unit/test_flood_segmenter.py.
+RGB_INPUT_ADAPTERS = {k: v for k, v in ADAPTERS.items() if k != "flood_segmenter"}
 
 
 @pytest.mark.parametrize("key,cls", ADAPTERS.items())
@@ -57,9 +75,12 @@ def test_config_entry_parses_and_nothing_is_loaded_on_construction(key, cls):
 def test_binary_segmenter_reads_class_name_and_tta_from_config():
     assert RoadSegmenterAdapter().class_name == "road"
     assert BuildingSegmenterAdapter().class_name == "building"
+    assert WaterSegmenterAdapter().class_name == "water"
+    assert CloudSegmenterAdapter().class_name == "cloud"
     # configs/models.yaml leaves TTA off: 4x the latency for +0.012 IoU (project/qna.md Q-032).
-    assert RoadSegmenterAdapter().tta is False
-    assert BuildingSegmenterAdapter().tta is False
+    for cls in (RoadSegmenterAdapter, BuildingSegmenterAdapter, WaterSegmenterAdapter,
+                CloudSegmenterAdapter):
+        assert cls().tta is False
 
 
 def test_binary_segmenter_falls_back_when_no_config_entry_exists():
@@ -84,6 +105,8 @@ def test_segmenters_are_unavailable_without_the_trainer_module(monkeypatch):
     monkeypatch.setattr(landcover_module, "trainer_importable", lambda: False)
     assert RoadSegmenterAdapter().is_available() is False
     assert BuildingSegmenterAdapter().is_available() is False
+    assert WaterSegmenterAdapter().is_available() is False
+    assert CloudSegmenterAdapter().is_available() is False
     assert LandCoverSegmenterAdapter().is_available() is False
 
 
@@ -103,7 +126,7 @@ def test_is_available_is_false_when_the_checkpoint_is_missing(cls, tmp_path):
     assert exc.value.code == "MODEL_CHECKPOINT_MISSING"
 
 
-@pytest.mark.parametrize("cls", ADAPTERS.values())
+@pytest.mark.parametrize("cls", RGB_INPUT_ADAPTERS.values())
 def test_validate_inputs_rejects_a_context_without_an_image(cls):
     adapter = cls()
     with pytest.raises(InvalidInputError):
@@ -117,7 +140,7 @@ def test_validate_inputs_rejects_a_context_without_an_image(cls):
     assert adapter.loaded is False
 
 
-@pytest.mark.parametrize("cls", ADAPTERS.values())
+@pytest.mark.parametrize("cls", RGB_INPUT_ADAPTERS.values())
 def test_predict_without_an_image_raises_before_loading(cls):
     adapter = cls()
     with pytest.raises(InvalidInputError):
@@ -178,3 +201,20 @@ def test_to_rgb_array_accepts_the_shapes_the_backend_passes_around(tmp_path):
 
 def test_landcover_classes_are_empty_until_the_weights_are_loaded():
     assert LandCoverSegmenterAdapter().classes == []
+
+
+def test_eurosat_reads_its_input_size_and_gsd_from_config():
+    """224 px and 10 m/px (Sentinel-2) come from configs/models.yaml, not from a constant."""
+    adapter = EuroSatLandCoverAdapter()
+    assert settings.models["eurosat_classifier"].input_size == 224
+    assert adapter.image_size == 224
+    assert adapter.trained_gsd_m == pytest.approx(10.0)
+    assert settings.models["eurosat_classifier"].task == "classification"
+
+
+def test_eurosat_class_names_are_unknown_until_the_checkpoint_is_loaded():
+    """The label set lives in the checkpoint, so guessing it before loading is refused (Q-041)."""
+    adapter = EuroSatLandCoverAdapter()
+    with pytest.raises(InferenceError):
+        _ = adapter.class_names
+    assert adapter.loaded is False

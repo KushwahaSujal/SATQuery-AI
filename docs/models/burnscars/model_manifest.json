@@ -1,0 +1,56 @@
+{
+  "project": "SatQuery AI",
+  "task": "Burn-scar semantic segmentation",
+  "model": "Prithvi-EO v2 300M",
+  "training_type": "from_scratch",
+  "backbone_pretrained": false,
+  "freeze_backbone": false,
+  "training_epochs": 10,
+  "selected_checkpoint_epoch": 8,
+  "threshold": 0.4,
+  "test_scenes": 264,
+  "test_split": "Original validation split used as held-out test",
+  "internal_validation_split": 108,
+  "training_split": 432,
+  "split_seed": 42,
+  "classes": [
+    "Not burned",
+    "Burn scar"
+  ],
+  "input_bands": [
+    "BLUE",
+    "GREEN",
+    "RED",
+    "NIR_NARROW",
+    "SWIR_1",
+    "SWIR_2"
+  ],
+  "checkpoint_filename": "PrithviEO2_300M_BurnScars_from_scratch_epoch08.ckpt",
+  "checkpoint_sha256": "bb1ce3b5a9901415cbc33076c785aa234b80e06e1dd54ad4f5c2bbcea18a8dc8",
+  "checkpoint_size_bytes": 3891715165,
+  "checkpoint_size_gb": 3.6244,
+  "evaluation_metrics": {
+    "evaluation_type": "held_out_test",
+    "test_scenes": 264,
+    "threshold": 0.4,
+    "valid_pixels": 68627952,
+    "true_negative": 60889458,
+    "true_positive": 5081920,
+    "false_positive": 1385904,
+    "false_negative": 1270670,
+    "precision": 0.785723297356267,
+    "recall": 0.7999760727514289,
+    "f1_score": 0.7927856307916421,
+    "burn_scar_iou": 0.6567065891632144,
+    "pixel_accuracy": 0.9612902043179141,
+    "roc_auc": 0.9774894441090206
+  },
+  "important_notes": [
+    "The checkpoint was trained from scratch.",
+    "No pretrained BurnScars checkpoint was used for model initialization.",
+    "Threshold 0.40 was selected using internal validation.",
+    "The 264-scene test split was not used for threshold selection.",
+    "The dataset does not provide an official independent test split.",
+    "Confidence values should not be reported unless calculated from real model outputs."
+  ]
+}

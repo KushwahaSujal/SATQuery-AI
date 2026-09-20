@@ -6,6 +6,8 @@ from backend.app.ml.adapters.sam2 import SAM2Adapter
 from backend.app.ml.adapters.changeformer import ChangeFormerAdapter
 from backend.app.ml.adapters.cdvqa import CDVQAAdapter
 from backend.app.ml.adapters.dofa import DOFAAdapter
+from backend.app.ml.adapters.eurosat import EuroSatLandCoverAdapter
+from backend.app.ml.adapters.flood_segmenter import FloodSegmenterAdapter
 from backend.app.ml.adapters.fusion import OpticalSARFusionModel
 from backend.app.ml.adapters.general_rs_vlm import GeneralRSVLMAdapter
 from backend.app.ml.adapters.scene_vlm import SceneVLMAdapter
@@ -59,6 +61,14 @@ class ModelRegistry:
         "isprs_potsdam_segmenter": IsprsPotsdamSegmenterAdapter,
         "isprs_vaihingen_segmenter": IsprsVaihingenSegmenterAdapter,
         "crater_detector": CraterDetectorAdapter,
+        # Same spirit, different reasons (Q-041). EuroSAT is scene-level: one label for the whole
+        # tile, no mask and no box, so it cannot satisfy the grounding pipeline's response contract.
+        # The flood segmenter loads its real checkpoint but NEVER serves a mask — the training-time
+        # normalisation was never documented and no candidate preprocessing reproduced the delivered
+        # IoU 0.6292, so predict() reports NOT_CONFIGURED; it also needs all 16 S1+S2+DEM bands,
+        # which the pipeline cannot supply. See docs/models/eurosat/ and docs/models/flood/.
+        "eurosat_classifier": EuroSatLandCoverAdapter,
+        "flood_segmenter": FloodSegmenterAdapter,
     }
 
     MODEL_METADATA: Dict[str, Dict[str, Any]] = {
@@ -214,6 +224,24 @@ class ModelRegistry:
             "input_requirements": {"image": "IRRG (infrared/red/green) (H, W, 3), NOT RGB, trained at 0.1 m GSD"},
             "output_schema": {"masks": "list[{binary_mask, label, area_pct}]", "class_map": "ndarray (H, W) uint8"},
             "device_requirements": {"min_vram_gb": 2.5, "preferred": "cuda"},
+        },
+        "eurosat_classifier": {
+            "family": "EfficientNet-B0 (torchvision)",
+            "source": "checkpoints/eurosat_efficientnet_b0/best_model.pt",
+            "license": "MIT (torchvision code); EuroSAT dataset terms (Sentinel-2, CC-BY 4.0)",
+            "capabilities": ["land_cover_classification", "scene_classification"],
+            "input_requirements": {"image": "RGB (H, W, 3), trained on Sentinel-2 at 10 m GSD, 64x64 upsampled to 224"},
+            "output_schema": {"label": "str", "probabilities": "list[float] over 10 classes", "top_k": "list[{label, probability}]"},
+            "device_requirements": {"min_vram_gb": 1.0, "preferred": "cuda"},
+        },
+        "flood_segmenter": {
+            "family": "U-Net from scratch, 16-channel input (2-class head)",
+            "source": "checkpoints/flood_seg/best.pt",
+            "license": "MIT (code); Sen1Floods11 dataset terms (CC BY 4.0)",
+            "capabilities": ["flood_segmentation"],
+            "input_requirements": {"image": "16 co-registered channels (C, H, W): S1 VV, S1 VH, Sentinel-2 L1C B1-B12 incl. B8A (13 bands), Copernicus DEM; Sentinel-2 at 10 m GSD. RGB cannot satisfy this model."},
+            "output_schema": {"status": "NOT_CONFIGURED — no mask is returned; training-time normalisation unknown, delivered IoU 0.6292 not reproduced (Q-041)"},
+            "device_requirements": {"min_vram_gb": 2.0, "preferred": "cuda"},
         },
         "crater_detector": {
             "family": "YOLO11s (ultralytics)",

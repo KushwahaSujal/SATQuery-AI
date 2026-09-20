@@ -1,0 +1,23 @@
+{
+  "project_root": "C:\\Users\\user\\Desktop\\Satq_Prithvi",
+  "data_root": "C:\\Users\\user\\Desktop\\Satq_Prithvi\\datasets\\sen1floods11\\extracted\\sen1floods11_v1.1",
+  "train_manifest": "C:\\Users\\user\\Desktop\\Satq_Prithvi\\results\\floods\\splits\\train_multimodal_eligible_scenes.csv",
+  "validation_manifest": "C:\\Users\\user\\Desktop\\Satq_Prithvi\\results\\floods\\splits\\validation_multimodal_eligible_scenes.csv",
+  "test_manifest": "C:\\Users\\user\\Desktop\\Satq_Prithvi\\results\\floods\\splits\\test_multimodal_eligible_scenes.csv",
+  "checkpoint_root": "C:\\Users\\user\\Desktop\\Satq_Prithvi\\checkpoints\\flood_segmentation",
+  "result_root": "C:\\Users\\user\\Desktop\\Satq_Prithvi\\results\\floods\\training",
+  "device": "cuda",
+  "num_classes": 2,
+  "ignore_index": 255,
+  "input_modalities": [
+    "s1",
+    "s2",
+    "dem"
+  ],
+  "s1_channels": 2,
+  "s2_channels": 13,
+  "dem_channels": 1,
+  "total_input_channels": 16,
+  "image_height": 512,
+  "image_width": 512
+}

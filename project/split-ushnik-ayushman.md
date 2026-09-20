@@ -90,9 +90,13 @@ are guesses, not measurements.
 1. **Rule-based Optical–SAR fusion** (`pre-demo.md` §1.1, Option A, 1–2 days): NDVI/NDWI from optical
    plus VH/VV from SAR → water / urban / bare soil / vegetation, with a labelled evaluation. Mandatory
    requirement #5.
-2. **Remote-sensing adaptation evidence** (`pre-demo.md` §1.2, mandatory requirement #1): make
-   `bigearthnet` produce real predictions with a measured score on its test split. Ushnik wires it into a
-   capability and DAG branch once the adapter's `predict` works.
+2. ~~**Remote-sensing adaptation evidence** (`pre-demo.md` §1.2, mandatory requirement #1): make
+   `bigearthnet` produce real predictions with a measured score on its test split.~~ **CLOSED
+   2026-09-20 by EuroSAT instead of BigEarthNet** — Ayushman delivered an EfficientNet-B0 EuroSAT
+   land-cover classifier with a measured held-out score (accuracy 0.9832 over 4050 samples,
+   independently recomputed from his own per-sample predictions and matching to 10 dp). Registered as
+   `eurosat_classifier`; scene-level only, so deliberately not routed. See `qna.md` Q-041 and
+   `docs/models/eurosat.md`. BigEarthNet remains unwired, but the requirement no longer depends on it.
 3. **Salt-and-pepper removal** — switching median, stills and video, gated by measured impulse
    density. Self-contained in `restoration/stages.py`; build it against Ushnik's schemas.
 4. **Learned super-resolution** (post-demo, as agreed): pick Real-ESRGAN or SwinIR, verify the weights
@@ -100,6 +104,21 @@ are guesses, not measurements.
    near the pipeline. It stays disabled until then.
 5. **ChangeFormer outside LEVIR-CD** — Sentinel-2 band order into the model and a measured score on
    one labelled non-LEVIR pair. Until then the Q-011 caveat stands.
+6. **Flood model: send the training preprocessing** (added 2026-09-20, blocking). The delivered
+   checkpoint loads `strict=True` but its training-time normalisation was never documented, and 17
+   recovered candidates all failed to reproduce the reported IoU 0.6292 — so the model is registered
+   as `NOT_CONFIGURED` and reports nothing. Needed: per-channel normalisation, S1 dB handling, S2
+   scaling, DEM handling, the -1 → `ignore_index` 255 mapping, and ideally
+   `test_multimodal_eligible_scenes.csv` (his report uses 67 scenes; the official split is 90). The
+   training script would settle all of it. Full request:
+   [`handoff/request-to-ayushman-2026-09-20.md`](handoff/request-to-ayushman-2026-09-20.md), measured
+   basis `qna.md` Q-041 §5.
+7. **Burn scars: two evidence fixes and one decision** (added 2026-09-20). (a) `final_test_metrics.json`
+   and `final_test_metrics_threshold_040.json` disagree for the same 264-scene test set — confirm which
+   is the threshold-0.40 run. (b) The model was trained from scratch (`backbone_pretrained: false`), so
+   it must never be described as foundation-model adaptation; confirm whether that was deliberate, and
+   whether a pretrained-backbone run is possible. (c) Send the `terratorch`/`lightning`/`torch` versions
+   he trained with — the checkpoint cannot be loaded here at all without them. `qna.md` Q-041 §6.
 
 ---
 
