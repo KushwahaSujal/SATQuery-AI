@@ -5,6 +5,12 @@ import Link from "next/link";
 import { useMemo, useRef, useState } from "react";
 import { useJob, useAnalysisResult, useLayers, useVideoResult } from "@/hooks/useSystem";
 import { api } from "@/lib/api";
+import {
+  describeJobStatus,
+  jobStatusDotClass,
+  jobStatusLabel,
+  jobStatusPillClass,
+} from "@/lib/statusMap";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { TopBar } from "@/components/layout/TopBar";
 import { BlurFade } from "@/components/ui/blur-fade";
@@ -45,45 +51,6 @@ import {
   Target,
 } from "lucide-react";
 import type { JobStatus } from "@/lib/types";
-
-const STATUS_LABEL: Record<JobStatus, string> = {
-  CREATED: "Created",
-  UPLOADED: "Uploaded",
-  QUEUED: "Queued",
-  PENDING: "Pending",
-  VALIDATING: "Validating",
-  PLANNING: "Planning",
-  RUNNING: "Running",
-  GENERATING_EVIDENCE: "Generating evidence",
-  COMPLETED: "Completed",
-  FAILED: "Failed",
-};
-
-const STATUS_DOT: Record<JobStatus, string> = {
-  CREATED: "bg-[var(--text-4)]",
-  UPLOADED: "bg-[var(--text-4)]",
-  QUEUED: "bg-[var(--text-4)]",
-  PENDING: "bg-[var(--text-4)]",
-  VALIDATING: "bg-[var(--cyan)]",
-  PLANNING: "bg-[var(--cyan)]",
-  RUNNING: "bg-[var(--cyan)] animate-pulse-dot",
-  GENERATING_EVIDENCE: "bg-[var(--cyan)] animate-pulse-dot",
-  COMPLETED: "bg-[var(--green)]",
-  FAILED: "bg-[var(--error)]",
-};
-
-const STATUS_PILL: Record<JobStatus, string> = {
-  CREATED: "status-pill",
-  UPLOADED: "status-pill",
-  QUEUED: "status-pill",
-  PENDING: "status-pill",
-  VALIDATING: "status-pill-cyan",
-  PLANNING: "status-pill-cyan",
-  RUNNING: "status-pill-cyan",
-  GENERATING_EVIDENCE: "status-pill-cyan",
-  COMPLETED: "status-pill-green",
-  FAILED: "status-pill-red",
-};
 
 function formatTime(ms?: number) {
   if (!ms) return "—";
@@ -171,9 +138,9 @@ export default function AnalysisJobPage() {
               </div>
 
               <div className="flex items-center gap-2 shrink-0">
-                <span className={`status-dot ${STATUS_DOT[status]}`} />
-                <span className={`${STATUS_PILL[status]} text-[10px]`}>
-                  {STATUS_LABEL[status]}
+                <span className={`status-dot ${jobStatusDotClass(status)} ${describeJobStatus(status).active ? "animate-pulse-dot" : ""}`} />
+                <span className={`status-pill ${jobStatusPillClass(status)} text-[10px]`}>
+                  {jobStatusLabel(status)}
                 </span>
                 {data?.confidence != null && (
                   <Badge variant="success" className="font-mono-data">
@@ -284,7 +251,7 @@ export default function AnalysisJobPage() {
                           <div className="absolute inset-0 rounded-full border-2 border-transparent border-t-[var(--cyan)] animate-spin-smooth" />
                           <Sparkles className="absolute inset-0 m-auto w-6 h-6 text-[var(--cyan)]" />
                         </div>
-                        <p className="text-sm font-semibold text-[var(--heading)]">{STATUS_LABEL[status]}</p>
+                        <p className="text-sm font-semibold text-[var(--heading)]">{jobStatusLabel(status)}</p>
                         <p className="text-xs text-[var(--text-3)] mt-1 max-w-xs">
                           Running geospatial pipeline · usually takes 20–60 seconds
                         </p>
@@ -370,7 +337,7 @@ export default function AnalysisJobPage() {
                           <div className="absolute inset-0 rounded-full border-2 border-[var(--border)]" />
                           <Loader2 className="absolute inset-0 m-auto w-6 h-6 text-[var(--text-3)] animate-spin" />
                         </div>
-                        <p className="text-sm font-semibold text-[var(--heading)]">{STATUS_LABEL[status]}</p>
+                        <p className="text-sm font-semibold text-[var(--heading)]">{jobStatusLabel(status)}</p>
                         <p className="text-xs text-[var(--text-3)] mt-1">
                           Waiting for pipeline to start
                         </p>

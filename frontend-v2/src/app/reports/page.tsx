@@ -5,6 +5,13 @@ import Link from "next/link";
 import { motion } from "framer-motion";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
+import {
+  describeJobStatus,
+  isJobComplete,
+  jobStatusDotClasses,
+  jobStatusLabel,
+  jobStatusPillClasses,
+} from "@/lib/statusMap";
 import { useJobs } from "@/hooks/useJobs";
 import type { AnalysisResult } from "@/lib/types";
 import Sidebar from "@/components/layout/Sidebar";
@@ -26,13 +33,6 @@ const TASK_LABELS: Record<string, { label: string; type: string }> = {
   optical_sar_analysis: { label: "Optical + SAR", type: "Optical + SAR" },
 };
 
-const STATUS_MAP: Record<string, { label: string; color: string }> = {
-  COMPLETED: { label: "Completed", color: "emerald" },
-  RUNNING: { label: "In Progress", color: "amber" },
-  PENDING: { label: "In Progress", color: "amber" },
-  QUEUED: { label: "In Progress", color: "amber" },
-  FAILED: { label: "Failed", color: "rose" },
-};
 
 function formatDate(iso: string): { date: string; time: string } {
   try {
@@ -187,7 +187,7 @@ export default function ReportsPage() {
                     filteredReports.map((report) => {
                       const isSelected = activeId === report.id;
                       const taskInfo = TASK_LABELS[report.task] || { label: report.task, type: "Analysis" };
-                      const status = STATUS_MAP[report.status] || STATUS_MAP.COMPLETED;
+                      const status = describeJobStatus(report.status);
                       const { date, time } = formatDate(report.created_at);
                       return (
                         <motion.tr
@@ -242,21 +242,14 @@ export default function ReportsPage() {
                             <div className="text-[10px] text-[var(--text-3)]">{time}</div>
                           </td>
                           <td className="py-3 px-3 whitespace-nowrap">
-                            {status.color === "emerald" && (
-                              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-medium bg-[var(--green-bg)]/60 text-emerald-400 border border-emerald-800/40">
-                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" /> {status.label}
-                              </span>
-                            )}
-                            {status.color === "amber" && (
-                              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-medium bg-amber-950/60 text-amber-400 border border-amber-800/40">
-                                <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-ping" /> {status.label}
-                              </span>
-                            )}
-                            {status.color === "rose" && (
-                              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-medium bg-rose-950/60 text-rose-400 border border-rose-800/40">
-                                <span className="w-1.5 h-1.5 rounded-full bg-[var(--error)]" /> {status.label}
-                              </span>
-                            )}
+                            <span
+                              className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-medium border ${jobStatusPillClasses(report.status)}`}
+                            >
+                              <span
+                                className={`w-1.5 h-1.5 rounded-full ${jobStatusDotClasses(report.status)} ${status.active ? "animate-ping" : ""}`}
+                              />
+                              {status.label}
+                            </span>
                           </td>
                           <td className="py-3 px-4 text-right whitespace-nowrap">
                             <div className="flex items-center justify-end gap-1 text-[var(--text-3)]">
@@ -308,11 +301,17 @@ export default function ReportsPage() {
               <span>Report Details</span>
             </span>
             {result && (
-              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-medium bg-[var(--green-bg)]/70 text-emerald-400 border border-emerald-800/40">
-                <svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
-                  <polyline points="20 6 9 17 4 12" />
-                </svg>
-                {STATUS_MAP[result.status]?.label || "Completed"}
+              <span
+                className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-medium border ${jobStatusPillClasses(result.status)}`}
+              >
+                {isJobComplete(result.status) ? (
+                  <svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
+                    <polyline points="20 6 9 17 4 12" />
+                  </svg>
+                ) : (
+                  <span className={`w-1.5 h-1.5 rounded-full ${jobStatusDotClasses(result.status)}`} />
+                )}
+                {jobStatusLabel(result.status)}
               </span>
             )}
           </div>

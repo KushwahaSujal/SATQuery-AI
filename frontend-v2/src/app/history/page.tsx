@@ -5,6 +5,7 @@ import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
+import { describeJobStatus, jobStatusDotClasses, jobStatusPillClasses } from "@/lib/statusMap";
 import { useJobs } from "@/hooks/useJobs";
 import { clearLocalJobs } from "@/lib/localJobs";
 import type { AnalysisResult } from "@/lib/types";
@@ -28,16 +29,6 @@ const TASK_LABELS: Record<string, { label: string; category: string }> = {
   optical_sar_analysis: { label: "Optical + SAR", category: "Optical + SAR" },
 };
 
-const STATUS_MAP: Record<string, { label: string; color: string }> = {
-  COMPLETED: { label: "Completed", color: "emerald" },
-  RUNNING: { label: "Processing", color: "amber" },
-  PENDING: { label: "Processing", color: "amber" },
-  QUEUED: { label: "Processing", color: "amber" },
-  VALIDATING: { label: "Processing", color: "amber" },
-  PLANNING: { label: "Processing", color: "amber" },
-  GENERATING_EVIDENCE: { label: "Processing", color: "amber" },
-  FAILED: { label: "Failed", color: "rose" },
-};
 
 function formatTimestamp(iso: string): string {
   try {
@@ -138,8 +129,9 @@ export default function HistoryPage() {
   };
 
   const displayConfidence = result?.confidence != null ? Math.round(result.confidence * 100) : null;
-  const displayStatus = result?.status || jobs.find((j) => j.id === activeId)?.status || "COMPLETED";
-  const statusInfo = STATUS_MAP[displayStatus] || STATUS_MAP.COMPLETED;
+  // No default status: an unknown state must not be reported as a finished one.
+  const displayStatus = result?.status || jobs.find((j) => j.id === activeId)?.status;
+  const statusInfo = describeJobStatus(displayStatus);
 
   return (
     <motion.div
@@ -352,7 +344,7 @@ export default function HistoryPage() {
                 const isSelected = activeId === item.id;
                 const isChecked = !!selectedChecks[item.id];
                 const taskInfo = TASK_LABELS[item.task] || { label: item.task, category: "Single Image" };
-                const status = STATUS_MAP[item.status] || STATUS_MAP.COMPLETED;
+                const status = describeJobStatus(item.status);
                 return (
                   <motion.div key={item.id} variants={rowVariant}>
                     <SpotlightCard
@@ -427,14 +419,12 @@ export default function HistoryPage() {
                       <div className="flex items-center gap-5 shrink-0 pl-4">
                         <div className="flex items-center gap-3">
                           <div className="flex flex-col items-end">
-                            <span className={`inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-full ${
-                              status.color === "emerald" ? "text-emerald-400 bg-[var(--green-bg)]/40 border border-emerald-500/30" :
-                              status.color === "amber" ? "text-amber-400 bg-amber-950/40 border border-amber-500/30" :
-                              "text-rose-400 bg-rose-950/40 border border-rose-500/30"
-                            }`}>
-                              {status.color === "amber" && <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-ping" />}
-                              {status.color === "emerald" && <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />}
-                              {status.color === "rose" && <span className="w-1.5 h-1.5 rounded-full bg-rose-400" />}
+                            <span
+                              className={`inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-full border ${jobStatusPillClasses(item.status)}`}
+                            >
+                              <span
+                                className={`w-1.5 h-1.5 rounded-full ${jobStatusDotClasses(item.status)} ${status.active ? "animate-ping" : ""}`}
+                              />
                               {status.label}
                             </span>
                           </div>
@@ -471,12 +461,12 @@ export default function HistoryPage() {
                 </svg>
                 <span>Analysis Details</span>
               </span>
-              <span className={`inline-flex items-center gap-1 text-[10px] font-medium px-2.5 py-0.5 rounded-full ${
-                statusInfo.color === "emerald" ? "text-emerald-400 bg-[var(--green-bg)]/50 border border-emerald-500/30" :
-                statusInfo.color === "amber" ? "text-amber-400 bg-amber-950/50 border border-amber-500/30" :
-                "text-rose-400 bg-rose-950/50 border border-rose-500/30"
-              }`}>
-                {statusInfo.color === "emerald" && <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />}
+              <span
+                className={`inline-flex items-center gap-1 text-[10px] font-medium px-2.5 py-0.5 rounded-full border ${jobStatusPillClasses(displayStatus)}`}
+              >
+                <span
+                  className={`w-1.5 h-1.5 rounded-full ${jobStatusDotClasses(displayStatus)} ${statusInfo.active ? "animate-ping" : ""}`}
+                />
                 {statusInfo.label}
               </span>
             </div>
