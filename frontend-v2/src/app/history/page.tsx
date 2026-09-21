@@ -132,10 +132,12 @@ export default function HistoryPage() {
     >
       <TopBar showBrand={true} searchPlaceholder="Search your analyses, locations, or queries..." onSearch={(q) => setSearchQuery(q)} />
 
-      <div className="flex-1 flex overflow-hidden">
+      {/* See reports/page.tsx: stacks below lg so the 380px detail panel does not
+          swallow a phone-width row. */}
+      <div className="flex-1 flex flex-col lg:flex-row min-h-0 overflow-hidden">
         <Sidebar hideBrand={true} activeItem="history" className="h-full" />
 
-        <main className="flex-1 flex flex-col min-w-0 bg-[var(--canvas)] overflow-hidden">
+        <main className="flex-1 flex flex-col min-h-0 min-w-0 bg-[var(--canvas)] overflow-hidden">
           <div className="p-6 pb-3 border-b border-[var(--border)] shrink-0">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
               <div>
@@ -442,7 +444,7 @@ export default function HistoryPage() {
         </main>
 
         {/* Right Details Drawer */}
-        <aside className="w-[380px] border-l border-[var(--border)] bg-[var(--surface)] flex flex-col justify-between overflow-y-auto shrink-0 select-none">
+        <aside className="w-full lg:w-[380px] max-h-[60vh] lg:max-h-none border-t lg:border-t-0 lg:border-l border-[var(--border)] bg-[var(--surface)] flex flex-col justify-between overflow-y-auto shrink-0 select-none">
           <div className="p-4 space-y-4">
             <div className="flex items-center justify-between pb-2 border-b border-[var(--border)]">
               <span className="flex items-center gap-1.5 text-xs text-[var(--text-2)] font-medium">

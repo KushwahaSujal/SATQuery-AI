@@ -7,6 +7,7 @@ import { motion } from "framer-motion";
 import { api } from "@/lib/api";
 import { useJobs } from "@/hooks/useJobs";
 import { useAnalysisStore } from "@/stores/useAnalysisStore";
+import { useMobileNav } from "@/components/layout/MobileNavContext";
 
 interface SidebarProps {
   hideBrand?: boolean;
@@ -63,6 +64,14 @@ const navItems = [
       <path d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" strokeLinecap="round" strokeLinejoin="round" />
     ),
   },
+  {
+    key: "history",
+    href: "/history",
+    label: "History",
+    icon: (
+      <path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" strokeLinecap="round" strokeLinejoin="round" />
+    ),
+  },
 ];
 
 const resourceItems = [
@@ -72,6 +81,22 @@ const resourceItems = [
     label: "Documentation",
     icon: (
       <path d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" strokeLinecap="round" strokeLinejoin="round" />
+    ),
+  },
+  {
+    key: "models",
+    href: "/models",
+    label: "Models",
+    icon: (
+      <path d="M4 7v10l8 4 8-4V7l-8-4-8 4zm8 4l8-4m-8 4L4 7m8 4v10" strokeLinecap="round" strokeLinejoin="round" />
+    ),
+  },
+  {
+    key: "system",
+    href: "/system",
+    label: "System",
+    icon: (
+      <path d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z" strokeLinecap="round" strokeLinejoin="round" />
     ),
   },
 ];
@@ -99,20 +124,52 @@ export default function Sidebar({ hideBrand = false, activeItem, className = "" 
       time: timeAgo((j.created_at as string) || new Date().toISOString()),
     }));
 
+  const { isOpen, close } = useMobileNav();
+
   const current = activeItem || (
     pathname === "/" ? "home" :
     pathname === "/analysis" ? "analysis" :
     pathname.startsWith("/history") ? "history" :
     pathname.startsWith("/datasets") ? "datasets" :
     pathname.startsWith("/reports") ? "reports" :
-    pathname.startsWith("/documentation") ? "documentation" : ""
+    pathname.startsWith("/documentation") ? "documentation" :
+    pathname.startsWith("/models") ? "models" :
+    pathname.startsWith("/system") ? "system" :
+    pathname.startsWith("/visual-analytics") ? "history" :
+    pathname.startsWith("/video") ? "history" : ""
   );
 
   return (
-    <aside
-      className={`h-full min-h-0 w-60 min-w-[15rem] max-w-[15rem] bg-[var(--sidebar-bg)] border-r border-[var(--sidebar-border)] flex flex-col justify-between py-4 px-3 shrink-0 z-20 overflow-y-auto select-none ${className}`}
-      data-purpose="sidebar"
-    >
+    <>
+      {/* Scrim, mobile only. The drawer sits over the content at small widths because
+          the sidebar used to be a hard 15rem, which ate ~60% of a 390px viewport and
+          clipped the body copy of every page. */}
+      {isOpen && (
+        <div
+          className="fixed inset-0 z-30 bg-[var(--scrim)] md:hidden"
+          onClick={close}
+          aria-hidden="true"
+        />
+      )}
+      <aside
+        id="app-sidebar"
+        className={`fixed inset-y-0 left-0 z-40 w-[17rem] max-w-[85vw] transform transition-transform duration-200 ease-out md:static md:z-20 md:w-60 md:min-w-[15rem] md:max-w-[15rem] md:translate-x-0 ${
+          isOpen ? "translate-x-0" : "-translate-x-full"
+        } h-full min-h-0 bg-[var(--sidebar-bg)] border-r border-[var(--sidebar-border)] flex flex-col justify-between py-4 px-3 shrink-0 overflow-y-auto select-none ${className}`}
+        data-purpose="sidebar"
+        aria-hidden={isOpen ? undefined : "true"}
+      >
+        {/* Close control, mobile only */}
+        <button
+          type="button"
+          onClick={close}
+          aria-label="Close navigation"
+          className="md:hidden absolute top-3 right-3 p-1.5 rounded-lg text-[var(--text-3)] hover:text-[var(--heading)] hover:bg-[var(--surface-hover)] transition-colors"
+        >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+            <path d="M6 18L18 6M6 6l12 12" strokeLinecap="round" />
+          </svg>
+        </button>
       <div>
         {/* Brand */}
         {!hideBrand && (
@@ -323,6 +380,7 @@ export default function Sidebar({ hideBrand = false, activeItem, className = "" 
         </div>
       </motion.div>
     </aside>
+    </>
   );
 }
 

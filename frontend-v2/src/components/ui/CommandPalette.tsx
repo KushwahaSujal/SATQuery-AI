@@ -27,33 +27,64 @@ export default function CommandPalette() {
     setQuery("");
   };
 
+  // Routes this app actually has. The original list was written against the old
+  // frontend and pointed at /jobs, which does not exist in this app -- v2 splits that
+  // into /history and /reports.
   const allItems: CommandItem[] = [
     {
-      id: "cmd-center",
+      id: "home",
       group: "Navigation",
-      label: "Command Center",
-      description: "Upload data and run queries",
+      label: "Home",
+      description: "Overview and recent analyses",
       action: () => navigate("/"),
     },
     {
-      id: "jobs",
+      id: "analysis",
       group: "Navigation",
-      label: "Jobs",
-      description: "Analysis execution history",
-      action: () => navigate("/jobs"),
+      label: "New Analysis",
+      description: "Upload imagery or video and run a query",
+      action: () => navigate("/analysis"),
+    },
+    {
+      id: "history",
+      group: "Navigation",
+      label: "History",
+      description: "Every analysis run, with execution traces",
+      action: () => navigate("/history"),
+    },
+    {
+      id: "reports",
+      group: "Navigation",
+      label: "Reports",
+      description: "Completed analyses and downloads",
+      action: () => navigate("/reports"),
+    },
+    {
+      id: "datasets",
+      group: "Navigation",
+      label: "Sample Data",
+      description: "Demo imagery and video bundled with the repo",
+      action: () => navigate("/datasets"),
+    },
+    {
+      id: "documentation",
+      group: "Navigation",
+      label: "Documentation",
+      description: "Repository docs, rendered live",
+      action: () => navigate("/documentation"),
     },
     {
       id: "models",
-      group: "Navigation",
-      label: "Model Observatory",
-      description: "Model registry and lifecycle",
+      group: "Diagnostics",
+      label: "Model Registry",
+      description: "Model lifecycle, checkpoints and refusal reasons",
       action: () => navigate("/models"),
     },
     {
       id: "system",
-      group: "Navigation",
+      group: "Diagnostics",
       label: "System Diagnostics",
-      description: "API, database, storage health",
+      description: "API reachability, database and device",
       action: () => navigate("/system"),
     },
   ];

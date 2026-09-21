@@ -85,10 +85,12 @@ export default function ReportsPage() {
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.35 }} className="bg-[var(--canvas)] text-[var(--text)] antialiased font-sans h-screen overflow-hidden flex flex-col selection:bg-cyan-500 selection:text-[var(--canvas)]">
       <TopBar showBrand={true} searchPlaceholder="Search reports, locations, or keywords..." onSearch={(q) => setSearchQuery(q)} />
 
-      <div className="flex flex-1 overflow-hidden">
+      {/* Stacks below lg: the detail panel is a hard w-96 shrink-0 flex sibling, so on a
+          390px viewport it claimed the entire row and collapsed <main> to its padding. */}
+      <div className="flex flex-col lg:flex-row flex-1 min-h-0 overflow-hidden">
         <Sidebar hideBrand={true} activeItem="reports" className="h-full" />
 
-        <main className="flex-1 overflow-y-auto p-6 space-y-5 bg-[var(--canvas)]">
+        <main className="flex-1 min-h-0 min-w-0 overflow-y-auto p-6 space-y-5 bg-[var(--canvas)]">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div className="flex items-start gap-3.5">
               <div className="relative w-10 h-10 rounded-xl bg-[var(--cyan-glow)] border border-[var(--cyan)]/30 flex items-center justify-center text-[var(--cyan)] mt-0.5 shadow-[0_0_15px_rgba(6,182,212,0.15)] overflow-hidden">
@@ -282,7 +284,7 @@ export default function ReportsPage() {
         </main>
 
         {/* Right Details Drawer */}
-        <aside className="w-96 shrink-0 border-l border-[var(--border)] bg-[var(--surface)] overflow-y-auto p-5 flex flex-col space-y-5 select-none">
+        <aside className="w-full lg:w-96 shrink-0 max-h-[60vh] lg:max-h-none border-t lg:border-t-0 lg:border-l border-[var(--border)] bg-[var(--surface)] overflow-y-auto p-5 flex flex-col space-y-5 select-none">
           <div className="flex items-center justify-between">
             <span className="flex items-center gap-1.5 text-xs text-[var(--text-3)] font-medium">
               <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
@@ -472,33 +474,6 @@ export default function ReportsPage() {
               </div>
             </div>
           )}
-
-          {/* Export Formats */}
-          {/*{result && activeId && (*/}
-          {/*  <div>*/}
-          {/*    <h3 className="text-[11px] font-semibold text-[var(--text-2)] uppercase tracking-wider mb-2">Export Formats</h3>*/}
-          {/*    <div className="space-y-1.5">*/}
-          {/*      {(["png", "geotiff", "geojson"] as const).map((fmt) => (*/}
-          {/*        <a*/}
-          {/*          key={fmt}*/}
-          {/*          href={result.visualizations?.[0] ? api.exportUrl(activeId, (result.visualizations[0] as Record<string, unknown>).layer_id as string || "true_color", fmt) : "#"}*/}
-          {/*          className="flex items-center justify-between p-2 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] hover:border-[var(--border-strong)] transition-colors"*/}
-          {/*        >*/}
-          {/*          <div className="flex items-center gap-2">*/}
-          {/*            <svg className="w-4 h-4 text-[var(--cyan)] shrink-0" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">*/}
-          {/*              <rect height="18" rx="2" ry="2" width="18" x="3" y="3" />*/}
-          {/*              <circle cx="8.5" cy="8.5" r="1.5" /><polyline points="21 15 16 10 5 21" />*/}
-          {/*            </svg>*/}
-          {/*            <span className="text-xs text-[var(--text-2)] font-mono">.{fmt}</span>*/}
-          {/*          </div>*/}
-          {/*          <svg className="w-3.5 h-3.5 text-[var(--text-4)]" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">*/}
-          {/*            <path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" strokeLinecap="round" strokeLinejoin="round" />*/}
-          {/*          </svg>*/}
-          {/*        </a>*/}
-          {/*      ))}*/}
-          {/*    </div>*/}
-          {/*  </div>*/}
-          {/*)}*/}
         </aside>
       </div>
     </motion.div>
