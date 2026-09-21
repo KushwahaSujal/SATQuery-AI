@@ -4564,3 +4564,34 @@ a refactor, and §4.5's proposed `flex-wrap` fix addresses the wrong mechanism (
 `overflow-x-auto`; it cannot shrink because of default `min-width:auto`, so `min-w-0` is the fix).
 
 "Is anything shipped?" No. One import commit, one audit document. The P0 list is queued, not applied.
+
+### 7. Addendum — verified against a running backend, and §6 re-checked
+
+Recorded same day, after §5 above was written. The backend was started
+(`uvicorn backend.app.main:app --port 8000`, `.venv`) and the two claims that §5 marked "route existence
+proven, response shape not" were checked live:
+
+- `GET /api/health` → `"status":"ok"`, `"device":"cuda"`, `"database_connected":true`, **20** models all
+  `true`. Real jobs in the DB (`GET /api/jobs` returns completed `single_image_grounding` and
+  `bi_temporal_change` jobs from 2026-09-19).
+- `GET /api/documentation` → **HTTP 404**, confirming §10.1 live rather than by code reading. The
+  Documentation page's live fetch is dead on `prototype`.
+- Startup also re-stated the known capability gap: `8/15 capabilities are fully agent-executable`
+  (D-104/D-105), with `video_grounding`, `video_grounding_tracking`, `visualization`, `sar_analysis`,
+  `pixel_inspection`, `multispectral_analysis`, `report_generation` falling back to a trivial plan.
+
+**§6 (parity vs the old `frontend/`) had not been verified in §5, and it understates the gap.** Confirmed:
+`frontend/src/app/system/`, `components/system/ConnectionPanel.tsx`, `hooks/useSegmentPlayer.ts`,
+`components/video/TrackOverlay.tsx` all exist with no v2 equivalent; v2's sidebar has 5 nav entries and
+neither History nor Video. Missed by §6 entirely: **three whole routes** absent from v2 — `/models` (59
+lines), `/system` (89 lines) and `/visual-analytics/[jobId]` (**276 lines**, the single largest omission
+in the audit).
+
+The visual-analytics gap is load-bearing. `frontend-v2/src/hooks/useSystem.ts` defines
+`usePixelInspector` (`:106`) and `useHistogram` (`:113`) and **both have zero consumers**;
+`endpoints.legend` has zero references outside `endpoints.ts`. Every other hook in that file has
+consumers — the two orphans are exactly the visual-analytics pair. Meanwhile the old frontend references
+inspect-pixel / histogram / legend 4 / 12 / 13 times. All three endpoints exist and answer on
+`prototype`. So this is working backend capability with the UI deleted — the exact mirror of §3, where v2
+has UI with no backend. Worth saying plainly because the audit's headline framing ("the data layer is the
+strongest part, the work is UI polish") is half the story: v2 also *lost* three pages of working UI.

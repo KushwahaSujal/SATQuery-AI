@@ -366,7 +366,45 @@ This pass read code; it did **not** boot the app. `node_modules/` from §0.3 doe
 - §9.7's counts (17 glows / 18 blurs / 14 gradients / 55 rounded) — not re-counted.
 - Whether the 23 reachable endpoints **return well-formed data**, as opposed to merely existing. Route existence is now proven; response shape is not.
 
-### 10.6 Revised order of attack
+### 10.6 §6 parity re-checked — confirmed, and it understates the gap
+
+§6 was not covered by the first verification pass. Re-checked now against `frontend/` (the wired app) on
+the same branch.
+
+**Confirmed as written:** `frontend/src/app/system/` + `components/system/ConnectionPanel.tsx`,
+`hooks/useSegmentPlayer.ts` and `components/video/TrackOverlay.tsx` all exist in the old frontend and
+have **no** equivalent in v2. v2's sidebar has 5 nav entries (`/`, `/analysis`, `/datasets`, `/reports`,
+`/documentation`) — no History, no Video, exactly as described.
+
+**§6 missed three whole routes.** Full route diff:
+
+| old `frontend/` route | v2 | note |
+|---|---|---|
+| `/` | yes | — |
+| `/analysis/[jobId]` | yes | — |
+| `/jobs` | covered | v2 splits it into `/history` + `/reports` |
+| `/models` | **absent** | 59-line model registry page. v2 has no models route; only the Documentation page's hardcoded "Model Dossier Map" (which §9.4 already flags as duplicated prose). |
+| `/system` | **absent** | 89-line diagnostics page — the §6 item. |
+| `/visual-analytics/[jobId]` | **absent** | **276 lines.** The largest single omission in the whole audit and unmentioned by §6. |
+| `/video/[jobId]` | yes | unreachable from nav (§6) |
+
+**The visual-analytics gap is load-bearing, not cosmetic.** `frontend-v2/src/hooks/useSystem.ts` defines
+`usePixelInspector` (`:106`) and `useHistogram` (`:113`) — and both have **zero consumers** anywhere in
+v2. `endpoints.legend` has **zero** references outside `endpoints.ts`. So v2 ships no pixel inspection,
+no histogram, and no legend UI at all, while the old frontend references them 4 / 12 / 13 times and has
+a dedicated page for them. All three endpoints exist and work on `prototype` (§10.1) — this is working
+backend capability with the UI removed, the mirror image of the §3 problem where v2 has UI with no
+backend.
+
+For comparison, every other hook in `useSystem.ts` (`useHealth`, `useModels`, `useJob`,
+`useAnalysisResult`, `useVideoResult`, `useLayers`) does have consumers — the two orphans are precisely
+the visual-analytics pair.
+
+**Revised §10.7 item 9:** the parity pass is bigger than "System page + two nav entries." It is
+`/system`, `/models`, and `/visual-analytics/[jobId]` — and the last of those needs the two orphaned
+hooks wired to a real layer inspector, not written from scratch.
+
+### 10.7 Revised order of attack
 
 §8 stands, with these amendments:
 
@@ -384,4 +422,4 @@ This pass read code; it did **not** boot the app. `node_modules/` from §0.3 doe
 
 ---
 
-*Next: §10.6 item 0, then §8 top-to-bottom, one commit per item.*
+*Next: §10.7 item 0, then §8 top-to-bottom, one commit per item.*
