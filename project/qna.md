@@ -4595,3 +4595,123 @@ inspect-pixel / histogram / legend 4 / 12 / 13 times. All three endpoints exist 
 `prototype`. So this is working backend capability with the UI deleted — the exact mirror of §3, where v2
 has UI with no backend. Worth saying plainly because the audit's headline framing ("the data layer is the
 strongest part, the work is UI polish") is half the story: v2 also *lost* three pages of working UI.
+
+---
+
+## Q-048 · frontend-v2 punch list executed: the P0 was an honesty bug, and the light theme failed AA on its own tokens
+
+**Recorded** 2026-09-22, on `prototype` `47d7785`, covering 11 commits from `79dc4c9` to
+`47d7785`. Supersedes nothing; extends Q-047, which imported `frontend-v2` and verified the audit
+without changing code. Artifact: `frontend-v2/FRONTEND_V2_AUDIT.md` §11.
+
+### 1. Mechanism — the P0
+
+`app/reports/page.tsx:190` was `STATUS_MAP[report.status] || STATUS_MAP.COMPLETED` over a 5-key
+table while `backend/app/schemas/agent.py:6-13` emits 7 statuses. A job in `VALIDATING`,
+`PLANNING` or `GENERATING_EVIDENCE` therefore rendered a green **"Completed"** pill while still
+running, and the row invited a click through to a report that did not exist yet.
+
+Three further instances of the same thing surfaced while fixing it: `reports:315` hardcoded a
+green pill *and a checkmark* with `|| "Completed"` behind it, so the visual asserted success
+independently of the label; `history` had the same fallback at two sites; and `history:141`
+defaulted `displayStatus` to the literal string `"COMPLETED"` when neither the result nor the job
+list knew it.
+
+`lib/statusMap.ts` is now the single source. Every backend status has an entry and an
+unrecognised one returns a neutral descriptor, so a status added later shows as unknown rather
+than as finished. Verified by compiling it standalone and running every backend status plus
+malformed input through `describeJobStatus`: nothing but `COMPLETED` reports `complete`, and case
+variants (`"completed"`, `" FAILED "`) resolve to the real entry.
+
+### 2. Why this was P0 and the audit's own tiering was wrong
+
+The audit filed this under §9.1 as a redundancy nit — "a status that reports correctly on one page
+can fall back to a wrong default on another". It is a correctness bug, and specifically the kind
+this project refuses everywhere else: Q-046 fixed a verifier that fabricated black pixels, Q-045
+corrected an overstated objection, `abaa376` made model refusals structurally honest. A UI that
+says a running job is finished belongs in the same category, so it went first.
+
+### 3. The finding that was not in any audit pass — the light palette failed AA by itself
+
+§4.2 said the badges bypassed the design tokens for hardcoded `bg-*-950` shades, which was true:
+28 occurrences across 8 files, all replaced, using the `--status-{completed,processing,failed}-*`
+family globals.css already defined in both themes for exactly this purpose.
+
+That was only half the bug. Measured in a real browser, the light tokens themselves were below
+the 4.5:1 WCAG AA floor for the 10px labels they styled: accent **3.11:1**, completed **3.01**,
+processing **2.60**, failed **3.79**, `--text-3` **4.17**. So "use the proper tokens" would have
+moved the app from badly broken to quietly non-compliant. The light values are darkened —
+backgrounds and the 5px dots keep their saturation, only label colours moved — and now measure
+**5.11, 5.89, 5.48, 5.87, 4.89**. globals.css carries the before/after numbers so nobody
+brightens them back.
+
+Also fixed: `.status-pill-cyan`, which globals.css never defined, was applied by the job page to
+all four in-progress states, so every active job rendered a colourless pill.
+
+### 4. Blast radius
+
+Frontend only. One backend file was read, none written. `frontend/` (the wired old app) is
+untouched; `frontend-v2/` is still not served by anything, so nothing user-facing changed on the
+backend or in the demo path.
+
+Two backend-facing couplings were found and left as backend scope: `/api/documentation` 404s on
+`prototype` (confirmed live), and GeoTIFF/GeoJSON export return real 500s — `nodata value ...
+beyond the valid range of its data type, uint8` and `cannot import name 'polygonize_mask' from
+'backend.app.geo.vectors'`. The UI now surfaces both verbatim rather than dumping JSON into a
+tab.
+
+One frontend change does touch honesty on the backend's behalf: `api.models()` was discarding
+`refusal_reason` for the 2-of-21 models in `PRESENT_NOT_SERVING` — a status absent from the
+`ModelLifecycle` union — so the UI could say a model was not serving but never why. That is the
+inverse of what `abaa376` built.
+
+### 5. Verification, including three of my own measurements that were wrong
+
+tsc clean and eslint at **0 errors** after every commit, all 10 routes 200, and every visual or
+behavioural claim measured in a browser rather than asserted: dark default under a light OS
+preference; contrast before/after; the drawer's open/close geometry and body-scroll lock; Ctrl+K
+opening the palette; `/datasets` pills reconciling (20 = 4+5+1+2+8) with 19 images loading and 0
+broken; path traversal returning 404/400 with no contents; and layer switching on
+`/visual-analytics` driving real `inspect-pixel` and `histogram` calls whose read-outs match
+`curl` on the same endpoints.
+
+Three of my own measurement scripts produced wrong numbers before being corrected, and the wrong
+numbers were never reported as findings: a bare-substring grep that matched `<button
+className=...>` and claimed 16 importers for a dead primitive; a `<Name[ />]` pattern that missed
+tags whose attributes start on the next line and called `Tabs` unused when it is used heavily; and
+a contrast walker that fed `rgba(...)` straight into a luminance function without compositing
+alpha, reporting 1.0:1 for readable text. A fourth error was mine in a test's *expectations*, not
+the code: it classified `"completed"` as unrecognised input after I had deliberately added
+case-normalisation.
+
+**A CORS gap invalidated browser verification until it was caught.** `backend/app/config.py:29`
+allowlists only port 3000, so the dev server on 3100 had every browser API call blocked on every
+page. Two agents independently hit it. Moving the dev server to 3000 fixed it without touching
+backend config — but any browser-based check done on 3100 before that point proves nothing, and
+that is worth remembering before the next demo.
+
+Not verified: no production `next build`; light theme measured on `/reports` only; all 26 jobs in
+the DB return 0 layers because their inputs are gone from disk, so `/visual-analytics` was proven
+against `ecc390db-cef0-4c1d-a79c-3504f879d22b`, an older results dir that still has its imagery.
+
+### 6. Defending this to a reviewer
+
+"You deleted 17 components — how do you know nothing used them?" Three independent checks per
+file: module-path imports, word-boundary search on every export, and a dynamic-import/require/
+next/dynamic sweep, excluding the barrel because a re-export is not a consumer. The surviving
+matches were English prose in JSX comments. The greps that earlier made `button` look used were
+the substring bug described in §5.
+
+"Did you invent anything on the Datasets page?" The opposite — it was invented before. The
+fictional 6-entry array, the `All: 124` pills, the dead dropdowns and the two `alert()` calls are
+gone, replaced by the 54 real files in `demo_resources/` with the prompts and measured results its
+README records. Counts are computed from the catalog so they reconcile by construction, files are
+streamed from the repo rather than duplicated into `public/`, traversal is blocked, and the
+`5_known_weak` set is kept and labelled rather than quietly dropped to make the gallery look
+better.
+
+"What did you not do?" §9.2 (Reports and History are still near-duplicate pages — they now share
+the status and task tables, but the slider, thumbnails and list layout remain implemented twice),
+the motion-variant extraction (four *different* timings, so it is a behaviour change not a
+refactor), §9.6 sidebar filler, §9.7 glow reduction, and the `/video` poster. All recorded in
+audit §11.2.

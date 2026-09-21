@@ -422,4 +422,106 @@ hooks wired to a real layer inspector, not written from scratch.
 
 ---
 
-*Next: §10.7 item 0, then §8 top-to-bottom, one commit per item.*
+## 11. Execution log — what landed, 2026-09-21/22
+
+Worked §10.7 in order. One commit per item, each verified before committing. `prototype`
+at the time of writing: `47d7785`.
+
+| # | Item | Commit | State |
+|---|---|---|---|
+| 0 | Reports reported running jobs as "Completed" (§10.2) | `6477cd1` | **done** |
+| 1 | Theme: one tree, dark default, AA contrast (§4.2) | `ff210dd` | **done** |
+| 2 | Mobile layout (§4.3) | `2faff34` | **done** |
+| 3 | Duplicate render (§4.1) | `d54050c` | **done** |
+| 4 | Global search + command palette (§4.4) | `2faff34` | **done** |
+| 5 | Documentation search + merge order + slimdown (§4.5, §9.5, §9.4) | `79dc4c9` | **done** |
+| 6 | Delete dead components (§5, §9.3) | `547b85a` | **done** |
+| 7 | Datasets' fate (§3) | `6793362` | **done** — backed by real `demo_resources/` |
+| 8 | Video fill, follow-up copy, grid containment, picker tasks (§4.6-§4.8, §9.6) | `bcb912f` | **done** |
+| 9 | Parity: `/system`, `/models`, `/visual-analytics` (§6, §10.6) | `45252b5` | **done** |
+| 10 | TASK_LABELS dedupe (§9.1) | `a7b4a61` | **done** |
+| 11 | STATUS_* dedupe (§9.1) | `6477cd1` | **done** |
+| — | Lint debt surfaced by the sweep | `47d7785` | **done** |
+
+### 11.1 Bugs found while fixing, that no audit pass had caught
+
+1. **`.status-pill-cyan` does not exist.** The job page applied it to VALIDATING, PLANNING,
+   RUNNING and GENERATING_EVIDENCE, so every in-progress state rendered with no colour at
+   all. globals.css defines only `-green`, `-amber`, `-red`, `-accent`.
+2. **Reports' green "Completed" was worse than §10.2 said.** Besides the row pill, the
+   detail panel hardcoded a green pill *and a checkmark* with `|| "Completed"` behind it, so
+   the visual asserted success independently of the label. History had the same fallback at
+   two sites, and `history/page.tsx:141` defaulted `displayStatus` to the literal string
+   `"COMPLETED"`.
+3. **The light palette itself failed WCAG AA**, so §4.2 was only half a bug. Moving off the
+   hardcoded `bg-*-950` shades onto the purpose-built `--status-*` tokens was not enough:
+   measured in-browser, accent was 3.11:1, completed 3.01, processing 2.60, failed 3.79 and
+   `--text-3` 4.17 — all under the 4.5:1 floor for the 10px labels they styled. Now 5.11,
+   5.89, 5.48, 5.87 and 4.89. The numbers are recorded in globals.css.
+4. **§4.3's mobile diagnosis was incomplete.** Fixing the sidebar was necessary but not
+   sufficient: Reports and History put their detail panel in the *same flex row* as a hard
+   `w-96` / `w-[380px]` `shrink-0` aside, so at 390px the panel took the row and `<main>`
+   collapsed to 48px — its padding. Both rows stack below `lg` now.
+5. **The grid texture in ChatView was actively wrong, not merely fragile** (§4.8). With no
+   positioned ancestor anywhere up the chain, its containing block was the viewport, so it
+   painted over the TopBar and Sidebar.
+6. **`api.models()` discarded the backend's refusal reasons.** `/api/models` returns
+   `refusal_reason` for the 2-of-21 models in `PRESENT_NOT_SERVING` — a status missing from
+   the `ModelLifecycle` union — along with `model_id`, `family`, `adapter`, `checkpoint`,
+   `license` and `precision`. The mapper dropped all of it, so the UI could say a model was
+   not serving but never why. That is the inverse of the structurally honest refusals
+   `abaa376` added on the backend.
+7. **The task picker could not reach two real capabilities:** `single_image_classification`
+   (EuroSAT, routed in `abaa376`) and `video_grounding_tracking`.
+8. **`/api/documentation` 404s on this branch**, confirmed live, not just by code reading.
+   §9.5's last-wins `Map` bug was therefore unreachable and is fixed before the endpoint is
+   ported, not after.
+9. **CORS blocked the whole app during verification.** `backend/app/config.py:29` allowlists
+   only port 3000, so a dev server on 3100 has *every* browser API call blocked on every
+   page. Not a code defect — but it silently invalidates any browser-based verification done
+   on the wrong port, which is worth knowing before the next demo.
+
+### 11.2 Still open, deliberately
+
+- **§9.2 — Reports and History are still near-duplicate pages.** They now share
+  `lib/statusMap.ts` and `lib/taskLabels.ts`, which removes the drift that mattered, but the
+  before/after slider, thumbnail logic and list layout are still implemented twice. Folding
+  them into one `<JobList mode=...>` is a real refactor and was not attempted.
+- **§9.1 motion variants** are still four per-page copies. Per §10.4 they are four
+  *different* timings, so extracting them is a behaviour change needing a canonical choice,
+  not a mechanical dedupe.
+- **§9.6 sidebar filler** — "Connect with Us" and the mission-statement card still render on
+  every route.
+- **§9.7 glow/blur/gradient reduction** — not attempted; it needs a deliberate decision about
+  where glow means something.
+- **§6 leftovers** — `useSegmentPlayer` / `TrackOverlay` frame-accurate scrubbing has no v2
+  equivalent, and `/video` still has no poster (the keyframes endpoint exists but `lib/api.ts`
+  exposes no helper for it).
+- **`@radix-ui/react-dialog` and `@radix-ui/react-select`** are now unimported.
+  `package.json` was left alone on purpose.
+- **GeoTIFF and GeoJSON export return backend 500s** (`nodata value ... beyond the valid
+  range of its data type` and `cannot import name 'polygonize_mask'`). The UI now surfaces
+  those errors verbatim instead of dumping JSON into a tab, but the backend bugs are real and
+  unfixed — they are backend scope.
+- **All 26 jobs currently in the DB return 0 layers** because their input rasters are gone
+  from disk. `/visual-analytics` was verified against `ecc390db-cef0-4c1d-a79c-3504f879d22b`,
+  an older results dir that still has its inputs. A demo needs a job whose inputs exist.
+
+### 11.3 How this was verified
+
+tsc clean and eslint at **0 errors** after every commit; all 10 routes returning 200; and,
+where a claim was visual or behavioural, measured in a real browser rather than asserted:
+the dark default under a light OS preference, contrast ratios before and after, the drawer's
+open/close geometry and body-scroll lock, Ctrl+K opening the palette, the datasets counts
+reconciling (20 = 4+5+1+2+8) with 19 images loading and 0 broken, path traversal returning
+404/400 with no file contents, and layer switching on `/visual-analytics` driving real
+`inspect-pixel` and `histogram` calls that match `curl` on the same endpoints.
+
+Not verified: no production `next build` was run, and the light theme was measured on
+`/reports` only. Three measurement scripts produced wrong numbers before being corrected
+(a bare-substring grep, a JSX pattern that missed multi-line tags, and a contrast walker
+that did not composite alpha) — the corrected results are the ones quoted.
+
+---
+
+*§§1-9 are the original audit, preserved verbatim. §10 is the verification pass. §11 is what landed.*
