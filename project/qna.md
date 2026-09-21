@@ -4827,3 +4827,101 @@ duplicate Reports/History pages, §9.6, §9.7, the /video poster, and the GeoTIF
 "Is the threadpool change safe under load?" It does not increase GPU concurrency -- `gpu_lock` still
 admits one heavy tool at a time, which is also what the 8 GB card requires. What changed is that
 the event loop is no longer held hostage by it.
+
+---
+
+## Q-050 · Waiting states now show the real pipeline, and video published no progress at all
+
+**Recorded** 2026-09-22, on `prototype`, covering `758dee4` and `fbd0340`. Extends Q-049. Prompted by
+a screenshot of `/analysis` showing "Analyzing your video…" with no indication of what was running.
+
+### 1. Mechanism
+
+Two facts made the old spinner unavoidable rather than lazy:
+
+1. `POST /analyze` does not return until the whole pipeline finishes, so the response carries no
+   intermediate state.
+2. `JobRepository.save_execution_steps` runs **after** the pipeline completes
+   (`controller.py`, in the final persistence block), so while a job ran the database held no steps
+   to poll either.
+
+The controller now writes a `progress.json` at each checkpoint -- once the plan is known, before and
+after every tool, and on COMPLETED/FAILED -- served by `GET /api/jobs/{job_id}/progress`. The plan is
+the key part: `plan.steps` is known *before* any of it executes, so the full checkpoint list can be
+rendered up front and filled in as it completes, rather than discovered one step at a time.
+
+Written atomically via `os.replace`, because a poller reading mid-rewrite would otherwise get a
+truncated document, and wrapped so a progress write can never fail an analysis.
+
+**This only works because of Q-049.** Before tools moved off the event loop, the poll would have
+queued behind the very inference it was trying to report on.
+
+### 2. Video published nothing, which the first implementation missed
+
+`/api/video/analyze` is a self-contained endpoint that never touches `agent_controller`, so the first
+version of this feature covered image jobs only -- and the screenshot that prompted the work was a
+*video* job. Caught by testing rather than reading: a video run sat on "Planning the workflow" for
+46s and then rendered nothing.
+
+`VideoAnalysisWorkflow` already had a local `add_trace` helper narrating real stages ("Sampling video
+frames", "Candidate detections found on N frames", "Generated N event flags"). Publishing from that
+one helper covers every stage without enumerating them at each call site, mapped onto six real
+stages: inspect_video, sample_frames, detect_objects, propagate_masks, flag_events,
+generate_artifacts.
+
+### 3. What is shown, and what is deliberately not
+
+Shown, all from the feed: the ordered step list, which step is running, measured per-step durations,
+the selected models, the task, and the pipeline's own trace line including the planner's capability,
+routing confidence and reason.
+
+**Not shown: a percentage inside the active step.** The backend reports step boundaries, not
+sub-step fractions. A ring that filled smoothly would be inventing precision, so the active step
+gets a busy ring and the *bar between* steps is what actually fills, driven by completion. Likewise
+the skeleton contains no numbers -- a placeholder showing plausible values would be fabricating
+results that do not exist yet.
+
+The request asked to see "which pixel is being used". That telemetry does not exist during a run;
+per-pixel figures (changed_pixels, change_ratio) are computed and only available afterwards. It was
+not invented.
+
+### 4. Blast radius
+
+Backend: one new read-only endpoint, plus writes to a per-job file. The controller change adds
+publish calls around an existing loop and does not alter what runs or in what order. The video
+change hooks an existing helper. Both are best-effort and swallow their own failures.
+
+Frontend: the waiting state on `/analysis` and on `/analysis/{jobId}` is replaced. `pendingJobId` is
+new store state, cleared in a `finally` so a failed analysis cannot leave a poll running forever.
+Polling stops on COMPLETED/FAILED by the hook's own `refetchInterval`.
+
+### 5. Verification
+
+Backend, polled during a real bi-temporal run: `PLANNING 0/6` -> `RUNNING 2/6` (current
+`run_change_detection`) -> `RUNNING 4/6` (current `generate_overlay`) -> `COMPLETED 6/6`, with
+`planned_steps` = the six real tools, `selected_models` = ['changeformer'], and measured durations
+(`run_change_detection` 2088.8ms). Video run: `RUNNING 4/6` at `flag_events` with "Generated 2 event
+flags" -> `COMPLETED 6/6`.
+
+In the browser: the end-to-end UI run showed "Planning the workflow" -> "0/6 steps" with
+`models: changeformer` -> "6/6 steps" with 6 checkmarks. A mid-pipeline render measured 2/6 steps,
+2 checkmarks, connector fill percentages of [100, 100, 0, 0, 0], all six labels, per-step durations
+and the live trace line -- i.e. the pipes fill behind completed steps and stay empty ahead of them.
+
+Two things worth recording about the testing itself. An early run appeared to prove the stepper
+broken when it had actually been served from the deterministic orchestration cache and finished
+instantly; the fix was to vary the query, not the code. And with models warm, runs now finish in
+seconds, so the mid-pipeline visual was verified through a temporary harness rendering a fixed
+payload rather than by trying to photograph a moving target. The harness was deleted.
+
+### 6. Defending this to a reviewer
+
+"Is the progress real or a fake animation on a timer?" Real. The circles advance only on
+`completed_steps` from the feed, the labels are backend tool ids, and the durations are measured
+values the trace reports. The single timed animation is the busy ring on the active step, which
+asserts nothing about how far along it is.
+
+"Why a file instead of the database?" The steps are already written to the database at the end; this
+is a diagnostic side channel for a run in flight, and it must never add a failure mode to the
+pipeline. A per-job file written atomically and read best-effort satisfies that; adding per-step
+database writes to the hot path would not.
