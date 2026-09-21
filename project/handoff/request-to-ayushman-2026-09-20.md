@@ -103,7 +103,7 @@ We will quote both.
 
 ---
 
-## 2. Burn-scar model — two things to fix in the evidence, one decision pending
+## 2. Burn-scar model — one question that decides whether the numbers mean anything, plus two fixes
 
 The checkpoint is genuine and internally consistent with your `model_config.yaml`: PL 2.6.6,
 `terratorch.tasks.SemanticSegmentationTask`, `EncoderDecoderFactory`, `prithvi_eo_v2_300` (ViT-L, 24
@@ -118,6 +118,48 @@ would, we thought, downgrade torch and torchvision underneath the eight adapters
 ~100 packages / 6.8 GB and because the metric it would let us verify needs imagery we do not have. (`timm` 1.0.29 and
 `segmentation_models_pytorch` 0.5.0 are already present, and smp's `UnetDecoder` produces exactly
 your decoder's parameter names, so the gap is smaller than it looks.)
+
+### THE important question: were the BatchNorms in eval mode during training?
+
+This is the one we most need answered, and it is a single sentence for you.
+
+Every one of the 9 BatchNorm layers in the checkpoint — the 8 in `UNetDecoder` plus
+`model.neck.2.fpn1.1` — has its running statistics **still at initialisation**:
+
+```
+num_batches_tracked  = 0        (all 9 layers)
+running_mean         = 0.0      (all channels, all 9 layers)
+running_var          = 1.0      (all channels, all 9 layers)
+```
+
+But their affine weights *are* trained — e.g. `decoder.blocks.0.conv1.1.weight` has mean 0.9940,
+min 0.9878, max 0.9974, clearly moved off the 1.0 initialisation. So gradients flowed, and yet no
+running statistics were ever accumulated.
+
+What that means at inference: in `.eval()` mode each of those BatchNorms collapses to
+`y = weight * x / sqrt(1 + eps) + bias` — a pure affine map. **The decoder does not normalise
+anything.** Two possibilities, and they have opposite consequences:
+
+- **You held the BatchNorms in eval mode throughout training** (frozen BN, or `momentum=0`). Then
+  training and inference behave identically, your metrics are reproducible in principle, and this is
+  just an unusual architecture choice worth documenting.
+- **They were in train mode using batch statistics.** Then at your batch size of 1 (we infer batch
+  size 1 from `global_step` 3888 = 9 epochs x 432 scenes) BatchNorm degenerates to instance
+  normalisation over a single tile — and **eval-mode inference is not the model you evaluated.** Your
+  reported IoU 0.6567 would be batch-size dependent and would not reproduce for anyone loading the
+  checkpoint normally.
+
+So: **which was it?** If you know the trainer had `model.eval()` on those layers, or that you
+evaluated with `model.train()` still active, either answer settles it immediately.
+
+Worth knowing this is also our leading suspect for the per-scene collapse you documented — 10 of your
+264 test scenes at burn IoU 0.0, six predicting no burn pixels at all. A decoder with no working
+normalisation fails catastrophically out of distribution rather than gracefully, which is the shape of
+what your own failure analysis shows.
+
+For contrast: your **flood** model's BatchNorms *are* populated (`num_batches_tracked = 2773`), and
+that is precisely what let us recover its undocumented normalisation from the weights alone. The
+burn-scar checkpoint carries no such information, so the same trick cannot be used on it.
 
 **Question for you:** what exact `terratorch`, `lightning` and `torch` versions did you train with?
 `pip freeze` from that environment would let us decide between a separate venv and vendoring the
@@ -184,4 +226,4 @@ the burn-scar IoU is 0.7128 on internal validation and 0.6567 on test.
 |---|---|---|
 | EuroSAT land cover | **integrated**, closes mandatory req #1 | nothing |
 | Flood segmentation | loads, refuses to serve | items 1-5 above (or `train_flood.py`) |
-| Burn scars | not runnable here | version list; metric-file fix; the from-scratch decision |
+| Burn scars | runs, but its decoder BatchNorms never normalise | **were the BatchNorms in eval mode during training?**; version list; metric-file fix; the from-scratch decision |
