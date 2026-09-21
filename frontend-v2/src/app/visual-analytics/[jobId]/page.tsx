@@ -79,15 +79,18 @@ export default function VisualAnalyticsPage() {
   const histogram = useHistogram(jobId, activeId, showHistogram && Boolean(activeId));
 
   // Everything below the layer selection is per-layer state; switching layers must not carry
-  // over a previous layer's render failure, marker, pixel read-out or export result.
-  useEffect(() => {
+  // over a previous layer's render failure, marker, pixel read-out or export result. This
+  // compares against the previous layer during render rather than resetting in an effect,
+  // which would set state synchronously and force a second render pass.
+  const [renderedLayer, setRenderedLayer] = useState(activeId);
+  if (renderedLayer !== activeId) {
+    setRenderedLayer(activeId);
     setImageFailed(false);
     setImageSize(null);
     setMarker(null);
     setExportState(null);
     pixelInspector.reset();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeId]);
+  }
 
   const handleCanvasClick = useCallback(
     (event: React.MouseEvent<HTMLImageElement>) => {

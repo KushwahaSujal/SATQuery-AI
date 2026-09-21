@@ -27,23 +27,26 @@ const MobileNavContext = createContext<MobileNavContextValue>({
 export const useMobileNav = (): MobileNavContextValue => useContext(MobileNavContext);
 
 export function MobileNavProvider({ children }: { children: React.ReactNode }) {
-  const [isOpen, setIsOpen] = useState(false);
   const pathname = usePathname();
+  // The route the drawer was opened on is stored alongside the flag, so "close on
+  // navigate" is derived during render instead of being a setState inside an effect
+  // (which triggers a cascading render).
+  const [state, setState] = useState<{ open: boolean; route: string }>({ open: false, route: pathname });
 
-  const open = useCallback(() => setIsOpen(true), []);
-  const close = useCallback(() => setIsOpen(false), []);
-  const toggle = useCallback(() => setIsOpen((v) => !v), []);
+  const isOpen = state.open && state.route === pathname;
 
-  // Navigating is the most common way to finish with the drawer.
-  useEffect(() => {
-    setIsOpen(false);
-  }, [pathname]);
+  const open = useCallback(() => setState({ open: true, route: pathname }), [pathname]);
+  const close = useCallback(() => setState({ open: false, route: pathname }), [pathname]);
+  const toggle = useCallback(
+    () => setState((prev) => ({ open: !(prev.open && prev.route === pathname), route: pathname })),
+    [pathname],
+  );
 
   // Escape closes it, and the page behind must not scroll while it is over the content.
   useEffect(() => {
     if (!isOpen) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setIsOpen(false);
+      if (e.key === "Escape") close();
     };
     window.addEventListener("keydown", onKey);
     const previousOverflow = document.body.style.overflow;
@@ -52,7 +55,7 @@ export function MobileNavProvider({ children }: { children: React.ReactNode }) {
       window.removeEventListener("keydown", onKey);
       document.body.style.overflow = previousOverflow;
     };
-  }, [isOpen]);
+  }, [isOpen, close]);
 
   const value = useMemo(() => ({ isOpen, open, close, toggle }), [isOpen, open, close, toggle]);
 

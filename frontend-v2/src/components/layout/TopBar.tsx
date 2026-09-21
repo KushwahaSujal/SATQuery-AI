@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 import { motion } from "framer-motion";
@@ -27,9 +27,7 @@ export default function TopBar({
   const { mode, setMode } = useTheme();
   const { isOpen: navOpen, toggle: toggleNav } = useMobileNav();
   const { toggle: togglePalette } = useCommandPalette();
-  const [mounted, setMounted] = useState(false);
 
-  useEffect(() => { setMounted(true); }, []);
 
   const { data: health } = useQuery({
     queryKey: ["health"],
@@ -170,8 +168,10 @@ export default function TopBar({
         <div className="flex items-center bg-[var(--surface-2)] border border-[var(--border)] rounded-full p-0.5">
           <button
             onClick={() => setMode("light")}
+            aria-label="Use light theme"
+            aria-pressed={mode === "light"}
             className={`p-1.5 rounded-full transition-all duration-150 ${
-              mounted && mode === "light"
+              mode === "light"
                 ? "bg-[var(--surface-3)] text-[var(--amber)] shadow-sm"
                 : "text-[var(--text-3)] hover:text-[var(--heading)]"
             }`}
@@ -184,8 +184,10 @@ export default function TopBar({
           </button>
           <button
             onClick={() => setMode("dark")}
+            aria-label="Use dark theme"
+            aria-pressed={mode === "dark"}
             className={`p-1.5 rounded-full transition-all duration-150 ${
-              mounted && mode === "dark"
+              mode === "dark"
                 ? "bg-[var(--surface-3)] text-[var(--accent)] shadow-sm"
                 : "text-[var(--text-3)] hover:text-[var(--heading)]"
             }`}

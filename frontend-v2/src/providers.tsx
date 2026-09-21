@@ -1,6 +1,6 @@
 "use client";
 
-import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useSyncExternalStore } from "react";
 
 export type ThemeMode = "light" | "dark" | "system";
 
@@ -16,19 +16,49 @@ export const themeStorageKey = "satquery-theme";
  * persists; "system" remains available but is no longer the default.
  */
 const DEFAULT_MODE: ThemeMode = "dark";
+/** The palette DEFAULT_MODE resolves to, kept separate so it can be compared freely. */
+const DEFAULT_RESOLVED: "light" | "dark" = "dark";
 
 function isThemeMode(value: unknown): value is ThemeMode {
   return value === "light" || value === "dark" || value === "system";
 }
 
-function readStoredTheme(): ThemeMode | null {
+/*
+ * The stored mode is read through useSyncExternalStore rather than copied into state by
+ * an effect. Reading it in an effect meant a synchronous setState on mount (a cascading
+ * render, and a lint error), and it also made every caller of the old bare `useTheme`
+ * hook hold its own independent copy of the mode -- TopBar and the provider only
+ * appeared to agree because both wrote classes onto documentElement.
+ */
+const listeners = new Set<() => void>();
+
+function notify() {
+  listeners.forEach((l) => l());
+}
+
+function subscribeToStoredTheme(onChange: () => void) {
+  listeners.add(onChange);
+  // `storage` gives cross-tab sync for free.
+  window.addEventListener("storage", onChange);
+  return () => {
+    listeners.delete(onChange);
+    window.removeEventListener("storage", onChange);
+  };
+}
+
+function getStoredTheme(): ThemeMode {
   try {
     const stored = localStorage.getItem(themeStorageKey);
-    return isThemeMode(stored) ? stored : null;
+    return isThemeMode(stored) ? stored : DEFAULT_MODE;
   } catch {
     // Private windows and blocked site data both throw here.
-    return null;
+    return DEFAULT_MODE;
   }
+}
+
+/** The server cannot know the viewer's stored choice, so it renders the default. */
+function getServerTheme(): ThemeMode {
+  return DEFAULT_MODE;
 }
 
 function storeTheme(mode: ThemeMode) {
@@ -37,13 +67,22 @@ function storeTheme(mode: ThemeMode) {
   } catch {
     // Persisting the choice is a convenience, not a requirement.
   }
+  notify();
 }
 
-/** Resolve "system" to a concrete palette. */
-function resolveMode(mode: ThemeMode): "light" | "dark" {
-  if (mode !== "system") return mode;
-  if (typeof window === "undefined") return DEFAULT_MODE === "light" ? "light" : "dark";
-  return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+/* The OS preference is also an external store, so "system" needs no effect either. */
+function subscribeToOSPreference(onChange: () => void) {
+  const mq = window.matchMedia("(prefers-color-scheme: dark)");
+  mq.addEventListener("change", onChange);
+  return () => mq.removeEventListener("change", onChange);
+}
+
+function getOSPrefersDark(): boolean {
+  return window.matchMedia("(prefers-color-scheme: dark)").matches;
+}
+
+function getServerOSPrefersDark(): boolean {
+  return DEFAULT_RESOLVED === "dark";
 }
 
 interface ThemeContextValue {
@@ -53,51 +92,33 @@ interface ThemeContextValue {
   setMode: (mode: ThemeMode) => void;
 }
 
-/*
- * This is a context, not a bare hook. It used to be a plain hook holding its own
- * useState, so every caller (TopBar and the provider itself) had a SEPARATE copy of
- * the theme state and they only appeared to agree because each one's effect wrote
- * classes onto documentElement. Two consumers could disagree about the current mode
- * while both mutating the same DOM node.
- */
 const ThemeContext = createContext<ThemeContextValue>({
   mode: DEFAULT_MODE,
-  resolved: resolveMode(DEFAULT_MODE),
+  resolved: DEFAULT_RESOLVED,
   setMode: () => {},
 });
 
 export const useTheme = (): ThemeContextValue => useContext(ThemeContext);
 
 export const ThemeProvider = ({ children }: { children: React.ReactNode }) => {
-  // Keep the first client render identical to the server render; localStorage is
-  // read only after hydration.
-  const [mode, setModeState] = useState<ThemeMode>(DEFAULT_MODE);
-  const [resolved, setResolved] = useState<"light" | "dark">(() => resolveMode(DEFAULT_MODE));
+  const mode = useSyncExternalStore(subscribeToStoredTheme, getStoredTheme, getServerTheme);
+  const osPrefersDark = useSyncExternalStore(
+    subscribeToOSPreference,
+    getOSPrefersDark,
+    getServerOSPrefersDark,
+  );
 
-  useEffect(() => {
-    const stored = readStoredTheme();
-    if (stored) setModeState(stored);
-  }, []);
+  const resolved: "light" | "dark" = mode === "system" ? (osPrefersDark ? "dark" : "light") : mode;
 
-  // Apply the palette, and keep following the OS only while mode is "system".
+  // Applying a class to documentElement is a genuine side effect on a node outside the
+  // React tree, so this one stays an effect -- but it sets no state.
   useEffect(() => {
     const root = document.documentElement;
-    const apply = () => {
-      const next = resolveMode(mode);
-      setResolved(next);
-      root.classList.toggle("dark", next === "dark");
-      root.classList.toggle("light", next === "light");
-    };
-    apply();
-
-    if (mode !== "system") return;
-    const mq = window.matchMedia("(prefers-color-scheme: dark)");
-    mq.addEventListener("change", apply);
-    return () => mq.removeEventListener("change", apply);
-  }, [mode]);
+    root.classList.toggle("dark", resolved === "dark");
+    root.classList.toggle("light", resolved === "light");
+  }, [resolved]);
 
   const setMode = useCallback((next: ThemeMode) => {
-    setModeState(next);
     storeTheme(next);
   }, []);
 

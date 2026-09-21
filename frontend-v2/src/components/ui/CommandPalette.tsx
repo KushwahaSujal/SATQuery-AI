@@ -97,13 +97,21 @@ export default function CommandPalette() {
       )
     : allItems;
 
+  // Reset on open/close by comparing against the previous value during render. React
+  // supports adjusting state while rendering; doing it in an effect meant a synchronous
+  // setState that triggers a second render pass.
+  const [wasOpen, setWasOpen] = useState(isOpen);
+  if (wasOpen !== isOpen) {
+    setWasOpen(isOpen);
+    setActiveIdx(0);
+    setQuery("");
+  }
+
+  // Focusing a DOM node is a real side effect, so it stays in an effect.
   useEffect(() => {
-    if (isOpen) {
-      setActiveIdx(0);
-      setTimeout(() => inputRef.current?.focus(), 50);
-    } else {
-      setQuery("");
-    }
+    if (!isOpen) return;
+    const t = setTimeout(() => inputRef.current?.focus(), 50);
+    return () => clearTimeout(t);
   }, [isOpen]);
 
   useEffect(() => {
