@@ -5,6 +5,7 @@ import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
+import { describeTask, taskCategory, taskLabel, TASK_CATEGORIES } from "@/lib/taskLabels";
 import { describeJobStatus, jobStatusDotClasses, jobStatusPillClasses } from "@/lib/statusMap";
 import { useJobs } from "@/hooks/useJobs";
 import { clearLocalJobs } from "@/lib/localJobs";
@@ -17,17 +18,6 @@ const stagger = { hidden: {}, show: { transition: { staggerChildren: 0.07, delay
 const rowVariant = { hidden: { opacity: 0, x: -12 }, show: { opacity: 1, x: 0, transition: { duration: 0.4, ease: [0.22, 1, 0.36, 1] as [number, number, number, number] } } };
 const fadeUp = { hidden: { opacity: 0, y: 16 }, show: { opacity: 1, y: 0, transition: { duration: 0.45, ease: [0.22, 1, 0.36, 1] as [number, number, number, number] } } };
 
-const TASK_LABELS: Record<string, { label: string; category: string }> = {
-  bi_temporal_change: { label: "Change Detection", category: "Change Analysis" },
-  bi_temporal_change_vqa: { label: "Change VQA", category: "Change Analysis" },
-  single_image_vqa: { label: "VQA", category: "Single Image" },
-  single_image_grounding: { label: "Grounding", category: "Single Image" },
-  single_image_caption: { label: "Captioning", category: "Single Image" },
-  video_grounding_tracking: { label: "Video Tracking", category: "Video" },
-  video_vqa: { label: "Video VQA", category: "Video" },
-  video_change: { label: "Video Change", category: "Video" },
-  optical_sar_analysis: { label: "Optical + SAR", category: "Optical + SAR" },
-};
 
 
 function formatTimestamp(iso: string): string {
@@ -107,15 +97,15 @@ export default function HistoryPage() {
     retry: 1,
   });
 
-  const categories = ["All", "Single Image", "Change Analysis", "Optical + SAR", "Video"];
+  const categories = ["All", ...TASK_CATEGORIES];
   const tabCounts: Record<string, number> = { All: jobs.length };
   for (const j of jobs) {
-    const cat = TASK_LABELS[j.task]?.category || "Single Image";
+    const cat = taskCategory(j.task);
     tabCounts[cat] = (tabCounts[cat] || 0) + 1;
   }
 
   const filteredItems = jobs.filter((item) => {
-    const cat = TASK_LABELS[item.task]?.category || "Single Image";
+    const cat = taskCategory(item.task);
     const matchesTab = selectedTab === "All" || cat === selectedTab;
     const matchesSearch = item.query.toLowerCase().includes(searchQuery.toLowerCase());
     return matchesTab && matchesSearch;
@@ -343,7 +333,7 @@ export default function HistoryPage() {
               filteredItems.map((item) => {
                 const isSelected = activeId === item.id;
                 const isChecked = !!selectedChecks[item.id];
-                const taskInfo = TASK_LABELS[item.task] || { label: item.task, category: "Single Image" };
+                const taskInfo = describeTask(item.task);
                 const status = describeJobStatus(item.status);
                 return (
                   <motion.div key={item.id} variants={rowVariant}>
@@ -526,7 +516,7 @@ export default function HistoryPage() {
                 )}
                 <div className="absolute inset-0 bg-gradient-to-t from-[var(--surface)]/80 to-transparent pointer-events-none" />
                 <div className="absolute top-2.5 right-2.5 px-2 py-0.5 rounded text-[10px] font-semibold bg-blue-900/80 text-blue-200 border border-blue-400/40 backdrop-blur-md z-10">
-                  {TASK_LABELS[result.task]?.label || result.task}
+                  {taskLabel(result.task)}
                 </div>
               </div>
             )}

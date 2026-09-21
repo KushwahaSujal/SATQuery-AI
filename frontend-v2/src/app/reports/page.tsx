@@ -12,6 +12,7 @@ import {
   jobStatusLabel,
   jobStatusPillClasses,
 } from "@/lib/statusMap";
+import { describeTask, taskLabel } from "@/lib/taskLabels";
 import { useJobs } from "@/hooks/useJobs";
 import type { AnalysisResult } from "@/lib/types";
 import Sidebar from "@/components/layout/Sidebar";
@@ -21,17 +22,6 @@ import { BorderBeam } from "@/components/ui/border-beam";
 const stagger = { hidden: {}, show: { transition: { staggerChildren: 0.06, delayChildren: 0.05 } } };
 const rowVariant = { hidden: { opacity: 0, x: -8 }, show: { opacity: 1, x: 0, transition: { duration: 0.35, ease: [0.22, 1, 0.36, 1] as [number, number, number, number] } } };
 
-const TASK_LABELS: Record<string, { label: string; type: string }> = {
-  bi_temporal_change: { label: "Change Detection", type: "Change Analysis" },
-  bi_temporal_change_vqa: { label: "Change VQA", type: "Change Analysis" },
-  single_image_vqa: { label: "VQA Analysis", type: "Optical" },
-  single_image_grounding: { label: "Grounding", type: "Optical" },
-  single_image_caption: { label: "Captioning", type: "Optical" },
-  video_grounding_tracking: { label: "Video Tracking", type: "Video" },
-  video_vqa: { label: "Video VQA", type: "Video" },
-  video_change: { label: "Video Change", type: "Video" },
-  optical_sar_analysis: { label: "Optical + SAR", type: "Optical + SAR" },
-};
 
 
 function formatDate(iso: string): { date: string; time: string } {
@@ -186,7 +176,7 @@ export default function ReportsPage() {
                   ) : (
                     filteredReports.map((report) => {
                       const isSelected = activeId === report.id;
-                      const taskInfo = TASK_LABELS[report.task] || { label: report.task, type: "Analysis" };
+                      const taskInfo = describeTask(report.task);
                       const status = describeJobStatus(report.status);
                       const { date, time } = formatDate(report.created_at);
                       return (
@@ -234,7 +224,7 @@ export default function ReportsPage() {
                           </td>
                           <td className="py-3 px-3 whitespace-nowrap">
                             <span className="px-2.5 py-0.5 rounded-full text-[10px] font-medium bg-blue-950/70 text-blue-300 border border-blue-800/40">
-                              {taskInfo.type}
+                              {taskInfo.category}
                             </span>
                           </td>
                           <td className="py-3 px-3 text-[var(--text-3)] whitespace-nowrap">
@@ -328,7 +318,7 @@ export default function ReportsPage() {
             <div className="flex flex-wrap items-center gap-2 text-[11px] text-[var(--text-2)]">
               {result.task && (
                 <span className="px-2.5 py-1 rounded-lg bg-purple-950/60 text-purple-300 border border-purple-800/40 font-medium">
-                  {TASK_LABELS[result.task]?.label || result.task}
+                  {taskLabel(result.task)}
                 </span>
               )}
               {result.models_used?.map((m) => (

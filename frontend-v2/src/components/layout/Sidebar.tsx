@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { taskLabel } from "@/lib/taskLabels";
 import { usePathname } from "next/navigation";
 import { motion } from "framer-motion";
 import { api } from "@/lib/api";
@@ -12,18 +13,6 @@ interface SidebarProps {
   activeItem?: string;
   className?: string;
 }
-
-const TASK_LABELS: Record<string, string> = {
-  bi_temporal_change: "Change Detection",
-  bi_temporal_change_vqa: "Change VQA",
-  single_image_vqa: "VQA",
-  single_image_grounding: "Grounding",
-  single_image_caption: "Captioning",
-  video_grounding_tracking: "Video",
-  video_vqa: "Video VQA",
-  video_change: "Video Change",
-  optical_sar_analysis: "Optical + SAR",
-};
 
 function timeAgo(dateStr: string): string {
   const diff = Date.now() - new Date(dateStr).getTime();
@@ -105,7 +94,7 @@ export default function Sidebar({ hideBrand = false, activeItem, className = "" 
     .map((j: Record<string, unknown>) => ({
       id: (j.job_id || j.id) as string,
       title: (j.query as string)?.slice(0, 40) || "Analysis",
-      type: TASK_LABELS[(j.task as string) || ""] || (j.task as string) || "Analysis",
+      type: taskLabel(j.task as string),
       status: (j.status as string) || "UNKNOWN",
       time: timeAgo((j.created_at as string) || new Date().toISOString()),
     }));
