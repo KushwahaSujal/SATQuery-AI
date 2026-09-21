@@ -16,6 +16,7 @@ class PlanValidator:
         "validate_optical_sar_pair",
         "run_vqa",
         "run_caption",
+        "run_scene_classification",
         "run_grounding",
         "run_segmentation",
         "run_change_detection",
@@ -31,6 +32,7 @@ class PlanValidator:
     PERMITTED_MODELS: Set[str] = {
         "general_rs_vlm",
         "scene_vlm",
+        "eurosat_classifier",
         "grounding_dino",
         "sam2",
         "changeformer",

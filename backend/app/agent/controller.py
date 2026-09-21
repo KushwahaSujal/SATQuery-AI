@@ -230,9 +230,51 @@ class AgentController:
                 "cache_hit": state.cache_hit
             }
 
+        # Model refusals (Q-045). ModelResult.status is now enforced rather than advisory: a result
+        # whose status is a refusal carries no mask, box, logit or confidence (the schema refuses to
+        # build one that does), and the refusal is surfaced here as an explicit top-level response
+        # field plus an undroppable warning. Deliberately not an HTTP error: a refusal is a truthful
+        # informative answer, and 503/MODEL_CHECKPOINT_MISSING is reserved for a checkpoint that is
+        # genuinely absent.
+        model_refusals = [
+            {
+                "model": mr.model_name,
+                "task": mr.task,
+                "status": (mr.status or "").strip().upper(),
+                "code": mr.metadata.get("code", "MODEL_NOT_CONFIGURED"),
+                "reason": mr.refusal_reason,
+            }
+            for mr in state.model_results if mr.is_refusal
+        ]
+        for refusal in model_refusals:
+            note = (
+                f"{refusal['model']} returned {refusal['status']} for task '{refusal['task']}': no "
+                f"model output was produced."
+            )
+            if note not in state.warnings:
+                state.warnings.append(note)
+        if model_refusals:
+            state.add_trace(
+                f"{len(model_refusals)} model(s) refused: "
+                + ", ".join(f"{r['model']}={r['status']}" for r in model_refusals),
+                status="warning",
+                details="; ".join(str(r["reason"]) for r in model_refusals),
+            )
+            if all(mr.is_refusal for mr in state.model_results):
+                # Nothing measured anything, so there is no score to report. ConfidenceEvaluator
+                # already returns None over an all-None list; this makes it impossible for a later
+                # step to leave a stale number behind a refusal.
+                state.confidence = None
+
         answer_source, answer_facts = "template", state.answer
-        if state.status != JobStatus.FAILED:
+        # A refusal is never handed to the answer writer. The writer is an LLM that rewrites
+        # state.answer from the evidence package, and its number guard (numbers_grounded) only checks
+        # that numbers are grounded — it cannot tell that a fluent paraphrase has dropped the word
+        # NOT_CONFIGURED. The adapter's own refusal text is what ships.
+        if state.status != JobStatus.FAILED and not model_refusals:
             answer_source, answer_facts = await apply_answer_writer(state)
+        elif model_refusals:
+            answer_source = "template:refusal"
 
         response = AnalyzeResponse(
             request_id=state.request_id,
@@ -251,6 +293,7 @@ class AgentController:
             execution_trace=state.execution_trace,
             warnings=state.warnings,
             errors=state.errors,
+            model_refusals=model_refusals,
             artifacts=state.artifacts,
             orchestration=orchestration_meta
         )

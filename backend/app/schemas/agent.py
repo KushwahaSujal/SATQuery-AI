@@ -16,6 +16,7 @@ class JobStatus(str, Enum):
 class TaskType(str, Enum):
     SINGLE_IMAGE_VQA = "single_image_vqa"
     SINGLE_IMAGE_CAPTION = "single_image_caption"
+    SINGLE_IMAGE_CLASSIFICATION = "single_image_classification"
     SINGLE_IMAGE_GROUNDING = "single_image_grounding"
     BI_TEMPORAL_CHANGE = "bi_temporal_change"
     BI_TEMPORAL_CHANGE_VQA = "bi_temporal_change_vqa"

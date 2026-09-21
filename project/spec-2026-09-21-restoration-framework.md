@@ -967,10 +967,13 @@ tools that means:
 | `backend/app/orchestration/capability_registry.py` | both names in `required_tools` |
 | `backend/app/agent/validator.py` | both names in `PlanValidator.PERMITTED_TOOLS` |
 
-`tests/unit/test_routing_unsupported.py` already asserts that every DAG tool is registered and
-whitelisted, so a missed edit fails a test rather than producing D-104's silent-fallback bug.
-**All five of these files are under concurrent edit by other agents as of 2026-09-21**; this
-spec only specifies the edits.
+`tests/unit/test_routing_unsupported.py::test_every_tool_in_every_executable_dag_is_whitelisted_and_registered`
+(line 75) already asserts both memberships for every node of every executable DAG, so a missed
+edit fails a test rather than producing D-104's silent-fallback bug.
+Of those files, **`orchestration/capability_registry.py` was under concurrent edit by another
+agent as of 2026-09-21**, alongside `ml/registry.py`, `schemas/models.py`,
+`orchestration/intent_classifier.py` and a new `workflows/scene_classification.py`. This spec
+therefore only *specifies* the edits; none were made. Re-read all five before touching them.
 
 ### 6.2 Placement
 
@@ -1211,8 +1214,10 @@ file exists; a detector exception leaves the pipeline running on the originals w
 `quality_status=REVIEW_REQUIRED`; a write that loses the CRS results in `NOT_CONFIGURED` and
 **unchanged** `image_paths`.
 
-**`test_routing_unsupported.py`** (existing, extend) — `assess_quality` and `restore_input` are
-registered, whitelisted, present in `required_tools`, and present in every image DAG branch.
+**`test_routing_unsupported.py`** (existing) — `test_every_tool_in_every_executable_dag_is_
+whitelisted_and_registered` covers registration and whitelisting for free once the nodes exist.
+Add one assertion that `assess_quality` and `restore_input` appear in every image capability's
+`required_tools` **and** in every image DAG branch, which that test does not check.
 
 **`test_restoration_cache_key.py`** — changing `detector_config_hash` changes
 `compute_cache_key`. Without the §6.5 fix this test fails, which is the point of writing it.
@@ -1330,7 +1335,7 @@ bit-identical on clean input, default-on is defensible.
 4. `restoration/planner.py` and the §4.2 table.
 5. `restoration/correction.py` — the fused pass and `photometric_correct`.
 6. `agent/tools/restoration.py` and the five registration edits of §6.1 — **last**, and only once
-   the five files listed there are no longer under concurrent edit.
+   the files listed there are no longer under concurrent edit (see §6.1).
 
 A `qna.md` entry is due when this is implemented: it spans more than 3 files, touches
 orchestration, and will be claimed in the paper. The entry must record the impulse-gate sweep

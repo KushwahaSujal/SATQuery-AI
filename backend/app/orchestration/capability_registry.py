@@ -176,6 +176,28 @@ class CapabilityRegistry:
                 validation_requirements={"min_images": 1, "max_images": 1}
             ),
             CapabilityDefinition(
+                capability_id="single_image_classification",
+                name="Single-Image Scene-Level Land-Cover Classification",
+                description="Assigns one EuroSAT land-cover label to a whole tile using the trained EfficientNet-B0 classifier (10 classes; held-out test accuracy 0.9832 over 4050 samples, project/qna.md Q-041). Scene-level only: no mask, no box, no localisation, and no measured accuracy on sub-metre aerial imagery.",
+                accepted_input_types=["image/png", "image/jpeg", "image/tiff"],
+                required_modalities=["optical", "multispectral"],
+                output_types=["classification", "answer", "report"],
+                required_models=["eurosat_classifier"],
+                required_tools=["inspect_raster", "validate_single_image", "run_scene_classification", "generate_report"],
+                workflow="workflow_scene_classification",
+                # Well below GROUNDING (100) by design: "classify this scene" must never pre-empt
+                # "mask all roads", which needs pixels and gets them from Grounding DINO + SAM 2 or a
+                # trained segmenter. CAPTION (40) rather than VQA (50) because the enum has no value
+                # between them, and 40 is the conservative direction: if any future resolver ever
+                # ranked by priority instead of the matcher's explicit rules, a *lower* number means
+                # this narrow single-label capability loses to the general VQA capability rather than
+                # hijacking it. The authoritative precedence is IntentClassifier.classify_intent's
+                # if-chain, where this check sits after captioning and immediately before the VQA
+                # fallback; `priority` here only orders CapabilityRegistry.list_all().
+                priority=CapabilityPriority.CAPTION,
+                validation_requirements={"min_images": 1, "max_images": 1}
+            ),
+            CapabilityDefinition(
                 capability_id="visualization",
                 name="Scientific Raster & Layer Visualization",
                 description="Generates scientific false color, true color, heatmap, and split-screen comparison visual layers.",

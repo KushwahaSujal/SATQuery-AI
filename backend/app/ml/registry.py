@@ -30,11 +30,121 @@ from backend.app.config import settings
 from backend.app.logging import logger
 
 
+# ---- the serving protocol (Q-045) --------------------------------------------------------------
+#
+# `adapter.available` only ever answered "is the checkpoint file on disk?". Two adapters load their
+# real checkpoints and then refuse to produce an output on purpose — the flood segmenter because the
+# training-time normalisation was never documented (Q-041 §5, gated by `preprocessing` since Q-044),
+# the optical-SAR fusion head because it was never trained — and both were therefore listed as
+# AVAILABLE, which reads as "this works".
+#
+# The probes below answer "will a request to this adapter return a result?" by reading the adapter's
+# own live state. They are ordered; the first that applies decides; if none applies the adapter is
+# treated as serving, which is the correct default for every other model in the registry.
+#
+# Deliberately NOT a set of model keys. A key list would have to be edited the moment
+# configs/models.yaml sets `preprocessing: "bn_recovered_p2p98"` and the flood segmenter starts
+# serving, and whoever flipped that key would have no reason to look here — the registry would go on
+# reporting a refusal that no longer happens. Every probe re-reads the adapter on every call, so the
+# reported state follows the gate with no edit here.
+
+
+def _probe_declared_serving(adapter: BaseModelAdapter) -> Optional[Tuple[bool, Optional[str]]]:
+    """Protocol proper: an adapter publishing `serving` (bool, or callable) is believed.
+
+    Nothing implements this yet — `BaseModelAdapter` is owned elsewhere and neither refusing adapter
+    was in scope to edit. It is first in the order so that an adapter which later declares `serving`
+    (and optionally `refusal_reason`) overrides every heuristic below it, and so that the heuristics
+    can be deleted once all refusing adapters declare it.
+    """
+    declared = getattr(adapter, "serving", None)
+    if declared is None:
+        return None
+    if callable(declared):
+        try:
+            declared = declared()
+        except Exception as e:                                    # a broken probe must not decide
+            logger.warning(f"{type(adapter).__name__}.serving() raised {type(e).__name__}: {e}")
+            return None
+    if bool(declared):
+        return True, None
+    reason = getattr(adapter, "refusal_reason", None)
+    if callable(reason):
+        try:
+            reason = reason()
+        except Exception:
+            reason = None
+    return False, str(reason) if reason else (
+        f"{type(adapter).__name__} declares serving=False: a request returns a refusal, not a result."
+    )
+
+
+def _probe_is_configured(adapter: BaseModelAdapter) -> Optional[Tuple[bool, Optional[str]]]:
+    """`is_configured` False means the adapter's own predict() returns a refusal (fusion head)."""
+    if not hasattr(adapter, "is_configured"):
+        return None
+    if bool(getattr(adapter, "is_configured")):
+        return True, None
+    return False, (
+        f"{type(adapter).__name__}.is_configured is False, so predict() returns "
+        f"status='NOT_CONFIGURED' and no prediction. The checkpoint exists and loads; the head it "
+        f"contains was never trained, so there is nothing to serve."
+    )
+
+
+#: Accepted-value gates: an adapter property whose value must equal a class constant before the
+#: adapter will serve. Named by gate, never by model, and read live — flipping the YAML key flips the
+#: reported state. `preprocessing` is the flood serving gate from Q-044; its sole accepted value
+#: lives on the adapter as `RECOVERED_PREPROCESSING`, so the accepted value is never restated here.
+_ACCEPTED_VALUE_GATES: Tuple[Tuple[str, str], ...] = (
+    ("preprocessing", "RECOVERED_PREPROCESSING"),
+)
+
+
+def _probe_accepted_value_gate(adapter: BaseModelAdapter) -> Optional[Tuple[bool, Optional[str]]]:
+    """Refuses while a declared gate property does not hold the adapter's accepted value."""
+    for prop, const_name in _ACCEPTED_VALUE_GATES:
+        accepted = getattr(type(adapter), const_name, None)
+        if accepted is None or not hasattr(adapter, prop):
+            continue
+        configured = getattr(adapter, prop, None)
+        if configured == accepted:
+            return True, None
+        return False, (
+            f"{type(adapter).__name__} serves only with {prop}={accepted!r}; configs/models.yaml "
+            f"has {prop}={configured!r}, so predict() returns status='NOT_CONFIGURED' and no "
+            f"output. The checkpoint is real and loads with strict=True."
+        )
+    return None
+
+
+#: Evaluated in order against the live adapter; first applicable probe decides.
+SERVING_PROBES: Tuple[Any, ...] = (
+    _probe_declared_serving,
+    _probe_is_configured,
+    _probe_accepted_value_gate,
+)
+
+
 class ModelRegistry:
     """
     Central Professional Registry for all SatQuery AI Model Adapters.
     Tracks model capabilities, metadata, availability, lazy instances, and lifecycle management.
-    Lifecycle states: NOT_CONFIGURED | AVAILABLE | LOADED | FAILED
+    Lifecycle states: NOT_CONFIGURED | AVAILABLE | PRESENT_NOT_SERVING | LOADED | FAILED
+
+    NOT_CONFIGURED       the checkpoint is absent or the model is disabled in configs/models.yaml.
+    AVAILABLE            the checkpoint is on disk; weights are not resident yet.
+    LOADED               weights are resident and the model will answer a request.
+    PRESENT_NOT_SERVING  the checkpoint is present and loadable, but the adapter deliberately
+                         refuses to produce an output, so a request returns a refusal rather than a
+                         result. Reported alongside `serving=False` and a `refusal_reason`, and kept
+                         distinct from NOT_CONFIGURED on purpose: NOT_CONFIGURED means the weights
+                         are not there, which is what ModelUnavailableError/HTTP 503 signals.
+    FAILED               a load was attempted and failed.
+
+    `available` keeps its original meaning throughout — "the checkpoint file exists" — because
+    routing (backend/app/orchestration/dependency_checker.py) is built on it. Whether a model will
+    actually answer is `serving`, resolved live by `serving_state()`.
     """
     ADAPTER_CLASSES: Dict[str, Type[BaseModelAdapter]] = {
         "grounding_dino": GroundingDINOAdapter,
@@ -123,7 +233,9 @@ class ModelRegistry:
             "license": "Proprietary",
             "capabilities": ["optical_sar_fusion_prediction", "multimodal_fusion", "cross_modal_analysis"],
             "input_requirements": {"optical": "RGB (H, W, 3)", "sar": "SAR (H, W, 2)"},
-            "output_schema": {"prediction": "dict", "surface_roughness": "float", "builtup_index": "float"},
+            # The fusion head was never trained, so predict() returns status NOT_CONFIGURED and none
+            # of these keys. Kept here as the contract a trained head would have to satisfy.
+            "output_schema": {"status": "NOT_CONFIGURED — no prediction is returned; the cross-attention fusion head is untrained (Q-045)"},
             "device_requirements": {"min_vram_gb": 4.0, "preferred": "cuda"},
         },
         "general_rs_vlm": {
@@ -240,7 +352,11 @@ class ModelRegistry:
             "license": "MIT (code); Sen1Floods11 dataset terms (CC BY 4.0)",
             "capabilities": ["flood_segmentation"],
             "input_requirements": {"image": "16 co-registered channels (C, H, W): S1 VV, S1 VH, Sentinel-2 L1C B1-B12 incl. B8A (13 bands), Copernicus DEM; Sentinel-2 at 10 m GSD. RGB cannot satisfy this model."},
-            "output_schema": {"status": "NOT_CONFIGURED — no mask is returned; training-time normalisation unknown, delivered IoU 0.6292 not reproduced (Q-041)"},
+            # Gate-dependent on purpose, so this string does not go stale when the gate opens (Q-044).
+            "output_schema": {
+                "preprocessing: null (default)": "status NOT_CONFIGURED — no mask is returned; training-time normalisation unknown, delivered IoU 0.6292 not reproduced (Q-041 §5)",
+                "preprocessing: bn_recovered_p2p98": "binary_mask, probability_map — served under normalisation recovered from the checkpoint's own BatchNorm statistics, provenance recovered_not_supplied (Q-044)",
+            },
             "device_requirements": {"min_vram_gb": 2.0, "preferred": "cuda"},
         },
         "crater_detector": {
@@ -291,6 +407,59 @@ class ModelRegistry:
         """Records whether live inference has been verified for this model."""
         self._verified_models[model_key] = verified
 
+    def serving_state(self, model_key: str) -> Tuple[bool, Optional[str]]:
+        """Whether a request to this model returns a result, and why not when it does not.
+
+        Resolved live from the adapter by SERVING_PROBES, so the answer tracks
+        configs/models.yaml without an edit here. Never loads weights. An unknown key, or an adapter
+        that cannot even be instantiated, is not serving.
+        """
+        if model_key not in self.ADAPTER_CLASSES:
+            return False, f"'{model_key}' is not a registered model."
+        try:
+            adapter = self.get_adapter(model_key)
+        except Exception as e:
+            return False, f"Adapter for '{model_key}' could not be instantiated: {type(e).__name__}: {e}"
+        for probe in SERVING_PROBES:
+            verdict = probe(adapter)
+            if verdict is not None:
+                return verdict
+        return True, None
+
+    def is_model_serving(self, model_key: str) -> bool:
+        """True when the model will actually return an output.
+
+        Distinct from `is_model_available()`, which stays "the checkpoint exists" because routing
+        depends on that meaning. A model can be available and not serving.
+        """
+        return self.serving_state(model_key)[0]
+
+    def list_refusals(self) -> Dict[str, str]:
+        """Every registered model that loads but deliberately does not serve, mapped to its reason."""
+        out: Dict[str, str] = {}
+        for key in self.ADAPTER_CLASSES:
+            serving, reason = self.serving_state(key)
+            if not serving:
+                out[key] = reason or "No reason reported."
+        return out
+
+    def _resolve_load_state(
+        self, adapter: BaseModelAdapter, serving: bool
+    ) -> str:
+        """Single source of truth for the reported lifecycle state.
+
+        Order matters. A missing checkpoint outranks everything (there is nothing to refuse), a
+        failed load outranks a refusal, and a refusal outranks LOADED — the flood segmenter really
+        does hold resident weights while refusing, and reporting LOADED there is the exact overstatement
+        this exists to stop.
+        """
+        load_state = "LOADED" if adapter.loaded else ("AVAILABLE" if adapter.available else "NOT_CONFIGURED")
+        if load_state != "NOT_CONFIGURED" and not serving:
+            load_state = "PRESENT_NOT_SERVING"
+        if getattr(adapter, "status", None) == "FAILED":
+            load_state = "FAILED"
+        return load_state
+
     def get_model_status(self, model_key: str) -> Dict[str, Any]:
         """
         Returns runtime status for a specific model key, exposing Part 6 fields:
@@ -303,6 +472,8 @@ class ModelRegistry:
                 "name": model_key,
                 "available": False,
                 "loaded": False,
+                "serving": False,
+                "refusal_reason": f"'{model_key}' is not a registered model.",
                 "status": "NOT_CONFIGURED",
                 "load_state": "NOT_CONFIGURED",
                 "validation_status": "UNCONFIGURED",
@@ -310,19 +481,24 @@ class ModelRegistry:
                 "model_id": None
             }
         adapter = self.get_adapter(model_key)
-        load_state = "LOADED" if adapter.loaded else ("AVAILABLE" if adapter.available else "NOT_CONFIGURED")
-        if hasattr(adapter, "status") and adapter.status == "FAILED":
-            load_state = "FAILED"
-        
+        serving, refusal_reason = self.serving_state(model_key)
+        load_state = self._resolve_load_state(adapter, serving)
+
         val_status = "VERIFIED" if self._verified_models.get(model_key, False) else "PENDING_VERIFICATION"
         if load_state == "NOT_CONFIGURED":
             val_status = "UNCONFIGURED"
+        elif load_state == "PRESENT_NOT_SERVING":
+            # Not "pending": while the adapter refuses there is no inference to verify, so a
+            # PENDING_VERIFICATION here would read as "verification is on its way".
+            val_status = "NOT_APPLICABLE"
 
         return {
             "model_key": model_key,
             "name": adapter.name,
             "available": adapter.available,
             "loaded": adapter.loaded,
+            "serving": serving,
+            "refusal_reason": refusal_reason,
             "status": load_state,
             "load_state": load_state,
             "validation_status": val_status,
@@ -362,6 +538,8 @@ class ModelRegistry:
                     available=False,
                     availability=False,
                     loaded=False,
+                    serving=False,
+                    refusal_reason=f"'{key}' is configured in configs/models.yaml but no adapter is registered for it.",
                     load_state="NOT_CONFIGURED",
                     status="NOT_CONFIGURED",
                     validation_status="NOT_CONFIGURED",
@@ -375,14 +553,15 @@ class ModelRegistry:
             loaded = bool(adapter.loaded)
             dev = str(adapter.device) if adapter else (spec.device or "auto")
             m_id = getattr(adapter, "model_id", None) or getattr(spec, "model_id", None)
-            load_state = "LOADED" if loaded else ("AVAILABLE" if avail else "NOT_CONFIGURED")
-            if hasattr(adapter, "status") and adapter.status == "FAILED":
-                load_state = "FAILED"
-            
+            serving, refusal_reason = self.serving_state(key)
+            load_state = self._resolve_load_state(adapter, serving)
+
             meta = self.MODEL_METADATA.get(key, {})
             val_status = "VERIFIED" if self._verified_models.get(key, False) else "PENDING_VERIFICATION"
             if load_state == "NOT_CONFIGURED":
                 val_status = "NOT_CONFIGURED"
+            elif load_state == "PRESENT_NOT_SERVING":
+                val_status = "NOT_APPLICABLE"
 
             info = ModelCapabilityInfo(
                 model_id=m_id or key,
@@ -408,6 +587,8 @@ class ModelRegistry:
                 available=avail,
                 load_state=load_state,
                 loaded=loaded,
+                serving=serving,
+                refusal_reason=refusal_reason,
                 validation_status=val_status,
                 last_error=getattr(adapter, "last_error", None),
                 latency=getattr(adapter, "last_latency", None),
@@ -443,6 +624,7 @@ class ModelRegistry:
             available=True,
             load_state="AVAILABLE",
             loaded=True,
+            serving=True,
             validation_status="VERIFIED",
             device="cpu",
             precision="float32",

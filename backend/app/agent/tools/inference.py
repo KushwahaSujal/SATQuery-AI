@@ -70,6 +70,32 @@ def run_caption(state: AgentState) -> None:
     ))
 
 
+@register_tool("run_scene_classification")
+def run_scene_classification(state: AgentState) -> None:
+    """Scene-level land-cover classification via EuroSAT (project/qna.md Q-041, Q-046).
+
+    Delegates to `backend.app.workflows.scene_classification`, which owns the answer text and its
+    caveats -- scene-level only, Sentinel-2 at 10 m/px, sub-metre accuracy NOT MEASURED. A missing
+    checkpoint degrades to a structured unavailable result rather than raising, matching
+    `run_trained_segmenter_path`.
+    """
+    from backend.app.workflows.scene_classification import run_scene_classification as _run
+
+    result = _run(state.image_paths[0], query=state.query)
+    state.answer = result["answer"]
+    state.confidence = result.get("confidence")
+    for w in result.get("warnings", []):
+        if w not in state.warnings:
+            state.warnings.append(w)
+    if "eurosat_classifier" not in state.selected_models:
+        state.selected_models.append("eurosat_classifier")
+    # Evidence rides on the EvidencePackage's metadata dict, the same channel `aoi` and
+    # `change_adjudication` use -- not an ad-hoc attribute on AgentState, which is a plain dataclass
+    # and would have accepted one silently while nothing ever read it.
+    if result.get("evidence"):
+        state.evidence.metadata["scene_classification"] = result["evidence"]
+
+
 @register_tool("run_grounding")
 def run_grounding(state: AgentState) -> None:
     """

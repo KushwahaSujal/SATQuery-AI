@@ -67,6 +67,7 @@ class DependencyGraph:
         "temporal_change_detection",
         "single_image_vqa",
         "single_image_caption",
+        "single_image_classification",
         "optical_sar_analysis",
         "unsupported_analysis",
     })
@@ -118,6 +119,17 @@ class DependencyGraph:
                 DAGPlanNode(node_id="run_vqa", tool_name="run_vqa", model_name="general_rs_vlm", dependencies=["validate_single_image"], timeout_seconds=60.0),
                 DAGPlanNode(node_id="generate_report", tool_name="generate_report", dependencies=["run_vqa"], timeout_seconds=20.0),
             ]
+        elif capability_id == "single_image_classification":
+            # Scene-level land cover (project/qna.md Q-046). Same three-stage shape as captioning:
+            # inspect, validate, run the model once, report. No segmentation or grounding node,
+            # because EuroSAT returns one label for the whole tile and localises nothing.
+            nodes = [
+                DAGPlanNode(node_id="inspect_raster", tool_name="inspect_raster", timeout_seconds=15.0),
+                DAGPlanNode(node_id="validate_single_image", tool_name="validate_single_image", dependencies=["inspect_raster"], timeout_seconds=10.0),
+                DAGPlanNode(node_id="run_scene_classification", tool_name="run_scene_classification", model_name="eurosat_classifier", dependencies=["validate_single_image"], timeout_seconds=60.0),
+                DAGPlanNode(node_id="generate_report", tool_name="generate_report", dependencies=["run_scene_classification"], timeout_seconds=20.0),
+            ]
+
         elif capability_id == "single_image_caption":
             nodes = [
                 DAGPlanNode(node_id="inspect_raster", tool_name="inspect_raster", timeout_seconds=15.0),
