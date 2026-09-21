@@ -4715,3 +4715,115 @@ the status and task tables, but the slider, thumbnails and list layout remain im
 the motion-variant extraction (four *different* timings, so it is a behaviour change not a
 refactor), §9.6 sidebar filler, §9.7 glow reduction, and the `/video` poster. All recorded in
 audit §11.2.
+
+---
+
+## Q-049 · The API froze during every analysis; Home uploads were discarded twice over
+
+**Recorded** 2026-09-22, on `prototype`, covering `e3b7fb7`, `b5668a2` and `b9ff6dc`. Extends Q-048.
+Prompted by a screenshot showing a broken image in the results view plus a report that uploading on
+Home forces a second upload on /analysis.
+
+### 1. Mechanism — the event loop was blocked by every analysis
+
+`SafeToolExecutor.execute_tool` called `tool_func(state)` directly from a coroutine. The tool
+functions are synchronous and CPU/GPU bound, so the single uvicorn worker's event loop was blocked
+for the entire analysis and every other request queued behind it.
+
+Measured, not inferred: while a SAM2 video job was running, `GET /api/health` took **9.78 s**. That
+is the mechanism behind "the UI freezes mid-analysis" and behind artifact images intermittently
+failing to load -- the browser's `<img>` requests were queued behind the inference, not 404ing.
+
+Fixed with `await asyncio.to_thread(tool_func, state)` at the three call sites. GPU concurrency is
+deliberately unchanged: heavy tools still serialize on `gpu_lock`, so exactly one runs at a time as
+before, and the OOM release-and-retry path is preserved. Only the event loop is freed.
+
+After: with a real bi-temporal analysis in flight, 12 consecutive `/api/health` polls returned 200
+in **0.49-0.59 s**. The analysis still completed correctly -- 200 in 18.2 s, COMPLETED,
+`bi_temporal_change`, changeformer, confidence 0.875, 13 layers.
+
+### 2. The broken image was a real contract mismatch, not the blocking
+
+`VisualizationRegistry` (`visualization/registry.py:291`) advertises a `comparison_split` layer for
+every job with >= 2 rasters, but `/api/analysis/{id}/visualizations/{layer}` had no branch for that
+id, so it answered `VISUALIZATION_NOT_AVAILABLE` 404 while all 12 sibling layers returned 200. The
+layers endpoint was listing a layer the visualizations endpoint could not serve, on every
+bi-temporal job ever run.
+
+Implemented rather than un-advertised, because the inputs are right there and both already render
+individually: it composes the two inputs side by side, matching heights first so differently sized
+acquisitions still align. Verified 200 image/png, 2050x1024 = 1024 + 2px divider + 1024, with
+distinct real content sampled from each half.
+
+### 3. The Home upload was thrown away twice
+
+Two independent causes, either of which alone would have forced the re-upload:
+
+1. `app/page.tsx:151` called `api.uploadRasters()`, awaited it, and then **discarded the response**
+   before `router.push("/analysis")`. The bytes reached the backend; nothing reached the store.
+2. `app/analysis/page.tsx` called `resetAnalysis()` unconditionally in a mount effect, which wipes
+   `rasters` and `video`. Even a correctly stored upload was erased on arrival.
+
+Home now uploads through the store's `handleUpload` (which also accepts video, unlike
+`api.uploadRasters`), and /analysis resets only when nothing was handed over. Verified end to end in
+a browser: dropping a file on Home lands on /analysis showing that file's preview artifact, no
+second upload.
+
+The typed query was dropped the same way -- Home pushed `/analysis?q=...` and the analysis page
+never read the param. It now prefills the composer. Passed as a prop, not through the store,
+because children render before the parent's effects run: the first attempt wrote the value in an
+effect and `ChatInput`'s `useState` initializer had already read null. That failure was observed,
+not predicted.
+
+Also: the store's `handleUpload` swallowed every failure into a bare `catch` that only reset the
+progress bar, so a failed upload was completely silent. It now records `uploadError` and returns
+whether it succeeded.
+
+### 4. Blast radius
+
+One backend behaviour change (`executor.py`) on the hot path of every analysis. It does not alter
+what runs, in what order, or how many run at once -- only which thread the synchronous call happens
+on. The risk worth naming: tool functions now execute off the main thread, so anything relying on
+main-thread-only state would break. Nothing in the pipeline does, and the end-to-end run above
+produced identical task routing, model selection, confidence and layer count.
+
+`comparison_split` adds a render path that did not exist, so it cannot regress anything that
+previously worked -- it previously 404'd.
+
+The frontend changes touch upload flow and the analysis page's mount behaviour. The one behavioural
+change worth noting: /analysis no longer clears a previous session's uploads on mount if they are
+still in the store. Clicking "New Analysis" in the sidebar still calls `resetAnalysis` explicitly,
+so the deliberate path to a clean slate is unchanged.
+
+### 5. Animations
+
+`lib/motion.ts` now holds one motion vocabulary, replacing the four drifted per-page copies flagged
+in audit §9.1 and left open in Q-048. They were not identical copies, so canonical timings had to
+be chosen; the medians of what was in use were taken and the reasoning is recorded in the file.
+
+Added: a route transition (`app/template.tsx`, which Next re-mounts per navigation), an animated
+palette entrance/exit, and hover/press feedback on the nav.
+
+Two implementation facts worth keeping, both found by testing rather than reasoning:
+- The first route wrapper used `display: contents`, which has **no box**, so nothing animated at all.
+- The transition fades only. A transform on that wrapper would make it the containing block for
+  every `position: fixed` descendant while animating, and both the mobile drawer and the hero video
+  depend on being fixed to the viewport.
+
+Reduced motion now actually works: `globals.css` neutralised CSS animations, but framer-motion
+animates via inline JS transforms which that block cannot reach. `MotionConfig reducedMotion="user"`
+covers those.
+
+### 6. Defending this to a reviewer
+
+"You said 'fix all bugs' was done -- was it?" No, and it is not claimed. What was fixed is what was
+found and reproduced: the blocked event loop, the `comparison_split` 404, the two upload-discard
+paths, the dropped query, the silent upload failure. A contract sweep of `/api/health`,
+`/api/results` and `/api/models` against what the UI reads found the mappers correct -- `health` is
+mapped properly in `lib/api.ts`, and the video-only fields the job page reads are guarded and
+degrade to "—" on image jobs. Audit §11.2 still lists what remains open, unchanged: §9.2's
+duplicate Reports/History pages, §9.6, §9.7, the /video poster, and the GeoTIFF/GeoJSON export 500s.
+
+"Is the threadpool change safe under load?" It does not increase GPU concurrency -- `gpu_lock` still
+admits one heavy tool at a time, which is also what the 8 GB card requires. What changed is that
+the event loop is no longer held hostage by it.
