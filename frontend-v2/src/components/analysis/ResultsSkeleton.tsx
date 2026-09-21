@@ -4,6 +4,12 @@ import { motion } from "framer-motion";
 import { DURATION, EASE } from "@/lib/motion";
 
 /**
+ * NOT CURRENTLY RENDERED. Removed from both waiting states (the chat thread and the job
+ * results view) because the shimmer blocks read as ambiguous next to the pipeline
+ * stepper -- it was not clear whether they were loading state or real empty panels.
+ * Kept, rather than deleted, because it is to be redesigned shortly; if that stops being
+ * true, delete the file rather than leaving it orphaned.
+ *
  * Placeholder for the results view while an analysis runs.
  *
  * It mirrors the layout the finished view actually uses -- a layer strip, a large canvas

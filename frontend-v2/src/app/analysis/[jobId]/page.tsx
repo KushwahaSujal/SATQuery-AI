@@ -8,7 +8,6 @@ import { api } from "@/lib/api";
 import { useJobProgress } from "@/hooks/useJobProgress";
 import { PipelineProgress } from "@/components/analysis/PipelineProgress";
 import { VideoPlayer, type VideoPlayerHandle } from "@/components/video/VideoPlayer";
-import { ResultsSkeleton } from "@/components/analysis/ResultsSkeleton";
 import {
   describeJobStatus,
   jobStatusDotClass,
@@ -257,7 +256,6 @@ export default function AnalysisJobPage() {
                             replacing a spinner that could only say "usually takes
                             20-60 seconds" without knowing what was actually running. */}
                         <PipelineProgress progress={progress ?? null} isPlanning={!progress} />
-                        <ResultsSkeleton layerCount={isVideoJob ? 3 : 4} />
                       </BlurFade>
                     </div>
                   )}

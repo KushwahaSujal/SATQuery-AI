@@ -1,7 +1,6 @@
 "use client";
 
 import { PipelineProgress } from "@/components/analysis/PipelineProgress";
-import { ResultsSkeleton } from "@/components/analysis/ResultsSkeleton";
 import React, { useEffect, useRef } from "react";
 import { cn } from "@/lib/utils";
 import type { ChatMessage } from "@/stores/useAnalysisStore";
@@ -165,9 +164,6 @@ export function ChatThread({
             {/* Real checkpoint progress from the backend, replacing an indefinite
                 spinner that said nothing about what the pipeline was doing. */}
             <PipelineProgress progress={progress ?? null} isPlanning={!progress} />
-            {/* And a preview of the shape the results will take, so the view does not
-                jump when they arrive. */}
-            <ResultsSkeleton />
           </div>
         </div>
       )}
