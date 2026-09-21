@@ -4465,3 +4465,102 @@ unchanged at 28 versus 27 queries.
 vision encoder zero-fill and scoring it as if it were imagery, having measured that this happens on
 73% of crops. The fix is also what removes the false contradiction from both DISPUTED demo answers,
 which is the defect we set out to fix.
+
+---
+
+## Q-047 · `frontend-v2` imported onto `prototype` as a directory, not a merge; audit §§1-9 re-verified and three claims found wrong
+
+**Recorded** 2026-09-21, on `feat/frontend-v2-into-prototype` cut from `prototype` `9d7ca3a`. No
+application code changed yet — this entry covers the import and the verification pass only. Artifact:
+`frontend-v2/FRONTEND_V2_AUDIT.md` §10.
+
+### 1. Mechanism
+
+`frontend-v2/` (81 files, Sandipan's new UI) existed **only on `origin/main`**, whose tip is `af110b1`.
+It was never on `prototype`: `git merge-base --is-ancestor af110b1 origin/prototype` returns non-zero.
+The two branches have diverged — `main` is 18 commits ahead of `prototype`, `prototype` is **54** ahead
+of `main`.
+
+Brought in with `git checkout origin/main -- frontend-v2` onto a branch off `prototype` — the directory
+only, 81 files staged, nothing else touched. The in-flight backend work in the tree
+(`backend/app/ml/adapters/sam2.py` modified, untracked `scripts/measure_video_mask_coverage.py` and
+`tests/unit/test_video_mask_propagation.py`) was left alone and is not in this commit.
+
+### 2. Why a directory import and not `git merge origin/main`
+
+A real merge was rejected after measuring what it drags in. `main`'s 18 commits also carry backend
+edits: `analysis.py` +102, `video.py` +135, `documentation.py` (new, +121), `planner.py`,
+`db/session.py`, `state.py`, `schemas/agent.py`. Those are the same files `prototype`'s 54 commits of
+evidence/verifier/routing work have been rewriting. Merging would fuse a UI question with a backend
+conflict fight, and a botched resolution there could silently undo Q-040-Q-046. The directory import
+keeps the two questions separable and is trivially revertable (`git rm -r frontend-v2`).
+
+Cost of the choice, stated plainly: no merge-base link to `main`, so a later real merge will still have
+to resolve those backend files. This defers that work, it does not remove it.
+
+### 3. What the verification found — the one that matters
+
+`app/reports/page.tsx:190` is `STATUS_MAP[report.status] || STATUS_MAP.COMPLETED`, and `:315` is
+`STATUS_MAP[result.status]?.label || "Completed"`. Reports' map covers 5 keys
+(`COMPLETED, RUNNING, PENDING, QUEUED, FAILED`). `prototype`'s backend emits 7
+(`backend/app/schemas/agent.py:6-13`), including **`VALIDATING`, `PLANNING`, `GENERATING_EVIDENCE`** —
+none of them in the map. A job in any of those three states renders a green **"Completed"** pill while
+still running.
+
+The audit filed this under §9.1 as a redundancy nit ("a status that reports correctly on one page can
+fall back to a wrong default on another"). It is a correctness bug, and specifically the kind this
+project refuses elsewhere: the UI asserts a job finished when it has not. Re-tiered to P0 and moved to
+the front of the queue.
+
+### 4. Blast radius
+
+Zero on the backend — no backend file was touched, no route registered, no schema changed. The import
+adds a directory nothing builds or serves yet; `frontend/` remains the wired frontend and is untouched.
+The risk is entirely forward-looking: anyone who now runs `npm install` in `frontend-v2/` will
+regenerate `AGENTS.md`/`CLAUDE.md` and shrink `package-lock.json` (§0.2 of the audit documents this as
+expected, not a new defect).
+
+One real coupling found: **23 of the 25 endpoints in `lib/endpoints.ts` exist on `prototype`.** The two
+that do not are `/api/documentation` and `/api/documentation/content` — `documentation.py` lives only on
+`main`. So the Documentation page's live fetch is dead here, which falsifies the audit §2 row claiming
+it is real. Side effect worth recording: with `repositoryDocs` always empty, the §9.5 last-wins `Map`
+bug at `documentation/page.tsx:838-839` is currently **unreachable**, and will appear the moment that
+endpoint is ported. Fix §9.5 before porting.
+
+### 5. Verification — and two of my own miscounts, corrected
+
+Route coverage: enumerated `@router` decorators across `backend/app/api/v1/endpoints/*.py` and diffed
+against `lib/endpoints.ts`. Task coverage: `comm` of `TaskType` values against `ChatInput.tsx`'s
+`ANALYSIS_TYPES` — every picker value is a real backend task except the `"auto"` sentinel, which is
+correctly stripped at `stores/useAnalysisStore.ts:179` and mapped to `override_task` at `lib/api.ts:295`
+against `AnalyzeRequest` (`backend/app/schemas/requests.py:5-16`).
+
+Two intermediate counts in this session were wrong and were caught before being reported as findings:
+(a) a `grep -rl "button"` matched literal `<button>` markup and claimed 16 importers for the dead
+`Button` primitive; (b) a `<Name[ />]` pattern missed tags whose attributes begin on the next line and
+reported `Tabs` as unused when `app/analysis/[jobId]/page.tsx` uses it heavily. Both were re-run with
+`<Name\b` and a `/ui/` path filter. A third, a `comm` against a list carrying leading whitespace,
+briefly suggested `video_change` was not a backend task; it is (`schemas/agent.py`). The corrected dead
+set is 13 `ui/` exports + 6 files, and it includes `Input`, which the audit missed.
+
+Not verified, and recorded as such in audit §10.5: nothing was booted. No `node_modules`, no dev server,
+no browser. Every *visual* claim (§4.2 contrast, §4.5 clipping, §4.6 video bars, §9.7's glow counts)
+remains unconfirmed; only the source mechanisms behind them were checked. Route **existence** is proven;
+response **shape** is not.
+
+### 6. Defending this to a reviewer
+
+"You imported a directory instead of merging — isn't that hiding a conflict?" It defers one, and the
+entry says so. The alternative was resolving Sandipan's backend edits to `analysis.py`/`video.py`
+against 54 commits of verifier work in the same sitting as a UI audit, with no test coverage on the UI
+side to catch a bad resolution. Separating them is the cheaper failure mode.
+
+"Why trust the audit at all if three claims were wrong?" Because it was checked rather than trusted. Of
+roughly 30 checkable claims, most held **exactly** — including the status-key counts (5/8/10) and the
+`Map` merge order, quoted line-for-line. What moved: §4.1 is worse than described (the duplicated Card
+is a flex child of each region row, capped at 8 by `.slice(0, 8)`, not a simple over-render), §9.1's
+"identical motion variants" are four **different** timings so extracting them is a behaviour change not
+a refactor, and §4.5's proposed `flex-wrap` fix addresses the wrong mechanism (the pill row already has
+`overflow-x-auto`; it cannot shrink because of default `min-width:auto`, so `min-w-0` is the fix).
+
+"Is anything shipped?" No. One import commit, one audit document. The P0 list is queued, not applied.
