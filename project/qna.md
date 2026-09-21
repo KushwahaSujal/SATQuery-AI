@@ -3657,6 +3657,13 @@ local-GPU session for flood and burn scars.
 terratorch pins tightly and a plain install risks downgrading torch/torchvision under the eight working
 adapters. Trading eight working models for one unverified one is not a call to make unilaterally.
 
+> **SUPERSEDED by Q-045 §1.** The premise is wrong. `torch 2.14.0+cu130` is PyPI's own default build
+> string for torch 2.14.0, not a custom CUDA-13 pin — the installed wheel has no `direct_url.json` and
+> is a plain `manylinux_2_28_x86_64` wheel from an index. A resolve-only probe shows terratorch pulls
+> **the identical torch 2.14.0 / torchvision 0.29.0 / timm 1.0.29 / smp 0.5.0 / numpy 2.4.6**, so it
+> cannot disturb the eight adapters. The decision not to adopt it still stands, but on different and
+> better grounds — see Q-045.
+
 ### 4. EuroSAT — verification, and why it closes mandatory requirement #1
 
 `memory.md` §0 lists "RS adaptation evidence (BigEarthNet) — mandatory req #1" as open. EuroSAT closes
@@ -4186,3 +4193,144 @@ recovered rather than supplied.
 *"Q-041 §5 said this was impossible. Which of you is wrong?"* Q-041 §5 is wrong, for two reasons now
 recorded: it searched with labels instead of the model's own statistics, and its harness silently
 poisoned every per-scene candidate on the six NaN-bearing scenes.
+
+---
+
+## Q-045 · The terratorch objection was wrong, and the burn-scar checkpoint's BatchNorm statistics were never populated
+
+**Recorded** 2026-09-21, atop `prototype` `7d209db`. **Supersedes Q-041 §3 and §6's rationale** for not
+installing `terratorch`, annotated in place. Reproducer: `scripts/verify_burnscars_terratorch.py`, run
+from an isolated venv at `~/.venvs/terratorch-probe`.
+
+### 1. The dependency objection was based on misreading a build string
+
+Q-041 §3 justified not installing `terratorch` on the grounds that it "pins tightly and a plain install
+risks downgrading torch/torchvision under the eight working adapters". **That was wrong.**
+
+`torch 2.14.0+cu130` is **PyPI's own default build string** for torch 2.14.0, not a custom CUDA-13 pin.
+Evidence: `.venv/lib/python3.11/site-packages/torch-2.14.0.dist-info/` has **no `direct_url.json`** (so
+it was installed from an index, not a pinned wheel URL) and its `WHEEL` tag is the plain
+`cp311-cp311-manylinux_2_28_x86_64`. A probe venv built purely from PyPI reports the identical
+`2.14.0+cu130`.
+
+A resolve-only `pip install terratorch --dry-run` on Python 3.11 succeeds and would pull:
+
+| package | resolved | main `.venv` today |
+|---|---|---|
+| torch | **2.14.0** | 2.14.0 — identical |
+| torchvision | **0.29.0** | 0.29.0 — identical |
+| timm | 1.0.29 | 1.0.29 — identical |
+| segmentation_models_pytorch | 0.5.0 | 0.5.0 — identical |
+| numpy | 2.4.6 | 2.4.6 — identical |
+| lightning / pytorch-lightning | 2.6.6 | absent (the ckpt was written by PL **2.6.6** — exact match) |
+| terratorch | 1.2.11 | absent |
+| torchgeo / einops / jsonargparse | 0.8.1 / 0.8.2 / 4.52.0 | absent |
+
+terratorch declares only `torch>2.0`, unpinned `torchvision`, `numpy>=2.2`, `timm>=1.0.15`,
+`smp>=0.5.0`, `lightning>=2.6.0`. **Nothing it declares can force a torch change.** The stated reason
+for the decision was therefore false, and it had been propagated into `memory.md`, both handoff docs,
+`docs/models/burnscars.md` and the `dce3ac3` commit message. All corrected.
+
+A genuine constraint did emerge: **Python 3.11 caps us at terratorch 1.2.11**, because 1.2.12+ require
+`torchgeo>=0.9`, which requires Python >=3.12. Both venvs here are 3.11.16, and the delivery README says
+training used 3.12. Which terratorch version Ayushman trained with is **NOT RECORDED** — the checkpoint
+stores only `pytorch-lightning_version: 2.6.6` and `hyper_parameters._class_path`.
+
+### 2. The checkpoint is architecturally exactly what the config declares
+
+Built from the delivered `docs/models/burnscars/model_config.yaml` through
+`terratorch.tasks.SemanticSegmentationTask` / `EncoderDecoderFactory`, the checkpoint loads
+**`strict=True` with zero missing keys, zero unexpected keys and zero shape mismatches** across all 355
+tensors. The parameter count reconciles exactly: 324,204,674 parameters + 206,601 buffers =
+**324,411,275**, matching the census in Q-041 §6 (which counted params+buffers). A CPU forward pass on
+one synthetic 6-band 224x224 tile returns logits of shape `(1, 2, 224, 224)`.
+
+Per the ChangeFormer scar (`network.py:14-16` — 373 names matched, `strict=True` passed, IoU 0.019 vs
+0.726 because `num_heads` differed) **a clean strict load is not evidence the metrics are right**, and a
+ViT's `num_heads` changes no tensor shape so `strict=True` provably cannot detect it. The mitigating
+difference here is that the encoder is not a reimplementation: it is terratorch's own registered
+`prithvi_eo_v2_300` (`num_heads=16`, the standard ViT-L value), from the library named in the
+checkpoint's own `_class_path`. Residual risk: a silent config change between the unknown training
+version and 1.2.11.
+
+### 3. New defect the delivery does not record: all 9 BatchNorm layers are at initialisation
+
+Read straight out of the raw checkpoint, independently confirmed here:
+
+```
+BatchNorm layers found: 9
+num_batches_tracked distinct values: [0]
+layers with running_mean == 0 AND running_var == 1: 9 of 9
+affine weight of model.decoder.decoder.blocks.0.conv1.1:
+    min 0.9878  max 0.9974  mean 0.9940   -> trained, not at the 1.0 init
+```
+
+All 9 (the 8 in `UNetDecoder` plus `model.neck.2.fpn1.1` in `LearnedInterpolateToPyramidal`) have
+`running_mean` 0, `running_var` 1 and `num_batches_tracked` **0** — untouched from initialisation —
+while their affine weights have clearly trained. So gradients flowed, but **no running statistics were
+ever accumulated**.
+
+Consequence: in `.eval()` mode every one of those BatchNorms degenerates to
+`y = weight * x / sqrt(1 + eps) + bias`, a pure affine map that does not normalise anything. The
+decoder effectively has no normalisation at inference.
+
+**Mechanism: NOT ESTABLISHED.** The observed state — buffers present but never updated, affine weights
+trained — is exactly what you get if the BatchNorms were held in **eval mode throughout training**. If
+that is what happened, our eval-mode inference is *faithful* to training and the delivered metrics are
+reproducible in principle. The alternative, that they were in train mode using batch statistics, cannot
+be ruled out from the checkpoint alone; at batch size 1 (`global_step` 3888 = 9 x 432) train-mode BN
+degenerates to instance normalisation over a single tile, which would make eval-mode inference
+**not** equivalent and the reported numbers batch-size dependent. One question to Ayushman settles it.
+
+This is also a plausible contributor to the per-scene collapse already documented (Q-042 §1: 10 of 264
+scenes at burn IoU 0.0, 6 predicting no burn pixels at all) — a decoder with no working normalisation is
+exactly the kind of thing that fails catastrophically on out-of-distribution scenes rather than
+gracefully.
+
+**Contrast, and why this matters beyond burn scars.** The flood model's BatchNorm statistics *are*
+populated (`encoder1.block.1.num_batches_tracked = 2773`), which is what made Q-044's label-free
+preprocessing recovery possible. The burn-scar checkpoint carries **no such information**, so the same
+trick cannot be used on it: its preprocessing cannot be recovered from its own weights. Fortunately it
+does not need to be — the delivered `model_config.yaml` states the per-band means and stds explicitly.
+
+### 4. Why terratorch still is not being adopted — the reasons have changed
+
+The dependency objection is withdrawn. The remaining ones:
+
+1. **The metric cannot be reproduced here regardless.** The HLS Burn Scars imagery is absent from this
+   machine — `find datasets/ -iname '*burn*' -o -iname '*hls*'` returns 0 hits and
+   `datasets/manifests/training_sources.yaml` has no entry. So installing terratorch could establish
+   only that the checkpoint instantiates, which §2 has now established *without* adopting it.
+2. **Cost and untested interactions.** ~100 packages absent today (lightning, torchgeo, kornia,
+   diffusers, geopandas, xarray, h5py, hydra-core, …), ~3.4 GB of wheels / 6.8 GB installed, and it
+   would upgrade `huggingface_hub 1.30.0 -> 1.32.0` and `matplotlib 3.11.1 -> 3.11.2`. This venv runs
+   `transformers 5.16.1` and terratorch pulls `diffusers 0.40.0`; that interaction is **NOT TESTED**.
+3. **§3 is the real blocker.** Paying ~7 GB to register a model whose decoder BatchNorms never
+   normalise, whose headline metric is unreproducible here, and whose eval/train equivalence is
+   unestablished, is the wrong order of operations.
+
+Cheaper path if it is wanted later: vendor the `PrithviViT` + `UNetDecoder` pair against the smp 0.5.0
+already installed, whose `UnetDecoder` parameter names already match. The ChangeFormer lesson applies —
+any such port must be verified numerically, not by a clean load.
+
+### 5. Blast radius
+
+Nothing in the serving path. No repo code changed; `scripts/verify_burnscars_terratorch.py` was added as
+the reproducer. The main `.venv` is untouched and verified still on torch 2.14.0+cu130 / torchvision
+0.29.0+cu130 with an unchanged 155-package `pip freeze`; all installation happened in
+`~/.venvs/terratorch-probe` (6.8 GB, deletable). The correction in §1 is documentary but matters: a
+false technical reason was recorded as the basis of a decision, and anyone re-deciding later would have
+inherited it.
+
+### 6. Defence
+
+*"You refused to install a library for a reason that was wrong. What else is wrong?"* The reason was
+checkable in one command and nobody checked it, including me — that is the lesson, and it is why the
+correction names every document that carried it. The decision it supported happens to survive on other
+grounds, which is luck, not diligence.
+
+*"Is the burn-scar model usable?"* Architecturally it is exactly what its config says, and it runs. But
+its decoder BatchNorms never accumulated statistics, so at inference they do not normalise; whether that
+matches how it was trained is unestablished, its headline IoU cannot be reproduced without imagery we do
+not have, and 10 of its 264 test scenes are complete misses. It should not be presented as a working
+capability.

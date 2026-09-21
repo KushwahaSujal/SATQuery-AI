@@ -112,8 +112,10 @@ blocks, width 1024, Conv3d patch embed, `pos_embed` 197 → 224x224), the three 
 
 We have **not** run it. It needs `terratorch`, `lightning` and `einops`, none of which are installed,
 and this environment is on `torch 2.14.0+cu130` — terratorch pins tightly enough that installing it
-risks downgrading torch and torchvision underneath the eight adapters that currently work. That is a
-decision for the team, not something to do quietly. (`timm` 1.0.29 and
+would, we thought, downgrade torch and torchvision underneath the eight adapters that currently work.
+**That turned out to be wrong** (measured 2026-09-21): terratorch resolves to the identical torch
+2.14.0 / torchvision 0.29.0 wheels, so it cannot disturb them. It is still unadopted because it adds
+~100 packages / 6.8 GB and because the metric it would let us verify needs imagery we do not have. (`timm` 1.0.29 and
 `segmentation_models_pytorch` 0.5.0 are already present, and smp's `UnetDecoder` produces exactly
 your decoder's parameter names, so the gap is smaller than it looks.)
 

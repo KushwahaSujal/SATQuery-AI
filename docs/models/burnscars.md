@@ -309,7 +309,10 @@ a reminder that the threshold was chosen on the easier split.
 | `torch` / `torchvision` | 2.14.0+cu130 / 0.29.0+cu130 |
 
 **Why `terratorch` was not installed:** this venv is `torch 2.14.0+cu130`, `terratorch` pins
-tightly, and a plain `pip install` risks downgrading torch/torchvision underneath the eight working
+tightly — **but a resolve-only probe on 2026-09-21 disproved the concern** (Q-045): it resolves to the
+same torch 2.14.0 / torchvision 0.29.0 wheels already installed, because `+cu130` is PyPI's default
+build string rather than a custom pin. The superseded reasoning was that it would downgrade
+torch/torchvision underneath the eight working
 adapters. Trading eight verified models for one unverified one is not a unilateral call (Q-041 §3).
 
 `smp` 0.5.0's `UnetDecoder` already produces the exact decoder parameter names the checkpoint

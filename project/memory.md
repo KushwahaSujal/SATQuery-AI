@@ -55,8 +55,11 @@
   reproduced his IoU 0.6292; the best needs the DEM channel zeroed, and his 0.30 threshold does not
   transfer). Registered but returns **NOT_CONFIGURED** and reports no flood extent. Q-041 §5.
 - **Burn scars** (Prithvi-EO-2.0 300M): checkpoint staged and documented, **not registered**. Needs
-  `terratorch`/`lightning`/`einops`, which would risk downgrading torch 2.14 under the eight working
-  adapters — decision taken **not** to install. Trained **from scratch** (`backbone_pretrained: false`),
+  `terratorch`/`lightning`/`einops`. **The original reason for not installing was wrong** (Q-045):
+  `torch 2.14.0+cu130` is PyPI's own default build string, not a custom pin, and terratorch resolves to
+  the *same* torch 2.14.0 / torchvision 0.29.0 wheels — it cannot disturb the eight adapters. It is
+  still unadopted, for better reasons: ~100 extra packages / 6.8 GB, and the metric it would let us
+  check is unreproducible here anyway. Trained **from scratch** (`backbone_pretrained: false`),
   so it must never be called foundation-model adaptation. Two of his metric files disagree for the same
   264-scene test set. Q-041 §6.
   **Verified 2026-09-21: the HLS Burn Scars imagery is NOT on this machine** — nothing under

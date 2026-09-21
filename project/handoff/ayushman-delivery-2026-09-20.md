@@ -153,7 +153,8 @@ decoder parameter names).
 
 **Why I did not install it:** this venv is `torch 2.14.0+cu130`. `terratorch` pins tightly and a
 plain `pip install` risks downgrading torch/torchvision, which would break the eight working
-adapters. That trade is the user's call, not mine.
+adapters. **[Corrected 2026-09-21, Q-045: this was wrong — `+cu130` is PyPI's default build string,
+not a custom pin, and terratorch resolves to the identical torch/torchvision wheels.]** That trade is the user's call, not mine.
 
 Two honest problems in the delivered burn-scar evidence, which must be reconciled before anything is
 quoted in the paper or demo:
@@ -238,8 +239,8 @@ entirely** at `d0daed7`. Earlier "352 passed" runs relied on an untracked local 
   with an explicit statement of the opposite.
 
 ### 3. Burn scars — document-only, decided with the user
-`terratorch` was **not** installed (it would risk downgrading torch 2.14 under the eight working
-adapters). Checkpoint staged, fully documented in `docs/models/burnscars.md`, **not registered**, no
+`terratorch` was **not** installed. The stated reason — that it would downgrade torch 2.14 — was
+**wrong**, corrected in Q-045: it resolves to the same torch/torchvision wheels already present. Checkpoint staged, fully documented in `docs/models/burnscars.md`, **not registered**, no
 adapter. Unchanged from the analysis above.
 
 ### 4. Record and tidy — DONE
