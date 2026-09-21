@@ -81,7 +81,7 @@ const DATASETS: DatasetItem[] = [
     size: "1.9 GB",
     dateAdded: "Oct 05, 2025",
     cropClass: "sat-crop-sar",
-    typeColor: "bg-purple-950 text-purple-300 border-purple-800/60",
+    typeColor: "bg-[var(--surface-3)] text-[var(--text-2)] border-[var(--border)]",
     bands: "C-band (HH, HV)",
     projection: "LCC (ISRO Indian Grid)",
     files: "8 GeoTIFF files",
@@ -100,7 +100,7 @@ const DATASETS: DatasetItem[] = [
     size: "4.8 GB",
     dateAdded: "Oct 10, 2025",
     cropClass: "sat-crop-coastal",
-    typeColor: "bg-[var(--green-bg)] text-emerald-400 border-emerald-800/60",
+    typeColor: "bg-[var(--green-bg)] text-[var(--green)] border-[var(--green)]/40",
     bands: "B02, B03, B04, B08, NDVI",
     projection: "UTM Zone 45N",
     files: "14 GeoTIFF files",
@@ -119,7 +119,7 @@ const DATASETS: DatasetItem[] = [
     size: "3.6 GB",
     dateAdded: "Oct 08, 2025",
     cropClass: "sat-crop-amazon",
-    typeColor: "bg-purple-950 text-purple-300 border-purple-800/60",
+    typeColor: "bg-[var(--surface-3)] text-[var(--text-2)] border-[var(--border)]",
     bands: "All 13 Sentinel-2 Bands",
     projection: "UTM Zone 20S",
     files: "24 GeoTIFF files",
@@ -138,7 +138,7 @@ const DATASETS: DatasetItem[] = [
     size: "5.2 GB",
     dateAdded: "Oct 02, 2025",
     cropClass: "sat-crop-water",
-    typeColor: "bg-[var(--surface-2)] text-[var(--cyan)] border-cyan-800/60",
+    typeColor: "bg-[var(--surface-2)] text-[var(--cyan)] border-[var(--cyan)]/40",
     bands: "Optical RGB-NIR + SAR HH/HV",
     projection: "UTM Zone 44N",
     files: "16 GeoTIFF files",
@@ -215,7 +215,7 @@ export default function DatasetsPage() {
                   onClick={() => setSelectedFilter(filter)}
                   className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium transition cursor-pointer ${
                     active
-                      ? "bg-cyan-950/60 border border-[var(--cyan)]/50 text-[var(--cyan)] shadow-[0_0_10px_rgba(6,182,212,0.15)]"
+                      ? "bg-[var(--cyan-glow)] border border-[var(--cyan)]/50 text-[var(--cyan)] shadow-[0_0_10px_rgba(6,182,212,0.15)]"
                       : "bg-[var(--surface-2)] border border-[var(--border)] text-[var(--text-2)] hover:border-[var(--border-strong)]"
                   }`}
                 >

@@ -386,7 +386,7 @@ export default function HistoryPage() {
 
                         <div className="min-w-0">
                           <div className="flex items-center gap-2 mb-1">
-                            <span className="px-2 py-0.5 text-[10px] font-medium rounded bg-cyan-950/70 border border-[var(--cyan)]/30 text-[var(--cyan)]">
+                            <span className="px-2 py-0.5 text-[10px] font-medium rounded bg-[var(--cyan-glow)] border border-[var(--cyan)]/30 text-[var(--cyan)]">
                               {taskInfo.label}
                             </span>
                             <h3 className="text-sm font-semibold text-[var(--heading)] truncate">{item.query}</h3>
@@ -515,7 +515,7 @@ export default function HistoryPage() {
                   />
                 )}
                 <div className="absolute inset-0 bg-gradient-to-t from-[var(--surface)]/80 to-transparent pointer-events-none" />
-                <div className="absolute top-2.5 right-2.5 px-2 py-0.5 rounded text-[10px] font-semibold bg-blue-900/80 text-blue-200 border border-blue-400/40 backdrop-blur-md z-10">
+                <div className="absolute top-2.5 right-2.5 px-2 py-0.5 rounded text-[10px] font-semibold bg-[var(--primary-glow)] text-[var(--primary)] border border-[var(--primary)]/40 backdrop-blur-md z-10">
                   {taskLabel(result.task)}
                 </div>
               </div>
@@ -576,7 +576,7 @@ export default function HistoryPage() {
                         <div className="flex items-center justify-center gap-1 text-[10px] text-[var(--text-3)]">
                           <span className="w-1.5 h-1.5 rounded-full bg-blue-400" /> Regions
                         </div>
-                        <div className="text-xs font-bold text-blue-400 mt-1">
+                        <div className="text-xs font-bold text-[var(--primary)] mt-1">
                           {result.evidence.spatial.statistics.region_count || "—"}
                         </div>
                       </div>
@@ -584,7 +584,7 @@ export default function HistoryPage() {
                         <div className="flex items-center justify-center gap-1 text-[10px] text-[var(--text-3)]">
                           <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" /> Area
                         </div>
-                        <div className="text-xs font-bold text-emerald-400 mt-1">
+                        <div className="text-xs font-bold text-[var(--green)] mt-1">
                           {result.evidence.spatial.statistics.estimated_area_sq_km
                             ? `${result.evidence.spatial.statistics.estimated_area_sq_km.toFixed(2)} km²`
                             : result.evidence.spatial.statistics.estimated_area_sq_m

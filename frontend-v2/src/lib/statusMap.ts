@@ -38,21 +38,26 @@ export interface JobStatusDescriptor {
   active: boolean;
 }
 
+/**
+ * globals.css ships a --status-{completed,processing,failed}-{bg,text,dot} family
+ * defined in BOTH the dark and light blocks, purpose-built for status badges. These
+ * are the tokens the hardcoded bg-amber-950/60-style shades were bypassing.
+ */
 const TONE_CLASSES: Record<JobStatusTone, { pill: string; dot: string; text: string }> = {
   success: {
-    pill: "bg-[var(--green-bg)] text-[var(--green)] border-[var(--green)]/40",
-    dot: "bg-[var(--green)]",
-    text: "text-[var(--green)]",
+    pill: "bg-[var(--status-completed-bg)] text-[var(--status-completed-text)] border-[var(--status-completed-dot)]/30",
+    dot: "bg-[var(--status-completed-dot)]",
+    text: "text-[var(--status-completed-text)]",
   },
   progress: {
-    pill: "bg-[var(--amber-bg)] text-[var(--amber)] border-[var(--amber)]/40",
-    dot: "bg-[var(--amber)]",
-    text: "text-[var(--amber)]",
+    pill: "bg-[var(--status-processing-bg)] text-[var(--status-processing-text)] border-[var(--status-processing-dot)]/30",
+    dot: "bg-[var(--status-processing-dot)]",
+    text: "text-[var(--status-processing-text)]",
   },
   error: {
-    pill: "bg-[var(--error-bg)] text-[var(--error)] border-[var(--error)]/40",
-    dot: "bg-[var(--error)]",
-    text: "text-[var(--error)]",
+    pill: "bg-[var(--status-failed-bg)] text-[var(--status-failed-text)] border-[var(--status-failed-dot)]/30",
+    dot: "bg-[var(--status-failed-dot)]",
+    text: "text-[var(--status-failed-text)]",
   },
   neutral: {
     pill: "bg-[var(--surface-2)] text-[var(--text-2)] border-[var(--border)]",

@@ -115,7 +115,7 @@ export function ChatInput({
           <div className="flex shrink-0 gap-2">
           {videoPreview && (
             <div className="relative group">
-              <div className="h-12 w-12 rounded-lg overflow-hidden border border-purple-500/30 bg-[var(--surface-2)] sm:h-14 sm:w-14">
+              <div className="h-12 w-12 rounded-lg overflow-hidden border border-[var(--border-strong)] bg-[var(--surface-2)] sm:h-14 sm:w-14">
                 <img src={videoPreview} alt="Video" className="w-full h-full object-cover" />
               </div>
               <div className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-purple-500 text-white flex items-center justify-center shadow">

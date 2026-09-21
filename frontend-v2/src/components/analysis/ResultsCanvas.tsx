@@ -83,7 +83,7 @@ export function ResultsCanvas({
                 onClick={() => setModeSelect(mode)}
                 className={`px-2.5 py-1 rounded text-[10px] transition ${
                   modeSelect === mode
-                    ? "bg-cyan-900/60 border border-cyan-600/40 text-[var(--cyan)] font-medium"
+                    ? "bg-[var(--cyan-glow)] border border-cyan-600/40 text-[var(--cyan)] font-medium"
                     : "text-[var(--text-3)] hover:text-[var(--text)]"
                 }`}
               >
@@ -230,7 +230,7 @@ export function ResultsCanvas({
       {/* Filmstrip */}
       <div className="h-16 border-t border-[var(--border)] bg-[var(--surface)] px-3 flex items-center gap-2 shrink-0">
         {rasters.slice(0, 4).map((r, idx) => (
-          <div key={r.id} className={`flex items-center gap-2 px-2 py-1 rounded-lg bg-[var(--surface-2)] border ${idx === 0 ? "border-emerald-500/50" : "border-red-500/50"} relative overflow-hidden shrink-0`}>
+          <div key={r.id} className={`flex items-center gap-2 px-2 py-1 rounded-lg bg-[var(--surface-2)] border ${idx === 0 ? "border-[var(--green)]/50" : "border-red-500/50"} relative overflow-hidden shrink-0`}>
             <div className={`w-10 h-10 rounded ${idx === 0 ? "border border-emerald-600/40" : "border border-red-500/50"} overflow-hidden shrink-0`}>
               {r.preview_url ? (
                 <img src={r.preview_url} alt={r.filename} className="w-full h-full object-cover" onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }} />

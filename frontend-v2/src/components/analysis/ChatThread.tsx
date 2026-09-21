@@ -11,9 +11,9 @@ function formatTime(ts: number) {
 
 function AnalysisProgressCard({ content }: { content: string }) {
   return (
-    <div className="flex items-center gap-2.5 px-3 py-2 rounded-lg bg-cyan-500/5 border border-cyan-500/20">
+    <div className="flex items-center gap-2.5 px-3 py-2 rounded-lg bg-cyan-500/5 border border-[var(--cyan)]/20">
       <div className="relative w-4 h-4 shrink-0">
-        <div className="absolute inset-0 rounded-full border-2 border-cyan-500/30 border-t-cyan-400 animate-spin" />
+        <div className="absolute inset-0 rounded-full border-2 border-[var(--cyan)]/30 border-t-cyan-400 animate-spin" />
       </div>
       <span className="text-xs text-[var(--cyan)] font-medium">{content}</span>
     </div>

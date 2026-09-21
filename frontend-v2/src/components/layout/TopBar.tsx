@@ -126,7 +126,7 @@ export default function TopBar({
             onClick={() => setMode("light")}
             className={`p-1.5 rounded-full transition-all duration-150 ${
               mounted && mode === "light"
-                ? "bg-[var(--surface-3)] text-amber-400 shadow-sm"
+                ? "bg-[var(--surface-3)] text-[var(--amber)] shadow-sm"
                 : "text-[var(--text-3)] hover:text-[var(--heading)]"
             }`}
             title="Light theme"

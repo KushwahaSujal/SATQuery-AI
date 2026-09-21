@@ -91,7 +91,7 @@ export default function ReportsPage() {
         <main className="flex-1 overflow-y-auto p-6 space-y-5 bg-[var(--canvas)]">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div className="flex items-start gap-3.5">
-              <div className="relative w-10 h-10 rounded-xl bg-cyan-950/60 border border-[var(--cyan)]/30 flex items-center justify-center text-[var(--cyan)] mt-0.5 shadow-[0_0_15px_rgba(6,182,212,0.15)] overflow-hidden">
+              <div className="relative w-10 h-10 rounded-xl bg-[var(--cyan-glow)] border border-[var(--cyan)]/30 flex items-center justify-center text-[var(--cyan)] mt-0.5 shadow-[0_0_15px_rgba(6,182,212,0.15)] overflow-hidden">
                 <BorderBeam duration={5} size={60} colorFrom="#00d5be" colorTo="#00f2fe" />
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
                   <path d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" strokeLinecap="round" strokeLinejoin="round" />
@@ -125,7 +125,7 @@ export default function ReportsPage() {
                   onClick={() => setSelectedTab(tab)}
                   className={`px-3 py-1.5 rounded-lg flex items-center gap-2 transition cursor-pointer ${
                     active
-                      ? "bg-cyan-950/70 border border-[var(--cyan)]/40 text-[var(--cyan)] shadow-sm"
+                      ? "bg-[var(--cyan-glow)] border border-[var(--cyan)]/40 text-[var(--cyan)] shadow-sm"
                       : "text-[var(--text-3)] hover:text-[var(--text)] hover:bg-[var(--surface-hover)]"
                   }`}
                 >
@@ -184,7 +184,7 @@ export default function ReportsPage() {
                           key={report.id}
                           variants={rowVariant}
                           onClick={() => setSelectedId(report.id)}
-                          className={`hover:bg-[var(--surface-hover)]/50 transition-colors cursor-pointer ${isSelected ? "bg-cyan-950/20 border-l-2 border-[var(--cyan)]" : ""}`}
+                          className={`hover:bg-[var(--surface-hover)]/50 transition-colors cursor-pointer ${isSelected ? "bg-[var(--cyan-glow)] border-l-2 border-[var(--cyan)]" : ""}`}
                         >
                           <td className="py-3 px-4">
                             <div className="flex items-center gap-3">
@@ -223,7 +223,7 @@ export default function ReportsPage() {
                             </div>
                           </td>
                           <td className="py-3 px-3 whitespace-nowrap">
-                            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-medium bg-blue-950/70 text-blue-300 border border-blue-800/40">
+                            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-medium bg-[var(--primary-glow)] text-[var(--primary)] border border-[var(--primary)]/40">
                               {taskInfo.category}
                             </span>
                           </td>
@@ -317,7 +317,7 @@ export default function ReportsPage() {
           {result && (
             <div className="flex flex-wrap items-center gap-2 text-[11px] text-[var(--text-2)]">
               {result.task && (
-                <span className="px-2.5 py-1 rounded-lg bg-purple-950/60 text-purple-300 border border-purple-800/40 font-medium">
+                <span className="px-2.5 py-1 rounded-lg bg-[var(--surface-3)] text-[var(--text-2)] border border-[var(--border)] font-medium">
                   {taskLabel(result.task)}
                 </span>
               )}
@@ -403,7 +403,7 @@ export default function ReportsPage() {
                   <p className="text-[10px] text-[var(--text-3)] leading-tight">Change regions</p>
                 </div>
                 <div className="p-2.5 rounded-xl bg-[var(--surface-2)] border border-[var(--border)]">
-                  <div className="flex items-center gap-1.5 text-emerald-400 mb-1">
+                  <div className="flex items-center gap-1.5 text-[var(--green)] mb-1">
                     <span className="text-sm font-bold text-[var(--heading)]">
                       {result.evidence.spatial.statistics.estimated_area_sq_km
                         ? `${result.evidence.spatial.statistics.estimated_area_sq_km.toFixed(2)} km²`
