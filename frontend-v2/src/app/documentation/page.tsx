@@ -1,35 +1,18 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import Link from "next/link";
 import { motion } from "framer-motion";
 import {
-  AlertTriangle,
   ArrowRight,
   BookOpen,
   Boxes,
   Braces,
-  CheckCircle2,
   Check,
-  ChevronDown,
-  Clock3,
-  Code2,
-  Database,
   FileText,
   Filter,
-  GitBranch,
-  Layers3,
-  Map as MapIcon,
-  PlayCircle,
-  Radar,
   Route,
   Satellite,
   Search,
-  Server,
-  ShieldCheck,
-  Sparkles,
-  TerminalSquare,
-  Video,
   X,
 } from "lucide-react";
 import Sidebar from "@/components/layout/Sidebar";
@@ -53,13 +36,6 @@ interface DocResource {
   status: "Authoritative" | "Live State" | "Reference" | "Research" | "Setup";
   sections: string;
   searchText?: string;
-}
-
-interface DocDetail {
-  purpose: string;
-  contents: string[];
-  keyDetails: string[];
-  useWhen: string[];
 }
 
 const hiddenDocumentPaths = new Set([
@@ -263,369 +239,6 @@ const docResources: DocResource[] = [
   },
 ];
 
-const modelFamilies = [
-  {
-    name: "Grounding and Segmentation",
-    icon: MapIcon,
-    docs: ["GROUNDING_DINO.md", "V4_GROUNDING_REASONING.md", "SAM2_1.md"],
-    detail: "Open-vocabulary detection, query-aware spatial reasoning, and promptable masks for still imagery and video keyframes.",
-  },
-  {
-    name: "Temporal Change",
-    icon: GitBranch,
-    docs: ["CHANGEFORMER_V6.md", "CDVQA.md", "EVIDENCE_ADJUDICATOR.md"],
-    detail: "Bi-temporal change masks, change visual question answering, identity probes, consistency checks, and evidence summarization.",
-  },
-  {
-    name: "Multisensor Fusion",
-    icon: Radar,
-    docs: ["DOFA.md", "OPTICAL_SAR_FUSION.md", "BIGEARTHNET_MULTIMODAL.md"],
-    detail: "Optical, SAR, multispectral, and foundation-model strategy with explicit caveats for untrained or unwired paths.",
-  },
-  {
-    name: "Vision-Language Candidates",
-    icon: Sparkles,
-    docs: ["GENERAL_RS_VLM.md", "REMOTECLIP.md", "GEOCHAT.md", "EARTHDIAL.md", "RSCOVLM.md"],
-    detail: "Adopted, optional, and evaluated VLM options with integration status, failure modes, and reproducibility notes.",
-  },
-];
-
-const apiEndpoints = [
-  { method: "GET", path: "/api/models", area: "Model inventory", detail: "Runtime availability, checkpoint status, device, precision, lifecycle states." },
-  { method: "POST", path: "/api/upload", area: "Raster ingestion", detail: "Uploads GeoTIFF, TIFF, PNG, or JPEG and returns metadata, CRS, bounds, modality, and previews." },
-  { method: "POST", path: "/api/analyze", area: "Agent workflow", detail: "Routes natural-language analysis into grounding, captioning, VQA, change detection, CDVQA, or fusion DAGs." },
-  { method: "GET", path: "/api/analysis/{job_id}/layers", area: "Visual analytics", detail: "Discovers source, derived, probability, mask, overlay, SAR, video, and region-map layers." },
-  { method: "POST", path: "/api/analysis/{job_id}/inspect-pixel", area: "Pixel inspector", detail: "Returns band DNs, coordinates, indices, prediction class, probability, and provenance for a pixel." },
-  { method: "GET", path: "/api/analysis/{job_id}/histogram/{layer_id}", area: "Histogram", detail: "Computes authentic 50-bin distributions and summary statistics over valid pixels." },
-  { method: "GET", path: "/api/analysis/{job_id}/export/{layer_id}", area: "Export", detail: "Exports PNG, GeoTIFF, or GeoJSON with preserved geospatial metadata where applicable." },
-  { method: "POST", path: "/api/video/analyze", area: "Video intelligence", detail: "Runs frame sampling, Grounding DINO, SAM 2.1, event aggregation, and streamable results." },
-];
-
-const workflows = [
-  {
-    title: "Single-Image Grounding",
-    steps: "inspect_raster -> validate_single_image -> run_grounding -> run_segmentation -> generate_overlay -> generate_report",
-    models: "Grounding DINO, V4 reasoner, SAM 2.1",
-  },
-  {
-    title: "Bi-Temporal Change Detection",
-    steps: "inspect_raster -> validate_temporal_pair -> run_change_detection -> calculate_statistics -> generate_overlay -> generate_report",
-    models: "ChangeFormerV6",
-  },
-  {
-    title: "Bi-Temporal Change VQA",
-    steps: "inspect_raster -> validate_temporal_pair -> run_change_detection -> run_change_vqa -> generate_overlay -> generate_report",
-    models: "ChangeFormerV6, CDVQA",
-  },
-  {
-    title: "Optical + SAR Analysis",
-    steps: "inspect_raster -> validate_optical_sar_pair -> run_optical_sar -> generate_report",
-    models: "DOFA, optical-SAR fusion path",
-  },
-  {
-    title: "Video Grounding",
-    steps: "upload video -> sample frames -> detect objects -> segment key regions -> aggregate flags -> stream results",
-    models: "Grounding DINO, SAM 2.1",
-  },
-];
-
-const commands = [
-  { label: "Backend", command: ".\\.venv\\Scripts\\python -m uvicorn backend.app.main:app --reload --host 0.0.0.0 --port 8000" },
-  { label: "Frontend v2", command: "cd frontend-v2 && npm run dev" },
-  { label: "Backend smoke", command: "cd frontend-v2 && npm run demo:smoke" },
-  { label: "Frontend build", command: "cd frontend-v2 && npm run build" },
-  { label: "API docs", command: "http://localhost:8000/docs" },
-];
-
-const readiness = [
-  { tone: "green", label: "Verified working", value: "ChangeFormer LEVIR-CD IoU 0.7385 / F1 0.8496; 10/10 HTTP demo queries completed; GeoTIFF and AOI paths verified." },
-  { tone: "green", label: "Test record", value: "Project notes record 215 passed, 0 failed after the 2026-09-14 verification run." },
-  { tone: "amber", label: "Do not oversell", value: "Optical-SAR learned head is documented as untrained; BigEarthNet and some RS adaptation paths need stronger live wiring evidence." },
-  { tone: "amber", label: "Known UI/API caveats", value: "Older frontend docs flag field-contract mismatches; the API contract is the source of truth for current payloads." },
-];
-
-const docDetails: Record<string, DocDetail> = {
-  "docs/SATQUERY_AI_MASTER_DOCUMENTATION.md": {
-    purpose: "Authoritative technical specification for the whole SatQuery AI platform. It explains the product mission, agentic remote-sensing workflows, model stack, system architecture, deployment approach, reproducibility expectations, and presentation/mentor-defense framing.",
-    contents: [
-      "System overview, project motivation, target use cases, and non-functional principles.",
-      "AI and ML model sections for grounding, segmentation, change detection, multimodal fusion, VQA, evidence adjudication, and evaluated candidates.",
-      "Backend architecture, FastAPI surface, workflow orchestration, artifact persistence, and deployment notes.",
-      "Reproducibility, testing, demo preparation, and presentation guidance.",
-    ],
-    keyDetails: [
-      "Treat this as a high-level public artifact, but verify implementation-sensitive claims against project/architecture.md and project/pre-demo.md.",
-      "The master doc links into the complete model dossier directory for deep mathematical and architecture details.",
-      "Useful for onboarding, presentations, research framing, and explaining why the system is agentic rather than one monolithic VLM.",
-    ],
-    useWhen: ["Preparing the final report or PPT", "Explaining the system end to end", "Finding the canonical project narrative"],
-  },
-  "docs/SATQUERY_AI_FRONTEND_API_CONTRACT.md": {
-    purpose: "Frontend and backend integration contract. It defines the payloads, aliases, error shapes, endpoint behavior, model status vocabulary, and visual analytics response formats that UI code should trust.",
-    contents: [
-      "Model lifecycle endpoint: GET /api/models with NOT_CONFIGURED, AVAILABLE, LOADED, and FAILED states.",
-      "Raster upload and analysis workflows: POST /api/upload and POST /api/analyze.",
-      "Visual analytics APIs for layers, pixel inspection, histograms, and exports.",
-      "Video upload, video analysis, results retrieval, and streaming endpoints.",
-      "Standard structured JSON error envelope and error code matrix.",
-    ],
-    keyDetails: [
-      "job_id and request_id are synchronized aliases; workflow and workflow_id are synchronized aliases.",
-      "No fake boxes, masks, predictions, or synthetic confidence values should be shown in UI.",
-      "Grounding DINO confidence is a detection score, SAM score is not IoU, and ChangeFormer probability maps are direct model outputs.",
-    ],
-    useWhen: ["Building frontend pages", "Debugging missing fields", "Adding API clients or TypeScript types"],
-  },
-  "docs/SATQUERY_AI_TEAMMATE_SETUP.md": {
-    purpose: "Full reproducible setup and operations guide for a teammate joining the project from a fresh environment.",
-    contents: [
-      "Hardware, software, Docker, GPU, environment variable, and repository setup requirements.",
-      "Checkpoint and dataset download guidance with expected directory structure.",
-      "Backend, frontend, database, pgAdmin, Swagger, and Docker startup paths.",
-      "Smoke tests for Grounding DINO, SAM 2.1, ChangeFormer, CDVQA, multispectral, SAR, video, and API calls.",
-      "Troubleshooting sections for GPU, checkpoints, database, Docker, rebuilds, and resets.",
-    ],
-    keyDetails: [
-      "Swagger/OpenAPI is available at http://localhost:8000/docs when backend is running.",
-      "Model weights are not committed to Git and must be placed under checkpoints/.",
-      "Useful as the operational runbook when a machine is newly provisioned or broken.",
-    ],
-    useWhen: ["Setting up a new laptop", "Debugging environment issues", "Preparing a reproducible demo machine"],
-  },
-  "docs/SATQUERY_AI_MODEL_DATA_SETUP.md": {
-    purpose: "Asset and checkpoint placement guide for models and datasets that cannot live in Git.",
-    contents: [
-      "Where each model checkpoint belongs under checkpoints/.",
-      "Expected model families: Grounding DINO, SAM 2.1, ChangeFormer, CDVQA, DOFA, RemoteCLIP, BigEarthNet, General RS-VLM, and optical-SAR fusion.",
-      "Dataset placement patterns and verification hints.",
-      "Notes about files that are placeholders versus real trained weights.",
-    ],
-    keyDetails: [
-      "Use this before assuming a model is broken; many failures are missing checkpoint path issues.",
-      "Pairs with scripts/verify_checkpoints.py and setup_checkpoints-related notes.",
-      "Project notes warn that some older claims around fusion weights must be treated carefully.",
-    ],
-    useWhen: ["Installing checkpoints", "Verifying model availability", "Moving the project between machines"],
-  },
-  "project/architecture.md": {
-    purpose: "Code-first architecture map. This is the best source for how the backend and frontend actually work in the repository rather than how older marketing docs describe them.",
-    contents: [
-      "Backend stack: FastAPI, Pydantic, SQLAlchemy async, Alembic, PyTorch, geospatial libraries, imaging, reports, and tests.",
-      "Folder structure for backend/app, orchestration, models, workflows, geo, evidence, visualization, video, artifacts, DB, schemas, configs, scripts, tests, datasets, docs, checkpoints, and results.",
-      "Image analysis lifecycle from POST /api/upload to POST /api/analyze and persistence.",
-      "Routing table from inputs and query signals to capabilities and DAG tools.",
-      "Model-to-capability wiring and known unwired/orphaned capabilities.",
-    ],
-    keyDetails: [
-      "The orchestration layer builds a rich DAG plan, but execution is flattened through the legacy executor.",
-      "Model loading is lazy; availability is initially a filesystem check.",
-      "Database failures are non-fatal; filesystem artifacts remain the source of truth.",
-    ],
-    useWhen: ["Changing backend behavior", "Tracing a request", "Reconciling documentation against source"],
-  },
-  "project/flow.md": {
-    purpose: "Execution map for the real backend call chains and workflow paths.",
-    contents: [
-      "Entry points and primary call chain for POST /api/analyze.",
-      "Tool registry fan-out and agent controller behavior.",
-      "Grounding pipeline from detection through reasoning and segmentation.",
-      "Separate video path and visual analytics path.",
-      "Known dead ends, traps, and session-level changes.",
-    ],
-    keyDetails: [
-      "AgentState is the mutable context passed through tools.",
-      "Trace capture is central to proving the orchestration is real.",
-      "Useful for locating where a capability diverges from expected behavior.",
-    ],
-    useWhen: ["Debugging pipeline failures", "Explaining orchestration", "Adding new tools or workflows"],
-  },
-  "project/pre-demo.md": {
-    purpose: "Measured demo readiness and truth record. It is the most honest source for what works, what is blocked, and what must not be oversold.",
-    contents: [
-      "Verified baseline measurements and test-suite records.",
-      "Closed and open demo-critical issues.",
-      "Browser UI walkthrough notes and field-contract mismatches.",
-      "Video, color-query, timestamp, and robustness findings.",
-      "Explicit blockers for optical-SAR, remote-sensing adaptation evidence, and model availability verification.",
-    ],
-    keyDetails: [
-      "Records ChangeFormer LEVIR-CD IoU 0.7385 and F1 0.8496 after the 2026-09-14 run.",
-      "Warns not to demo or oversell untrained optical-SAR learned fusion.",
-      "Captures what judges or mentors are likely to notice first.",
-    ],
-    useWhen: ["Preparing demos", "Checking credibility claims", "Prioritizing last-mile fixes"],
-  },
-  "frontend/FRONTEND_GUIDE.md": {
-    purpose: "Frontend architecture and development guide for the original frontend codebase and shared UI conventions.",
-    contents: [
-      "Tech stack, project structure, design tokens, typography, layout, and component classes.",
-      "Data flow, backend connection, key API endpoints, state management, and caching strategy.",
-      "Page-by-page guide for command center, analysis workspace, visual analytics, video intelligence, history, model observatory, and diagnostics.",
-      "Component details for map viewer, query bar, results panel, execution trace, and command palette.",
-      "Error handling, performance, accessibility, and local development commands.",
-    ],
-    keyDetails: [
-      "Use its design guidance, but verify route names and active implementation against frontend-v2.",
-      "Strong warning against fabricated data in the interface.",
-      "Useful for preserving visual and interaction consistency.",
-    ],
-    useWhen: ["Building frontend features", "Understanding UI data flow", "Checking accessibility and UX expectations"],
-  },
-  "frontend/FRONTEND_POLISH.md": {
-    purpose: "Frontend audit and polish handoff covering incorrect data, dead controls, contract mismatches, logic errors, technical errors, and visual issues.",
-    contents: [
-      "Inventory of fake or hardcoded UI data that should be removed or wired.",
-      "Backend-contract mismatches where UI reads fields the API does not return.",
-      "Dead controls that look clickable but do nothing.",
-      "Logic, technical, and visual issues found during review.",
-      "Backend features that still need UI exposure.",
-    ],
-    keyDetails: [
-      "Use this as a risk checklist before demoing the UI.",
-      "Several issues are planning notes rather than verified current bugs in frontend-v2.",
-      "Pairs well with the API contract when repairing field names.",
-    ],
-    useWhen: ["Polishing UI", "Removing fake data", "Prioritizing visible product quality fixes"],
-  },
-  "frontend-v2/DEMO_RUN.md": {
-    purpose: "Frontend-v2 end-to-end demo runbook for proving the UI talks to the backend correctly.",
-    contents: [
-      "Three-command quick path for backend, backend smoke, and frontend.",
-      "Backend health verification and no-UI smoke test.",
-      "Frontend UI verification against http://localhost:3000.",
-      "Layer viewer verification and troubleshooting notes.",
-      "Lists what is already wired and what remains future work.",
-    ],
-    keyDetails: [
-      "Best practical file when someone asks how to run the current UI.",
-      "Complements README quick start with frontend-v2 specifics.",
-      "Use before a live walkthrough to catch backend or layer issues.",
-    ],
-    useWhen: ["Running frontend-v2 locally", "Checking demo readiness", "Troubleshooting UI/backend connection"],
-  },
-  "docs/models/README.md": {
-    purpose: "Index and navigation map for all model research dossiers.",
-    contents: [
-      "Master synthesis dossiers: comparison matrix, dependency graph, pipeline architecture, benchmarks, resource requirements, and training status.",
-      "Object grounding and spatial referring: Grounding DINO and V1-V4 strategies.",
-      "Segmentation and tracking: SAM 2.1.",
-      "Change analysis and VQA: ChangeFormer, CDVQA, and Evidence Adjudicator.",
-      "Multisensor and multimodal: DOFA, optical-SAR fusion, BigEarthNet, RemoteCLIP, General RS-VLM, and evaluated candidates.",
-    ],
-    keyDetails: [
-      "Use this as the table of contents for research/model questions.",
-      "Dossiers include identity, architecture, inference contracts, validation, benchmarks, limitations, and references.",
-      "Separates production models from evaluated but not adopted candidates.",
-    ],
-    useWhen: ["Researching a model", "Finding model-specific limitations", "Writing technical report sections"],
-  },
-  "docs/models/MODEL_PIPELINE_ARCHITECTURE.md": {
-    purpose: "Model interaction and execution architecture for major AI pipelines.",
-    contents: [
-      "Master system pipeline architecture.",
-      "Object grounding pipeline: Grounding DINO + V4 reasoner + SAM 2.1.",
-      "Bi-temporal change detection and CDVQA pipeline.",
-      "Optical-SAR cross-modal fusion pipeline.",
-      "Video patrol pipeline.",
-    ],
-    keyDetails: [
-      "This is the best model document for explaining how models work together rather than individually.",
-      "Useful for diagrams, demo narration, and tracing dependencies.",
-      "Should be cross-checked against project/architecture.md for current source wiring.",
-    ],
-    useWhen: ["Explaining model orchestration", "Drawing architecture diagrams", "Planning pipeline changes"],
-  },
-  "docs/models/MODEL_COMPARISON_MATRIX.md": {
-    purpose: "Concise comparison of active, implemented, evaluated, and historical model choices.",
-    contents: [
-      "Active and implemented model matrix.",
-      "Evaluated candidates and historical strategies.",
-      "Computational footprint summary.",
-    ],
-    keyDetails: [
-      "Good for quickly answering why one model was selected over another.",
-      "Use together with MODEL_SELECTION_RATIONALE.md for deeper justification.",
-      "Helpful for slides and mentor questions.",
-    ],
-    useWhen: ["Comparing models", "Preparing model selection explanations", "Summarizing compute tradeoffs"],
-  },
-  "docs/models/MODEL_TRAINING_STATUS.md": {
-    purpose: "Training status record for model components and in-house training evidence.",
-    contents: [
-      "Master training status table.",
-      "In-house CDVQA training details.",
-      "Status of trained, untrained, external, deterministic, or not-configured components.",
-    ],
-    keyDetails: [
-      "Important for proving remote-sensing adaptation honestly.",
-      "CDVQA is the strongest in-repo trained RS model story.",
-      "Do not treat every registered adapter as equally trained or validated.",
-    ],
-    useWhen: ["Answering training questions", "Separating trained from placeholder components", "Writing model status sections"],
-  },
-  "README.md": {
-    purpose: "Repository landing document for a fast overview and minimal setup path.",
-    contents: [
-      "Project overview and key capabilities.",
-      "Architecture at a glance.",
-      "Database, backend, frontend, and test quick-start commands.",
-      "Canonical documentation links.",
-    ],
-    keyDetails: [
-      "Use it as the first stop, not the deepest truth source.",
-      "Points to the master documentation for full details.",
-      "Useful for visitors who need the project shape quickly.",
-    ],
-    useWhen: ["Starting from scratch", "Giving someone the repo overview", "Finding primary docs"],
-  },
-  "DEMO_SETUP.md": {
-    purpose: "Fresh-clone demo setup for getting a demo environment running quickly.",
-    contents: [
-      "Clone instructions.",
-      "Model weights transfer and placement.",
-      "Backend startup.",
-      "Frontend startup.",
-      "Demo resources and expected overlays.",
-    ],
-    keyDetails: [
-      "Designed for moving from a fresh checkout to a working demo.",
-      "Model weights are explicitly out of Git.",
-      "Links into demo_resources for prompts and expected outputs.",
-    ],
-    useWhen: ["Preparing a demo machine", "Restoring missing assets", "Checking demo inputs"],
-  },
-  "project/decisions.md": {
-    purpose: "Engineering decision and reasoning log. It records why the project made certain architectural and implementation choices, plus open findings that still need decisions.",
-    contents: [
-      "Inherited decisions such as specialist models, deterministic routing, lazy loading, and filesystem-first artifacts.",
-      "Session decisions around restructuring, Python versioning, transaction pooler support, and source-vs-doc truth.",
-      "Open findings on VRSBench metrics, router accuracy, ChangeFormer, dependency pinning, dead code, RS adaptation, optical-SAR, capability routing, and config inconsistencies.",
-    ],
-    keyDetails: [
-      "Where public docs and source disagree, this log explains the chosen truth model.",
-      "Use before changing architecture so you do not re-litigate settled choices unknowingly.",
-      "Open findings are not all equal; some are blockers, some are cleanup items.",
-    ],
-    useWhen: ["Understanding why choices were made", "Planning changes", "Finding unresolved risks"],
-  },
-  "project/phases.md": {
-    purpose: "Development roadmap from ground-truth environment work through model blockers, measurement, routing, hardening, and publication work.",
-    contents: [
-      "Reality check and P0 environment baseline.",
-      "P1 blockers for remote-sensing adaptation and optical-SAR cross-modal analysis.",
-      "P2 measurement and benchmarks.",
-      "P3 routing completeness and robustness.",
-      "P4 ISRO/SAC readiness, P5 hardening/delivery, and P6 conference paper.",
-    ],
-    keyDetails: [
-      "Good for deciding what to do next after a demo or audit.",
-      "Makes blockers explicit instead of hiding them in long docs.",
-      "Complements project/pre-demo.md for current execution state.",
-    ],
-    useWhen: ["Planning project work", "Prioritizing blockers", "Reviewing milestone scope"],
-  },
-};
-
 function normalized(text: string) {
   return text.toLowerCase();
 }
@@ -638,15 +251,6 @@ function categoryForPath(path: string): Exclude<DocCategory, "All"> {
   if (path.includes("SETUP") || path.includes("DEMO")) return "Start";
   if (path.startsWith("backend/")) return "Backend";
   return "Operations";
-}
-
-function fallbackDetail(doc: DocResource): DocDetail {
-  return {
-    purpose: doc.summary,
-    contents: [`Live Markdown source contains ${doc.sections}.`, `Repository path: ${doc.path}.`],
-    keyDetails: ["This entry is loaded directly from the repository documentation catalog.", "Use the live source reader below for the complete document."],
-    useWhen: ["Reading the complete source", "Searching related repository documentation"],
-  };
 }
 
 function MarkdownPreview({ content }: { content: string }) {
@@ -803,7 +407,6 @@ function statusClass(status: DocResource["status"]) {
 export default function DocumentationPage() {
   const [activeCategory, setActiveCategory] = useState<DocCategory>("All");
   const [searchDoc, setSearchDoc] = useState("");
-  const [tocOpen, setTocOpen] = useState(true);
   const [selectedDocPath, setSelectedDocPath] = useState(docResources[1].path);
   const [repositoryDocs, setRepositoryDocs] = useState<DocResource[]>([]);
   const [documentContent, setDocumentContent] = useState("");
@@ -835,9 +438,20 @@ export default function DocumentationPage() {
   }, []);
 
   const allDocs = useMemo(() => {
-    const merged = new Map<string, DocResource>(
-      [...docResources, ...repositoryDocs].map((doc) => [doc.path, doc] as const),
-    );
+    // Curated metadata is intentionally authoritative and this ordering is load-bearing.
+    // The backend index only derives a thin summary and a path-based status, so curated
+    // entries are seeded first and never overwritten by a discovered copy of the same path.
+    // Backend-only documents are still appended, and searchText is adopted because full-text
+    // search data exists only on the discovered entries.
+    const merged = new Map<string, DocResource>(docResources.map((doc) => [doc.path, doc] as const));
+    for (const discovered of repositoryDocs) {
+      const curated = merged.get(discovered.path);
+      if (!curated) {
+        merged.set(discovered.path, discovered);
+        continue;
+      }
+      merged.set(discovered.path, { ...curated, searchText: discovered.searchText ?? curated.searchText });
+    }
     return Array.from(merged.values()).filter((doc) => !hiddenDocumentPaths.has(doc.path));
   }, [repositoryDocs]);
 
@@ -858,9 +472,7 @@ export default function DocumentationPage() {
     }, {} as Record<DocCategory, number>);
   }, [allDocs]);
 
-  const firstResultPath = filteredDocs[0]?.path ?? "docs/SATQUERY_AI_FRONTEND_API_CONTRACT.md";
   const selectedDoc = allDocs.find((doc) => doc.path === selectedDocPath) ?? filteredDocs[0] ?? allDocs[0] ?? docResources[1];
-  const selectedDetail = docDetails[selectedDoc.path] ?? fallbackDetail(selectedDoc);
   const loadDocument = (path: string) => {
     const cached = documentCache.current.get(path);
     if (cached !== undefined) return Promise.resolve(cached);
@@ -944,8 +556,8 @@ export default function DocumentationPage() {
 
         <main ref={contentScrollRef} className="flex-1 overflow-y-auto scroll-smooth" data-purpose="documentation-content">
           <div className="px-6 py-5">
-            <div className="max-w-[1480px] mx-auto grid grid-cols-12 gap-5">
-              <section className="col-span-12 xl:col-span-9 space-y-5">
+            <div className="max-w-[1480px] mx-auto">
+              <section className="space-y-5">
                 <section className="border border-[var(--border)] bg-[var(--surface)] rounded-xl overflow-hidden shadow-lg" data-purpose="documentation-hero">
                   <div className="relative min-h-[260px] p-6 lg:p-7 overflow-hidden">
                     <div className="absolute inset-0 sat-preview-delhi-main opacity-40" />
@@ -987,7 +599,7 @@ export default function DocumentationPage() {
 
                 <section className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4">
                   <div className="flex flex-col lg:flex-row lg:items-center gap-3 justify-between">
-                    <div className="relative flex-1 min-w-0">
+                    <div className="relative flex-1 min-w-0 lg:min-w-[16rem]">
                       <Search className="h-4 w-4 text-[var(--text-3)] absolute left-3 top-1/2 -translate-y-1/2" />
                       <input
                         value={searchDoc}
@@ -1007,7 +619,7 @@ export default function DocumentationPage() {
                         </button>
                       )}
                     </div>
-                    <div className="flex items-center gap-2 overflow-x-auto pb-1 lg:pb-0">
+                    <div className="flex min-w-0 items-center gap-2 overflow-x-auto pb-1 lg:pb-0">
                       <Filter className="h-4 w-4 text-[var(--text-3)] shrink-0" />
                       {categories.map((category) => {
                         const active = activeCategory === category;
@@ -1040,7 +652,7 @@ export default function DocumentationPage() {
                         <h2 className="truncate text-sm font-bold text-[var(--heading)]">{selectedDoc.title}</h2>
                       </div>
                       <p className="mt-0.5 text-[10px] text-[var(--text-3)]">
-                        {selectedDetail.purpose}
+                        {selectedDoc.summary}
                       </p>
                     </div>
                     <div className="flex shrink-0 items-center gap-2">
@@ -1141,175 +753,7 @@ export default function DocumentationPage() {
                     </div>
                   )}
                 </motion.section>
-
-                <section className="grid grid-cols-1 lg:grid-cols-2 gap-4" data-purpose="setup-and-api">
-                  <div className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4">
-                    <div className="flex items-center gap-2 mb-3">
-                      <TerminalSquare className="h-4 w-4 text-[var(--cyan)]" />
-                      <h2 className="text-sm font-bold text-[var(--heading)]">Quick Start Commands</h2>
-                    </div>
-                    <div className="space-y-2">
-                      {commands.map((cmd) => (
-                        <div key={cmd.label} className="rounded-lg border border-[var(--border)] bg-[var(--surface-2)] p-3">
-                          <div className="text-[10px] font-semibold text-[var(--text-3)] uppercase tracking-wider mb-1">{cmd.label}</div>
-                          <code className="block font-mono text-[11px] text-[var(--text)] leading-relaxed break-words">{cmd.command}</code>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4">
-                    <div className="flex items-center gap-2 mb-3">
-                      <Code2 className="h-4 w-4 text-[var(--cyan)]" />
-                      <h2 className="text-sm font-bold text-[var(--heading)]">API Reference Matrix</h2>
-                    </div>
-                    <div className="space-y-2 max-h-[430px] overflow-y-auto pr-1">
-                      {apiEndpoints.map((endpoint) => (
-                        <div key={`${endpoint.method}-${endpoint.path}`} className="rounded-lg border border-[var(--border)] bg-[var(--surface-2)] p-3">
-                          <div className="flex items-center gap-2 mb-1">
-                            <span className="px-2 py-0.5 rounded-md bg-[var(--cyan-glow)] border border-[var(--cyan)]/25 text-[var(--cyan)] text-[10px] font-bold font-mono">{endpoint.method}</span>
-                            <span className="font-mono text-[11px] text-[var(--heading)] truncate">{endpoint.path}</span>
-                          </div>
-                          <div className="text-[11px] font-semibold text-[var(--text)]">{endpoint.area}</div>
-                          <p className="text-[10px] text-[var(--text-3)] mt-0.5 leading-relaxed">{endpoint.detail}</p>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </section>
-
-                <section className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4" data-purpose="workflow-section">
-                  <div className="flex items-center gap-2 mb-3">
-                    <Route className="h-4 w-4 text-[var(--cyan)]" />
-                    <h2 className="text-sm font-bold text-[var(--heading)]">Workflow Functionality</h2>
-                  </div>
-                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-                    {workflows.map((workflow) => (
-                      <div key={workflow.title} className="rounded-lg border border-[var(--border)] bg-[var(--surface-2)] p-3">
-                        <h3 className="text-xs font-semibold text-[var(--heading)]">{workflow.title}</h3>
-                        <p className="text-[10px] text-[var(--text-3)] mt-1 leading-relaxed">{workflow.steps}</p>
-                        <div className="mt-2 inline-flex items-center gap-1.5 text-[10px] text-[var(--cyan)]">
-                          <Layers3 className="h-3 w-3" />
-                          {workflow.models}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </section>
-
-                <section className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4" data-purpose="model-dossiers">
-                  <div className="flex items-center gap-2 mb-3">
-                    <Database className="h-4 w-4 text-[var(--cyan)]" />
-                    <h2 className="text-sm font-bold text-[var(--heading)]">Model Dossier Map</h2>
-                  </div>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    {modelFamilies.map((family) => {
-                      const Icon = family.icon;
-                      return (
-                        <div key={family.name} className="rounded-lg border border-[var(--border)] bg-[var(--surface-2)] p-3">
-                          <div className="flex items-start gap-3">
-                            <div className="h-8 w-8 rounded-lg border border-[var(--cyan)]/25 bg-[var(--cyan-glow)] flex items-center justify-center text-[var(--cyan)] shrink-0">
-                              <Icon className="h-4 w-4" />
-                            </div>
-                            <div className="min-w-0">
-                              <h3 className="text-xs font-semibold text-[var(--heading)]">{family.name}</h3>
-                              <p className="text-[10px] text-[var(--text-3)] mt-1 leading-relaxed">{family.detail}</p>
-                            </div>
-                          </div>
-                          <div className="flex flex-wrap gap-1.5 mt-3">
-                            {family.docs.map((doc) => (
-                              <span key={doc} className="font-mono text-[9px] px-2 py-0.5 rounded bg-[var(--surface-3)] border border-[var(--border)] text-[var(--text-2)]">{doc}</span>
-                            ))}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </section>
               </section>
-
-              <aside className="col-span-12 xl:col-span-3 space-y-5">
-                <section className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4 shadow-md">
-                  <div className="flex items-center justify-between mb-3">
-                    <div className="flex items-center gap-2">
-                      <BookOpen className="h-4 w-4 text-[var(--cyan)]" />
-                      <h2 className="text-xs font-bold text-[var(--heading)] tracking-wide">Table of Contents</h2>
-                    </div>
-                    <button onClick={() => setTocOpen((v) => !v)} className="p-1 rounded-md hover:bg-[var(--surface-hover)] text-[var(--text-3)]">
-                      <ChevronDown className={`h-3.5 w-3.5 transition-transform ${tocOpen ? "rotate-180" : ""}`} />
-                    </button>
-                  </div>
-                  {tocOpen && (
-                    <div className="space-y-1.5">
-                      {["Searchable markdown index", "Quick start commands", "API reference matrix", "Workflow functionality", "Model dossier map", "Readiness and caveats"].map((item, index) => (
-                        <div key={item} className="flex items-center gap-2 py-1 text-[11px] text-[var(--text-2)]">
-                          <span className="w-5 font-mono text-[10px] text-[var(--text-3)]">{index + 1}.</span>
-                          <span>{item}</span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </section>
-
-                <section className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4 shadow-md">
-                  <div className="flex items-center gap-2 mb-3">
-                    <ShieldCheck className="h-4 w-4 text-[var(--cyan)]" />
-                    <h2 className="text-xs font-bold text-[var(--heading)] tracking-wide">Readiness Notes</h2>
-                  </div>
-                  <div className="space-y-2.5">
-                    {readiness.map((item) => (
-                      <div key={item.label} className="rounded-lg border border-[var(--border)] bg-[var(--surface-2)] p-3">
-                        <div className="flex items-center gap-2 mb-1">
-                          {item.tone === "green" ? <CheckCircle2 className="h-3.5 w-3.5 text-[var(--green)]" /> : <AlertTriangle className="h-3.5 w-3.5 text-[var(--amber)]" />}
-                          <h3 className="text-[11px] font-semibold text-[var(--heading)]">{item.label}</h3>
-                        </div>
-                        <p className="text-[10px] text-[var(--text-3)] leading-relaxed">{item.value}</p>
-                      </div>
-                    ))}
-                  </div>
-                </section>
-
-                <section className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4 shadow-md">
-                  <div className="flex items-center gap-2 mb-3">
-                    <PlayCircle className="h-4 w-4 text-[var(--cyan)]" />
-                    <h2 className="text-xs font-bold text-[var(--heading)] tracking-wide">Primary Workflows</h2>
-                  </div>
-                  <div className="grid grid-cols-2 gap-2">
-                    {[
-                      { label: "Upload", icon: Server },
-                      { label: "Analyze", icon: Braces },
-                      { label: "Layers", icon: Layers3 },
-                      { label: "Video", icon: Video },
-                    ].map((item) => {
-                      const Icon = item.icon;
-                      return (
-                        <div key={item.label} className="rounded-lg border border-[var(--border)] bg-[var(--surface-2)] p-3 text-center">
-                          <Icon className="h-4 w-4 text-[var(--cyan)] mx-auto mb-1.5" />
-                          <div className="text-[10px] font-semibold text-[var(--text)]">{item.label}</div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </section>
-
-                <section className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4 shadow-md">
-                  <div className="flex items-center gap-2 mb-2">
-                    <Clock3 className="h-4 w-4 text-[var(--cyan)]" />
-                    <h2 className="text-xs font-bold text-[var(--heading)] tracking-wide">Best Next Read</h2>
-                  </div>
-                  <p className="text-[11px] text-[var(--text-3)] leading-relaxed mb-3">
-                    Start with the API contract for UI work, then read the architecture and pre-demo notes before changing backend behavior.
-                  </p>
-                  <div className="rounded-lg border border-[var(--border)] bg-[var(--surface-2)] p-3">
-                    <div className="text-[10px] text-[var(--text-3)] mb-1">Current search target</div>
-                    <div className="font-mono text-[10px] text-[var(--cyan)] break-words">{firstResultPath}</div>
-                  </div>
-                  <Link href="/analysis" className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-lg bg-[var(--cyan)] px-3 py-2 text-xs font-semibold text-[var(--canvas)] hover:opacity-90 transition">
-                    Open Analysis Workspace
-                    <ArrowRight className="h-3.5 w-3.5" />
-                  </Link>
-                </section>
-              </aside>
             </div>
           </div>
         </main>
