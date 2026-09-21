@@ -51,6 +51,12 @@ interface AnalysisState {
   pendingPrompt: string | null;
   video: UploadedVideo | null;
   activeJobId: string | null;
+  /**
+   * The job id an in-flight analysis is using, known before POST /analyze returns.
+   * activeJobId is only set once that call resolves -- i.e. after the run has finished --
+   * so live progress polling needs this instead.
+   */
+  pendingJobId: string | null;
   activeJobIsVideo: boolean;
   liveJob: LiveJob | null;
   liveResult: AnalysisResult | null;
@@ -75,6 +81,7 @@ export const useAnalysisStore = create<AnalysisState>((set, get) => ({
   uploadError: null,
   pendingPrompt: null,
   activeJobId: null,
+  pendingJobId: null,
   activeJobIsVideo: false,
   liveJob: null,
   liveResult: null,
@@ -183,6 +190,7 @@ export const useAnalysisStore = create<AnalysisState>((set, get) => ({
       let response: { job_id: string };
 
       if (hasVideo && video) {
+        if (video.id) set({ pendingJobId: video.id });
         response = await api.analyzeVideo({
           video_id: video.id,
           query: promptText,
@@ -190,6 +198,10 @@ export const useAnalysisStore = create<AnalysisState>((set, get) => ({
       } else {
         const requestId = rasters.find((r) => r.request_id)?.request_id;
         const imageFilenames = rasters.map((r) => r.filename).filter(Boolean);
+
+        // Publish the id now: the analyze call below does not resolve until the whole
+        // pipeline is done, and the progress feed is keyed by this id.
+        if (requestId) set({ pendingJobId: requestId });
 
         let resolvedTask: string | undefined;
         if (taskType && taskType !== "auto") {
@@ -208,6 +220,7 @@ export const useAnalysisStore = create<AnalysisState>((set, get) => ({
       }
 
       set({
+        pendingJobId: null,
         activeJobId: response.job_id,
         activeJobIsVideo: hasVideo,
         liveJob: {
@@ -236,7 +249,8 @@ export const useAnalysisStore = create<AnalysisState>((set, get) => ({
         });
       }
     } finally {
-      set({ isSubmittingAnalysis: false });
+      // Always stop the progress poll, including when the analysis threw.
+      set({ isSubmittingAnalysis: false, pendingJobId: null });
     }
   },
 
@@ -254,6 +268,7 @@ export const useAnalysisStore = create<AnalysisState>((set, get) => ({
       video: null,
       uploadError: null,
       activeJobId: null,
+      pendingJobId: null,
       activeJobIsVideo: false,
       liveJob: null,
       liveResult: null,

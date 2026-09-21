@@ -5,6 +5,9 @@ import Link from "next/link";
 import { useMemo, useRef, useState } from "react";
 import { useJob, useAnalysisResult, useLayers, useVideoResult } from "@/hooks/useSystem";
 import { api } from "@/lib/api";
+import { useJobProgress } from "@/hooks/useJobProgress";
+import { PipelineProgress } from "@/components/analysis/PipelineProgress";
+import { ResultsSkeleton } from "@/components/analysis/ResultsSkeleton";
 import {
   describeJobStatus,
   jobStatusDotClass,
@@ -88,6 +91,7 @@ export default function AnalysisJobPage() {
     status === "PLANNING" ||
     status === "GENERATING_EVIDENCE";
   const isCompleted = status === "COMPLETED";
+  const { data: progress } = useJobProgress(jobId, isRunning);
 
   const layers = layersQuery.data?.layers ?? [];
   const currentLayer = useMemo(() => {
@@ -244,17 +248,13 @@ export default function AnalysisJobPage() {
                   )}
 
                   {isRunning && (
-                    <div className="absolute inset-0 flex items-center justify-center">
-                      <BlurFade className="text-center">
-                        <div className="relative w-16 h-16 mx-auto mb-4">
-                          <div className="absolute inset-0 rounded-full border-2 border-[var(--border)]" />
-                          <div className="absolute inset-0 rounded-full border-2 border-transparent border-t-[var(--cyan)] animate-spin-smooth" />
-                          <Sparkles className="absolute inset-0 m-auto w-6 h-6 text-[var(--cyan)]" />
-                        </div>
-                        <p className="text-sm font-semibold text-[var(--heading)]">{jobStatusLabel(status)}</p>
-                        <p className="text-xs text-[var(--text-3)] mt-1 max-w-xs">
-                          Running geospatial pipeline · usually takes 20–60 seconds
-                        </p>
+                    <div className="absolute inset-0 overflow-y-auto p-4">
+                      <BlurFade className="mx-auto w-full max-w-3xl space-y-3">
+                        {/* Real checkpoint progress from GET /api/jobs/{id}/progress,
+                            replacing a spinner that could only say "usually takes
+                            20-60 seconds" without knowing what was actually running. */}
+                        <PipelineProgress progress={progress ?? null} isPlanning={!progress} />
+                        <ResultsSkeleton layerCount={isVideoJob ? 3 : 4} />
                       </BlurFade>
                     </div>
                   )}

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import { useAnalysisStore } from "@/stores/useAnalysisStore";
+import { useJobProgress } from "@/hooks/useJobProgress";
 import { ChatThread } from "./ChatThread";
 import { ChatInput } from "./ChatInput";
 import { cn } from "@/lib/utils";
@@ -26,6 +27,7 @@ export function ChatView({ initialPrompt }: { initialPrompt?: string } = {}) {
   const rasters = useAnalysisStore((s) => s.rasters);
   const isSubmitting = useAnalysisStore((s) => s.isSubmittingAnalysis);
   const activeJobId = useAnalysisStore((s) => s.activeJobId);
+  const pendingJobId = useAnalysisStore((s) => s.pendingJobId);
   const activeJobIsVideo = useAnalysisStore((s) => s.activeJobIsVideo);
   const startAnalysis = useAnalysisStore((s) => s.startAnalysis);
   const handleUpload = useAnalysisStore((s) => s.handleUpload);
@@ -44,6 +46,10 @@ export function ChatView({ initialPrompt }: { initialPrompt?: string } = {}) {
   }, [activeJobId, activeJobIsVideo, queryClient, router]);
 
   const isRunning = isSubmitting || Boolean(activeJobId);
+  // pendingJobId is set before POST /analyze (which does not resolve until the pipeline
+  // finishes), so this is the id that can actually be watched while the work happens.
+  const watchedJobId = pendingJobId ?? activeJobId;
+  const { data: progress } = useJobProgress(watchedJobId, isRunning);
   const hasMessages = messages.length > 0;
   const attachedImages = rasters.map((r) => r.preview_url).filter(Boolean) as string[];
   const attachedImageLabels = rasters.map((r) => r.filename);
@@ -90,7 +96,7 @@ export function ChatView({ initialPrompt }: { initialPrompt?: string } = {}) {
 
         <div className="flex min-h-0 w-full max-w-5xl mx-auto flex-1 flex-col overflow-hidden px-4 sm:px-6">
           {hasMessages ? (
-            <ChatThread messages={messages} isRunning={isRunning} />
+            <ChatThread messages={messages} isRunning={isRunning} progress={progress ?? null} />
           ) : (
             <motion.div
               initial={{ opacity: 0 }}

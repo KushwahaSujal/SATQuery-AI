@@ -103,6 +103,55 @@ class VideoAnalysisWorkflow:
         sampling_cfg = sampling_config or VideoSamplingConfig()
         flagging_cfg = flagging_config or VideoFlagConfig()
 
+        # The stages this workflow moves through, in order. Named here so a client can
+        # render the whole checkpoint list before any of it has run, the same way the
+        # agent pipeline publishes plan.steps.
+        planned_stages = [
+            "inspect_video",
+            "sample_frames",
+            "detect_objects",
+            "propagate_masks",
+            "flag_events",
+            "generate_artifacts",
+        ]
+        # Which stage each trace line belongs to, matched on the text the calls already
+        # use. Anything unmatched leaves the current stage unchanged rather than guessing.
+        stage_markers = [
+            ("inspect_video", ("Inspecting video stream", "Video metadata verified", "Task routed")),
+            ("sample_frames", ("Sampling video frames", "Sampled ")),
+            ("detect_objects", ("Candidate detections", "detections found", "Running detection", "Grounding")),
+            ("propagate_masks", ("propagat", "Tracked event", "SAM")),
+            ("flag_events", ("Aggregating detections", "event flags", "flags")),
+            ("generate_artifacts", ("Analysis complete", "Analysis incomplete", "artifact")),
+        ]
+        progress_state = {"current": planned_stages[0], "completed": []}
+
+        def _publish_video_progress(status_value: str = "RUNNING") -> None:
+            """Mirror the trace into the live progress feed.
+
+            Video analysis does not go through the agent controller, so without this a
+            video job publishes no progress at all and the UI can only spin. Best-effort:
+            a progress write must never fail an analysis.
+            """
+            try:
+                artifact_manager.save_progress_json(job_id, {
+                    "job_id": job_id,
+                    "status": status_value,
+                    "task": "video",
+                    "query": query,
+                    "planned_steps": planned_stages,
+                    "completed_steps": list(progress_state["completed"]),
+                    "current_step": progress_state["current"],
+                    "selected_models": list(dict.fromkeys(models_used)),
+                    "trace": [
+                        t.model_dump() if hasattr(t, "model_dump") else dict(t)
+                        for t in trace
+                    ],
+                    "updated_at": datetime.now(timezone.utc).isoformat(),
+                })
+            except Exception:  # noqa: BLE001 - diagnostic only
+                pass
+
         def add_trace(step: str, status: str = "success", model: Optional[str] = None, details: Optional[str] = None):
             ts = datetime.now(timezone.utc).isoformat()
             trace.append(ExecutionStep(
@@ -112,6 +161,16 @@ class VideoAnalysisWorkflow:
                 model=model,
                 details=details
             ))
+            # Advance the stage pointer when this line marks a new stage, completing
+            # every stage before it.
+            for stage, markers in stage_markers:
+                if any(m.lower() in step.lower() for m in markers):
+                    if stage != progress_state["current"]:
+                        idx = planned_stages.index(stage)
+                        progress_state["completed"] = planned_stages[:idx]
+                        progress_state["current"] = stage
+                    break
+            _publish_video_progress("FAILED" if status == "error" else "RUNNING")
 
         # Setup job artifacts directory
         dirs = artifact_manager.init_job_workspace(job_id)
@@ -525,6 +584,11 @@ class VideoAnalysisWorkflow:
                 # Build response
                 artifacts = artifact_manager.list_artifacts(job_id)
 
+                # Terminal progress, so pollers stop cleanly instead of waiting forever.
+                progress_state["completed"] = list(planned_stages)
+                progress_state["current"] = None
+                _publish_video_progress("COMPLETED")
+
                 return VideoAnalysisResponse(
                     job_id=job_id,
                     status=JobStatus.COMPLETED,
@@ -553,6 +617,9 @@ class VideoAnalysisWorkflow:
                 height=0,
                 frame_count=0
             )
+
+            progress_state["current"] = None
+            _publish_video_progress("FAILED")
 
             return VideoAnalysisResponse(
                 job_id=job_id,
