@@ -536,49 +536,54 @@ export default function AnalysisJobPage() {
                                         {(b.score * 100).toFixed(0)}%
                                       </span>
                                     )}
-
-                                    {isVideoJob && (
-                                      <Card>
-                                        <CardHeader className="pb-2">
-                                          <CardTitle className="text-xs flex items-center gap-2">
-                                            <Clock className="w-3.5 h-3.5 text-[var(--cyan)]" />
-                                            Detected events
-                                          </CardTitle>
-                                        </CardHeader>
-                                        <CardContent>
-                                          {data?.flags && data.flags.length > 0 ? (
-                                            <div className="space-y-1.5">
-                                              {data.flags.map((flag) => (
-                                                <div
-                                                  key={flag.flag_id}
-                                                  className="rounded-md border border-[var(--border)] bg-[var(--surface-2)] p-2"
-                                                >
-                                                  <div className="flex items-center justify-between gap-2">
-                                                    <span className="truncate text-xs text-[var(--heading)]">{flag.label}</span>
-                                                    <span className="shrink-0 font-mono-data text-[10px] text-[var(--cyan)]">
-                                                      {flag.event_score.toFixed(2)}
-                                                    </span>
-                                                  </div>
-                                                  <p className="mt-1 text-[10px] text-[var(--text-3)]">
-                                                    {flag.start_timestamp.toFixed(1)}s → {flag.end_timestamp.toFixed(1)}s
-                                                  </p>
-                                                </div>
-                                              ))}
-                                            </div>
-                                          ) : (
-                                            <p className="py-3 text-center text-xs text-[var(--text-3)]">
-                                              {data?.workflow_reason || "No events detected"}
-                                            </p>
-                                          )}
-                                        </CardContent>
-                                      </Card>
-                                    )}
                                   </div>
                                 ))}
                               </div>
                             ) : (
                               <p className="text-xs text-[var(--text-3)] text-center py-3">
                                 No regions detected
+                              </p>
+                            )}
+                          </CardContent>
+                        </Card>
+                      )}
+
+                      {/* Video events are a per-job concern, not a per-region one:
+                          this Card used to sit inside the boxes .map() as a third flex
+                          child of each region row, so it rendered once per box (up to
+                          the .slice(0, 8) cap) and was laid out in a row sized for a
+                          label and a percentage. */}
+                      {isVideoJob && (
+                        <Card>
+                          <CardHeader className="pb-2">
+                            <CardTitle className="text-xs flex items-center gap-2">
+                              <Clock className="w-3.5 h-3.5 text-[var(--cyan)]" />
+                              Detected events
+                            </CardTitle>
+                          </CardHeader>
+                          <CardContent>
+                            {data?.flags && data.flags.length > 0 ? (
+                              <div className="space-y-1.5">
+                                {data.flags.map((flag) => (
+                                  <div
+                                    key={flag.flag_id}
+                                    className="rounded-md border border-[var(--border)] bg-[var(--surface-2)] p-2"
+                                  >
+                                    <div className="flex items-center justify-between gap-2">
+                                      <span className="truncate text-xs text-[var(--heading)]">{flag.label}</span>
+                                      <span className="shrink-0 font-mono-data text-[10px] text-[var(--cyan)]">
+                                        {flag.event_score.toFixed(2)}
+                                      </span>
+                                    </div>
+                                    <p className="mt-1 text-[10px] text-[var(--text-3)]">
+                                      {flag.start_timestamp.toFixed(1)}s → {flag.end_timestamp.toFixed(1)}s
+                                    </p>
+                                  </div>
+                                ))}
+                              </div>
+                            ) : (
+                              <p className="py-3 text-center text-xs text-[var(--text-3)]">
+                                {data?.workflow_reason || "No events detected"}
                               </p>
                             )}
                           </CardContent>
