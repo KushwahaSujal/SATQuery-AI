@@ -59,11 +59,18 @@
   adapters — decision taken **not** to install. Trained **from scratch** (`backbone_pretrained: false`),
   so it must never be called foundation-model adaptation. Two of his metric files disagree for the same
   264-scene test set. Q-041 §6.
+  **Verified 2026-09-21: the HLS Burn Scars imagery is NOT on this machine** — nothing under
+  `datasets/raw/` and no entry in `datasets/manifests/training_sources.yaml`. So his IoU 0.6567 cannot
+  be reproduced here at all, `terratorch` or not; installing it would only establish that the
+  checkpoint *instantiates*, which the ChangeFormer scar says is not evidence the numbers are right.
+  Reproducing the metrics requires fetching the dataset first. A bare probe venv is parked at
+  `~/.venvs/terratorch-probe` (29 MB, nothing installed) for that attempt.
 - Removed `checkpoints/locate_anything_3b` (7.2 GB) — dead since Q-023, zero code references.
 
 **Still open — owners in `split-ushnik-ayushman.md`**
-- Optical–SAR fusion still emits output from an untrained head — **do not demo**; return NOT_CONFIGURED,
-  then rule-based fusion. **Ayushman.**
+- Optical–SAR fusion: the untrained head no longer emits predictions — `fusion/adapter.py:72` returns
+  NOT_CONFIGURED (verified 2026-09-21). What remains is the **rule-based** NDVI/NDWI + VH/VV fusion,
+  mandatory requirement #5. **Ayushman.**
 - Real georeferenced demo GeoTIFF pair + AOI + expected answers. **Ayushman**; rehearse again with them.
 - ~~RS adaptation evidence (BigEarthNet) — mandatory req #1.~~ **Closed 2026-09-20 by EuroSAT.**
   BigEarthNet itself is still unwired, but the requirement no longer depends on it.
