@@ -1,4 +1,4 @@
-from typing import List, Optional
+from typing import Dict, List, Optional
 from datetime import datetime
 import time
 from backend.app.agent.state import AgentState
@@ -34,6 +34,8 @@ class AgentController:
     Drives job state machine: QUEUED -> VALIDATING -> PLANNING -> RUNNING -> GENERATING_EVIDENCE -> COMPLETED / FAILED.
     Synchronizes observable execution states, model runs, results, and artifacts with PostgreSQL.
     """
+    _planned_steps: Dict[str, List[str]] = {}
+
     async def _safe_db_op(self, coro_func):
         """Helper to execute database operations without crashing pipeline if DB is unavailable."""
         try:
@@ -43,6 +45,42 @@ class AgentController:
                 await session.commit()
         except Exception as e:
             logger.warning(f"Database persistence step non-fatal warning: {e}")
+
+    def _publish_progress(
+        self,
+        state: AgentState,
+        planned_steps: Optional[List[str]] = None,
+        current_step: Optional[str] = None,
+        completed_steps: Optional[List[str]] = None,
+    ) -> None:
+        """Write the live progress file a running job can be polled for.
+
+        Execution steps only reach the database after the pipeline finishes, so without
+        this a client has nothing to show during a run but a spinner. Best-effort by
+        design: a progress write must never be the reason an analysis fails.
+        """
+        try:
+            trace = [
+                step.model_dump() if hasattr(step, "model_dump") else dict(step)
+                for step in state.execution_trace
+            ]
+            artifact_manager.save_progress_json(
+                state.request_id,
+                {
+                    "job_id": state.request_id,
+                    "status": state.status.value if hasattr(state.status, "value") else str(state.status),
+                    "task": state.task.value if state.task else None,
+                    "query": state.query,
+                    "planned_steps": planned_steps if planned_steps is not None else self._planned_steps.get(state.request_id, []),
+                    "completed_steps": completed_steps or [],
+                    "current_step": current_step,
+                    "selected_models": list(state.selected_models or []),
+                    "trace": trace,
+                    "updated_at": datetime.utcnow().isoformat() + "Z",
+                },
+            )
+        except Exception as e:  # noqa: BLE001 - progress is diagnostic, never fatal
+            logger.debug(f"Could not publish progress for {state.request_id}: {e}")
 
     async def run_pipeline(self, state: AgentState) -> AnalyzeResponse:
         pipeline_start = time.perf_counter()
@@ -83,6 +121,11 @@ class AgentController:
                 status="success",
                 details=f"Capability: {orchestrated_plan.capability.name}. Routing Confidence: {orchestrated_plan.routing_confidence:.2f}. Reason: {plan.reason}"
             )
+
+            # The planned tool list is the checkpoint list a client renders, and it is
+            # known here, before any of it runs.
+            self._planned_steps[state.request_id] = list(plan.steps)
+            self._publish_progress(state, planned_steps=list(plan.steps))
 
             # Persist PLANNING status in DB
             await self._safe_db_op(
@@ -137,10 +180,15 @@ class AgentController:
                     )
                 )
 
+                completed: List[str] = []
+                self._publish_progress(state, current_step=plan.steps[0] if plan.steps else None, completed_steps=completed)
                 for tool_name in plan.steps:
                     if tool_name == "generate_report":
                         state.status = JobStatus.GENERATING_EVIDENCE
+                    self._publish_progress(state, current_step=tool_name, completed_steps=list(completed))
                     await SafeToolExecutor.execute_tool(tool_name, state)
+                    completed.append(tool_name)
+                    self._publish_progress(state, current_step=None, completed_steps=list(completed))
 
                 # 7. Output Quality Validation
                 w = state.metadata[0].width if state.metadata else 256
@@ -196,10 +244,12 @@ class AgentController:
             )
 
             state.status = JobStatus.COMPLETED
+            self._publish_progress(state, current_step=None, completed_steps=self._planned_steps.get(state.request_id, []) if state.status == JobStatus.COMPLETED else [])
             state.add_trace("Analysis completed successfully", status="success")
 
         except SatQueryException as e:
             state.status = JobStatus.FAILED
+            self._publish_progress(state, current_step=None, completed_steps=self._planned_steps.get(state.request_id, []) if state.status == JobStatus.COMPLETED else [])
             state.errors.append(e.message)
             logger.error(f"[{state.request_id}] Pipeline aborted due to domain error: {e.message}")
             state.add_trace(f"Pipeline failed: {e.code}", status="error", details=e.message)
@@ -207,6 +257,7 @@ class AgentController:
                 operational_health.record_workflow_execution(state.workflow_id, 0.0, success=False)
         except Exception as e:
             state.status = JobStatus.FAILED
+            self._publish_progress(state, current_step=None, completed_steps=self._planned_steps.get(state.request_id, []) if state.status == JobStatus.COMPLETED else [])
             err_msg = str(e)
             state.errors.append(err_msg)
             logger.exception(f"[{state.request_id}] Unexpected error in agent pipeline: {err_msg}")
@@ -358,6 +409,7 @@ class AgentController:
                 await JobRepository.save_artifacts(s, state.request_id, art_items)
 
         await self._safe_db_op(_persist_final_db_records)
+        self._planned_steps.pop(state.request_id, None)
 
         return response
 

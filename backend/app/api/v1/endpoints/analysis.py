@@ -147,6 +147,24 @@ async def analyze_query(request: AnalyzeRequest, db: AsyncSession = Depends(get_
     return response
 
 
+@router.get("/jobs/{job_id}/progress")
+async def get_job_progress(job_id: str):
+    """Live pipeline progress for a running job.
+
+    Execution steps reach the database only once a pipeline finishes, so this reads the
+    progress file the controller rewrites at each checkpoint. It is what lets a client
+    show which tool is running and which models it selected, rather than an indefinite
+    spinner.
+
+    Returns 404 only when nothing has been published yet -- a job that has not started
+    planning. Callers should treat that as "not started", not as an error.
+    """
+    progress = artifact_manager.load_progress_json(job_id)
+    if progress is None:
+        raise JobNotFoundError(job_id=job_id, details={"job_id": job_id})
+    return progress
+
+
 @router.get("/jobs")
 async def list_jobs(db: AsyncSession = Depends(get_db)):
     """Retrieves list of all analysis jobs from PostgreSQL."""

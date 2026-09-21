@@ -90,6 +90,38 @@ class ArtifactManager:
             json.dump(trace_data, f, indent=2, default=str)
         return out_path
 
+    def save_progress_json(self, request_id: str, progress: Dict[str, Any]) -> Path:
+        """Publish live pipeline progress for a running job.
+
+        Execution steps are only written to the database once the pipeline finishes, so
+        while a job runs there is nothing for a client to poll. This file is rewritten at
+        each checkpoint so the UI can show which tool is executing, which model it is
+        using and what has already completed, instead of an indefinite spinner.
+
+        Written atomically: a poller reading the file while it is rewritten would
+        otherwise see a truncated document.
+        """
+        job_dir = self.get_job_dir(request_id)
+        job_dir.mkdir(parents=True, exist_ok=True)
+        out_path = job_dir / "progress.json"
+        tmp_path = job_dir / "progress.json.tmp"
+        with open(tmp_path, "w", encoding="utf-8") as f:
+            json.dump(progress, f, default=str)
+        os.replace(tmp_path, out_path)
+        return out_path
+
+    def load_progress_json(self, request_id: str) -> Optional[Dict[str, Any]]:
+        job_dir = self.get_job_dir(request_id)
+        path = job_dir / "progress.json"
+        if path.exists():
+            try:
+                with open(path, "r", encoding="utf-8") as f:
+                    return json.load(f)
+            except (json.JSONDecodeError, OSError):
+                # A half-written file is not an error worth failing the poll over.
+                return None
+        return None
+
     def load_trace_json(self, request_id: str) -> Optional[List[Dict[str, Any]]]:
         job_dir = self.get_job_dir(request_id)
         path = job_dir / "trace.json"
