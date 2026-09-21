@@ -11,13 +11,18 @@ The cautionary precedent is `backend/app/ml/adapters/changeformer/network.py`: a
 there matched all 373 parameter names and loaded strict=True, yet measured IoU 0.019 against 0.726
 because `num_heads` differed. Parameter-name agreement is necessary, not sufficient.
 
-**This reconstruction has NOT been numerically confirmed against the delivered metrics, and cannot
-be.** The delivery documents the channel order but never states the training-time normalisation, so
-there is no way to run the model as it was evaluated. 17 candidate preprocessing schemes were swept
-over the official Sen1Floods11 splits and none reproduced the delivered test IoU of 0.6292
-(project/qna.md Q-041 §5). The structure is therefore proven by `strict=True` alone, and by that
-standard only — which the ChangeFormer precedent above says is not enough to trust the outputs. That
-is exactly why `FloodSegmenterAdapter.predict` refuses to serve a flood mask.
+**Numerical confirmation, added 2026-09-21 (project/qna.md Q-044).** The delivery never documented
+the training-time normalisation, and an earlier label-based search over 17 candidate schemes failed to
+reproduce the delivered test IoU of 0.6292 (Q-041 §5). It has since been recovered *without* labels, by
+treating the checkpoint's 18 BatchNorm layers as a fingerprint of the training-time input distribution
+— see `normalise_flood_input` below. Under the recovered preprocessing the reconstruction scores
+**global flood IoU 0.6244 / F1 0.7684** on the official 90-scene Sen1Floods11 test split against the
+delivery's **0.6292 / 0.7724** on its own 67-scene subset, and reproduces the delivered threshold
+response in both direction and magnitude. That is a reproduction, so the reconstruction is now
+confirmed numerically and not only by `strict=True`.
+
+It is still an *inference* about what training did, not a statement from the author. Serving therefore
+stays gated: see `FloodSegmenterAdapter` and `configs/models.yaml`'s `preprocessing` key.
 
 Channel order is fixed by training and must not be reordered (docs/models/flood/README.md):
     0    Sentinel-1 VV          (gamma0, dB)
@@ -44,6 +49,45 @@ FLOOD_CHANNEL_NAMES = (
     "S2_B7", "S2_B8", "S2_B8A", "S2_B9", "S2_B10", "S2_B11", "S2_B12",
     "DEM",
 )
+
+
+#: The per-scene percentile pair recovered from the model's own BatchNorm statistics (Q-044).
+FLOOD_CLIP_PERCENTILE = 2.0
+
+
+def normalise_flood_input(x: "np.ndarray", percentile: float = FLOOD_CLIP_PERCENTILE) -> "np.ndarray":
+    """Scale each of the 16 channels into [0, 1] using its own per-scene percentile range.
+
+    **This preprocessing was recovered, not supplied.** The delivery never documented it. It was
+    identified by treating the checkpoint's 18 BatchNorm layers as a fingerprint of the training-time
+    input distribution: each stores `running_mean`/`running_var` estimated from its own input during
+    training, so the normalisation that reproduces those statistics across the whole stack is the one
+    training used. Selection used only the TRAIN split and no labels at all; see
+    `scripts/flood_preproc_recovery/flood_bn_fingerprint_all_layers.py` and project/qna.md Q-044.
+
+    Percentiles are nan-aware and non-finite pixels are replaced *after* scaling: 6 of the 90 official
+    test scenes carry NaN in the Sentinel-1 bands (one entirely NaN), and a plain `np.percentile`
+    returns NaN for such a channel, which silently poisons the whole scene. That bug invalidated part
+    of the earlier label-based search (Q-044 §2).
+    """
+    import numpy as np
+
+    if x.ndim != 3 or x.shape[0] != FLOOD_INPUT_CHANNELS:
+        raise ValueError(
+            f"Expected ({FLOOD_INPUT_CHANNELS}, H, W), got {tuple(x.shape)}."
+        )
+    flat = x.reshape(FLOOD_INPUT_CHANNELS, -1)
+    if percentile <= 0.0:
+        lo = np.nanmin(flat, axis=1)
+        hi = np.nanmax(flat, axis=1)
+    else:
+        lo = np.nanpercentile(flat, percentile, axis=1)
+        hi = np.nanpercentile(flat, 100.0 - percentile, axis=1)
+    lo = np.nan_to_num(lo).reshape(-1, 1, 1)
+    hi = np.nan_to_num(hi).reshape(-1, 1, 1)
+    y = (x - lo) / np.maximum(hi - lo, 1e-6)
+    y = np.clip(y, 0.0, 1.0)
+    return np.nan_to_num(y, nan=0.0, posinf=1.0, neginf=0.0).astype(np.float32)
 
 
 class DoubleConv(nn.Module):

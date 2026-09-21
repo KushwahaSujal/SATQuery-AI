@@ -173,3 +173,58 @@ def test_unload_is_safe_before_a_load():
     adapter.unload()
     assert adapter.loaded is False
     assert adapter._model is None
+
+
+# --- the recovered-preprocessing gate (project/qna.md Q-044) -----------------------------------
+
+def test_the_serving_gate_is_closed_by_default():
+    """`configs/models.yaml` must ship with `preprocessing: null`, i.e. refusing.
+
+    Opening this gate changes what the system claims it can do, so it is a deliberate act and the
+    default must never drift to open.
+    """
+    from backend.app.config import settings
+
+    assert settings.models["flood_segmenter"].preprocessing is None
+    adapter = FloodSegmenterAdapter()
+    assert adapter.preprocessing is None
+    assert adapter.predict({}).status == "NOT_CONFIGURED"
+
+
+def test_only_the_exact_gate_value_opens_serving(monkeypatch):
+    """Any value other than the one recognised string keeps the adapter refusing."""
+    from backend.app.config import settings
+
+    adapter = FloodSegmenterAdapter()
+    for value in (None, "", "true", "yes", "p2p98", "bn_recovered", "BN_RECOVERED_P2P98"):
+        monkeypatch.setattr(settings.models["flood_segmenter"], "preprocessing", value)
+        result = adapter.predict({})
+        assert result.status == "NOT_CONFIGURED", f"{value!r} must not open the gate"
+        assert result.masks == []
+
+
+def test_normalise_flood_input_is_nan_safe_and_bounded():
+    """6 of the 90 official test scenes carry NaN in S1, one entirely NaN (Q-044 §2).
+
+    A plain `np.percentile` returns NaN for such a channel and poisons the whole scene, which is the
+    bug that invalidated part of the earlier label-based search. The output must always be finite and
+    inside [0, 1].
+    """
+    from backend.app.ml.adapters.flood_unet import normalise_flood_input
+
+    rng = np.random.default_rng(0)
+    x = (rng.random((16, 64, 64), dtype=np.float32) * 10000.0).astype(np.float32)
+    x[0] = np.nan                      # a wholly-NaN channel, as in the worst real scene
+    x[1, :5, :5] = np.nan              # and a partially-NaN one
+    y = normalise_flood_input(x)
+    assert y.shape == x.shape
+    assert y.dtype == np.float32
+    assert np.isfinite(y).all()
+    assert y.min() >= 0.0 and y.max() <= 1.0
+
+
+def test_normalise_flood_input_rejects_the_wrong_channel_count():
+    from backend.app.ml.adapters.flood_unet import normalise_flood_input
+
+    with pytest.raises(ValueError):
+        normalise_flood_input(np.zeros((3, 32, 32), dtype=np.float32))

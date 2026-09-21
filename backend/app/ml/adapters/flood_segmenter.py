@@ -34,8 +34,10 @@ from backend.app.exceptions import InferenceError, InvalidInputError
 from backend.app.logging import logger
 from backend.app.ml.adapters.flood_unet import (
     FLOOD_CHANNEL_NAMES,
+    FLOOD_CLIP_PERCENTILE,
     FLOOD_INPUT_CHANNELS,
     build_flood_model,
+    normalise_flood_input,
 )
 from backend.app.ml.base import BaseModelAdapter
 from backend.app.ml.device import warn_if_cpu_for_heavy_model
@@ -140,9 +142,15 @@ class FloodSegmenterAdapter(BaseModelAdapter):
             self._metrics = dict(ckpt["metrics"]) if isinstance(ckpt.get("metrics"), dict) else None
             self._train_config = dict(ckpt["config"]) if isinstance(ckpt.get("config"), dict) else None
             self._loaded = True
+            served = self.preprocessing == self.RECOVERED_PREPROCESSING
             logger.info(
                 f"{self.name}: 16-channel U-Net loaded (epoch {self._epoch}) from {ckpt_file}. "
-                f"Weights are real but NOT served: training-time normalisation unknown (Q-041 §5)."
+                + (
+                    "Serving with the preprocessing recovered from this checkpoint's own BatchNorm "
+                    "statistics — recovered, not supplied by the author (Q-044)."
+                    if served else
+                    "Weights are real but NOT served: no preprocessing is configured (Q-041 §5, Q-044)."
+                )
             )
         except Exception as e:
             self._model = None
@@ -207,14 +215,32 @@ class FloodSegmenterAdapter(BaseModelAdapter):
                 f"Sentinel-2 L1C bands and a Copernicus DEM band."
             )
 
-    def predict(self, context: Optional[Dict[str, Any]] = None, **kwargs: Any) -> ModelResult:
-        """Reports NOT_CONFIGURED. Never returns a flood mask.
+    #: The one accepted value of `configs/models.yaml`'s `preprocessing` key. Anything else, including
+    #: the default `None`, keeps the adapter refusing.
+    RECOVERED_PREPROCESSING = "bn_recovered_p2p98"
 
-        The refusal is unconditional, so no input is validated and no weights are loaded first:
-        there is no input for which this checkpoint can produce a defensible flood extent, and
-        asking the caller to fix their input would imply otherwise. `load_model` remains available
-        for anyone recovering the preprocessing; `predict` is the serving path and it declines.
+    @property
+    def preprocessing(self) -> Optional[str]:
+        """Which preprocessing to serve with, or None to refuse. Default: refuse."""
+        return self.config.preprocessing if self.config else None
+
+    def predict(self, context: Optional[Dict[str, Any]] = None, **kwargs: Any) -> ModelResult:
+        """Segments flood extent **only** when a preprocessing has been configured; otherwise refuses.
+
+        By default `configs/models.yaml` leaves `preprocessing: null` and this refuses
+        unconditionally — no input is validated and no weights are loaded, because the blocker is the
+        undocumented normalisation rather than anything the caller did, and demanding a valid 16-band
+        stack before refusing would imply the request is fixable.
+
+        Setting `preprocessing: "bn_recovered_p2p98"` serves using the normalisation recovered from
+        the checkpoint's own BatchNorm statistics (project/qna.md Q-044). That recovery reproduces the
+        delivered scores — IoU 0.6244 against 0.6292, F1 0.7684 against 0.7724 — but it is an
+        inference about what training did, not a statement from the author, so every result it
+        produces carries `preprocessing_provenance: "recovered_not_supplied"` and the caveat in its
+        answer text. Flipping that key is a deliberate act.
         """
+        if self.preprocessing == self.RECOVERED_PREPROCESSING:
+            return self._predict_with_recovered_preprocessing(context, kwargs)
         reason = (
             f"Flood segmentation is NOT_CONFIGURED on this deployment. The checkpoint at "
             f"{self.config.checkpoint_path if self.config else 'checkpoints/flood_seg/best.pt'} is "
@@ -267,5 +293,102 @@ class FloodSegmenterAdapter(BaseModelAdapter):
                 f"IoU {REPORTED_TEST_IOU} not reproduced by any of "
                 f"{PREPROCESSING_COMBINATIONS_SWEPT} swept schemes (Q-041 §5).",
                 f"The delivered {DELIVERED_THRESHOLD} decision threshold does not transfer.",
+            ],
+        )
+
+    def _predict_with_recovered_preprocessing(
+        self, context: Optional[Dict[str, Any]], kwargs: Dict[str, Any]
+    ) -> ModelResult:
+        """Serves a flood mask using the recovered normalisation. Only reachable when configured.
+
+        Unlike the refusal path this does validate its input and does load the weights, because here
+        the caller's 16-band stack genuinely determines the answer. The threshold defaults to argmax
+        (0.50) rather than the delivered 0.30: under the recovered preprocessing 0.30 trades precision
+        for recall at essentially unchanged IoU (0.6238 against 0.6244), so it is offered but not
+        imposed — see project/qna.md Q-044 §4.
+        """
+        ctx: Dict[str, Any] = dict(context or {})
+        ctx.update(kwargs)
+        self.validate_inputs(ctx)
+        self.load_model()
+
+        arr = next(ctx[k] for k in ("arr", "image", "stack") if ctx.get(k) is not None)
+        if isinstance(arr, torch.Tensor):
+            arr = arr.detach().cpu().numpy()
+        arr = np.asarray(arr, dtype=np.float32)
+        if arr.ndim == 4:
+            arr = arr[0]
+        if arr.shape[0] != FLOOD_INPUT_CHANNELS:          # (H, W, C) -> (C, H, W)
+            arr = np.transpose(arr, (2, 0, 1))
+
+        threshold = ctx.get("threshold")
+        thr = 0.5 if threshold is None else float(threshold)
+        if not 0.0 < thr < 1.0:
+            raise InvalidInputError(f"threshold must be in (0, 1), got {thr}.")
+
+        try:
+            x = normalise_flood_input(arr)
+            with torch.no_grad():
+                logits = self._model(torch.from_numpy(x[None]).to(self.device))
+                prob = torch.softmax(logits.float(), dim=1)[0, 1].detach().cpu().numpy()
+        except InvalidInputError:
+            raise
+        except Exception as e:
+            logger.error(f"{self.name} inference failed: {e}", exc_info=True)
+            raise InferenceError(f"{self.name} inference failed: {e}", model_name=self.name)
+
+        mask = (prob >= thr).astype(np.uint8)
+        flooded = int(mask.sum())
+        total = int(mask.size)
+        coverage = 100.0 * flooded / total if total else 0.0
+        confidence = float(prob[mask > 0].mean()) if flooded else float(1.0 - prob.mean())
+        h, w = mask.shape
+
+        return ModelResult(
+            model_name=self.name,
+            task="segmentation",
+            status="OK",
+            answer=(
+                f"Flood water covers {flooded:,} of {total:,} pixels ({coverage:.2f}% of the scene) "
+                f"at threshold {thr:.2f}. The preprocessing this depends on was **recovered from the "
+                f"checkpoint's own BatchNorm statistics, not supplied by the model's author**: it "
+                f"reproduces the reported scores (IoU 0.6244 against 0.6292 on the official 90-scene "
+                f"Sen1Floods11 test split, F1 0.7684 against 0.7724) but has not been confirmed by "
+                f"them. Sentinel-1 + Sentinel-2 + DEM at 10 m/px."
+            ),
+            confidence=confidence,
+            masks=[{
+                "binary_mask": mask,
+                "probability_map": prob.astype(np.float32),
+                "label": "flood",
+                "pixel_count": flooded,
+                "shape": [h, w],
+            }],
+            metadata={
+                "class_name": "flood",
+                "threshold": thr,
+                "threshold_source": "request" if threshold is not None else "argmax_default",
+                "delivered_threshold": DELIVERED_THRESHOLD,
+                "pixel_count": flooded,
+                "total_pixel_count": total,
+                "coverage_pct": round(coverage, 4),
+                "preprocessing": self.RECOVERED_PREPROCESSING,
+                "preprocessing_provenance": "recovered_not_supplied",
+                "preprocessing_clip_percentile": FLOOD_CLIP_PERCENTILE,
+                "recovered_test_iou": 0.6244,
+                "recovered_test_f1": 0.7684,
+                "reported_test_iou": REPORTED_TEST_IOU,
+                "test_split": "official Sen1Floods11 flood_test_data, 90 scenes",
+                "required_channels": FLOOD_INPUT_CHANNELS,
+                "channel_names": self.channel_names,
+                "trained_gsd_m": self.trained_gsd_m,
+                "output_shape": [h, w],
+                "device": str(self.device),
+                "model_class": "UNetFromScratch",
+                "qna": "Q-044",
+            },
+            warnings=[
+                "Flood preprocessing was recovered from the checkpoint's BatchNorm statistics, not "
+                "supplied by the author, and has not been confirmed by them (Q-044).",
             ],
         )

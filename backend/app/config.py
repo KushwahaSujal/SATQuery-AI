@@ -188,6 +188,11 @@ class ModelSpec(BaseModel):
     # water 10 (Sentinel-2), cloud 30 (Landsat 8) — project/qna.md Q-032, Q-035. The multi-class
     # checkpoints do store `target_gsd` and it takes precedence over this value.
     trained_gsd_m: Optional[float] = None
+    # Flood segmenter only. `None` (the default) means the model loads but refuses to serve, because
+    # its training-time normalisation was never documented. Set to "bn_recovered_p2p98" to serve using
+    # the preprocessing recovered from the checkpoint's own BatchNorm statistics — an inference about
+    # what training did, not a statement from the author (project/qna.md Q-044).
+    preprocessing: Optional[str] = None
 
 
 class Config:

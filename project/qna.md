@@ -3720,7 +3720,16 @@ No subset of the 90 scenes reproduced 0.6292 either — tried no-label-nodata (1
 has-flood-GT (83, 0.5443), no-all-zero-S2 (86, 0.5479), s2_min>0 (86, 0.5479).
 
 **Disposition: do not ship as a working capability.** Ask Ayushman for the normalisation constants (or
-the training script) — one message unblocks a real capability, everything else is guesswork. Note also
+the training script) — one message unblocks a real capability, everything else is guesswork.
+
+> **SUPERSEDED by Q-044.** The normalisation *was* recoverable, without the author: it is encoded in
+> the checkpoint's own 18 BatchNorm layers, which store the statistics of their training-time inputs.
+> Per-scene 2/98 percentile clipping into [0, 1], selected label-free on the train split, scores IoU
+> 0.6244 / F1 0.7684 on the official 90-scene test split against the delivered 0.6292 / 0.7724, and
+> reproduces the delivered threshold response. This section's search also had a bug: 6 of the 90 test
+> scenes carry NaN in S1 and were not sanitised, which poisoned every per-scene candidate and
+> flattered `raw` — itself refuted by a factor of ~3000 against the stored statistics. Serving remains
+> gated off by default because a recovery is not the author's confirmation. Note also
 that `frontend/src/components/query/QueryBar.tsx:18` already advertises a "Flood extent" chip that
 routes nowhere, which `FRONTEND_POLISH.md:153` had already flagged.
 
@@ -4047,3 +4056,133 @@ pattern worth noting is that **the errors clustered in summary prose, not in tab
 were transcribed from the source files, were right. Q-042 §8's rule (quote per-scene statistics only
 from the 264-row source, never a summary extract) generalises: **prose that summarises a table is a
 claim and needs checking against the table.**
+
+---
+
+## Q-044 · The flood preprocessing was recovered from the model's own BatchNorm statistics — we were not blocked on the author
+
+**Recorded** 2026-09-21, atop `prototype` `087190f`. **Supersedes Q-041 §5's conclusion** that the
+training-time normalisation could not be recovered, and corrects a bug in that search. Prompted by the
+question "can't we proceed without Ayushman returning the doc?" — the answer turned out to be no, we
+could not, only because the search had been looking in the wrong place.
+
+### 1. Mechanism — the checkpoint contains its own preprocessing
+
+Q-041 §5 searched by scoring candidate normalisations **against labels**, which was the wrong
+instrument: many wrong preprocessings produce plausible IoUs, and the best-scoring one needed the DEM
+channel zeroed, which cannot be what a DEM-trained model did.
+
+Every BatchNorm layer stores `running_mean` and `running_var` estimated **during training, from its own
+input**. Those statistics are therefore a fingerprint of the training-time input distribution, and they
+are in the checkpoint. Reading them requires no labels at all.
+
+Two rounds:
+
+- **First layer only** (`scripts/flood_preproc_recovery/flood_recover_from_bn_stats.py`).
+  `encoder1.block.1` stores means of order 0.05–0.91 and stds 0.07–0.36. Raw Sentinel-2 digital numbers
+  are of order 1000, so raw input would drive the first convolution's output into the thousands.
+  Measured discrepancy for the `raw` scheme: **2^11.6, a factor of ~3000**. So `raw` — the scheme that
+  scored *best* against labels in Q-041 §5 at IoU 0.5403 — is **decisively refuted**. Per-scene scaling
+  into [0, 1] matched on all 16 channels in sign and magnitude. Also: DEM ranks 5th of 16 in first-conv
+  weight energy, so it is genuinely used, confirming that zeroing it was wrong.
+- **All 18 layers** (`flood_bn_fingerprint_all_layers.py`). First-layer agreement proved necessary but
+  not sufficient: per-scene min-max scaled by a fitted 1.2078 matched layer one well and then collapsed
+  to IoU 0.41, because a global input scale propagates and mismatches every later layer differently.
+  Scoring against all 18 BatchNorms over a percentile grid selects **per-scene percentile clipping at
+  2/98, scaled to [0, 1]** (median |log2(std ratio)| 0.119 and median mean offset 0.120 across the
+  stack; p=0 gives 0.444, p=5 gives 0.199).
+
+Selection used the **TRAIN** split — the split the running statistics were estimated on — and no
+labels, so there is nothing to overfit and no test leakage even in principle.
+
+### 2. A bug in the Q-041 §5 search, which is why it failed
+
+**6 of the 90 official test scenes carry NaN in the Sentinel-1 bands, one of them entirely NaN**
+(524,288 NaN pixels = both S1 bands). The Q-041 §5 sweep did not sanitise them. For any *per-scene*
+normalisation, `np.percentile`/`np.min` over a channel containing a single NaN returns NaN, which
+propagates to the whole channel and then the whole scene. So several of the schemes in that sweep were
+scored on poisoned inputs, and `raw` — which has no division and so only spread NaN locally through the
+convolutions — was flattered by comparison.
+
+Concretely: per-scene min-max scored 0.4528 in Q-041 §5 and scores **0.5206** under the same threshold
+once percentiles are nan-aware. Q-041 §5's conclusion "no scheme reproduced 0.6292" was reached with a
+partly broken harness. That is the honest reason the recovery took two attempts, and it is recorded
+rather than quietly fixed.
+
+### 3. Verification — the recovered preprocessing reproduces the delivered scores
+
+Measured once on the official 90-scene Sen1Floods11 test split, with the preprocessing chosen
+label-free beforehand:
+
+| | recovered, 90 official scenes | delivered, his 67-scene subset |
+|---|---|---|
+| global flood IoU, argmax | **0.6244** | 0.6292 |
+| F1, argmax | **0.7684** | 0.7724 |
+| pixel accuracy, argmax | 0.9472 | 0.9557 |
+| precision, argmax → 0.30 | 0.8505 → 0.7937 (**−0.057**) | 0.7873 → 0.7220 (**−0.065**) |
+| recall, argmax → 0.30 | 0.7014 → 0.7446 (**+0.043**) | 0.7580 → 0.8164 (**+0.058**) |
+| global IoU, 0.30 | 0.6238 | 0.6211 |
+
+IoU agrees to 0.005 and F1 to 0.004, on a **different and larger** scene set. More telling than the
+point values: the **threshold response now matches in direction and magnitude**. Under every scheme in
+Q-041 §5 argmax and 0.30 coincided, which was the evidence that the calibration was wrong; the delivery
+reports IoU roughly flat between the two while precision falls ~0.065 and recall rises ~0.058, and the
+recovered preprocessing reproduces exactly that shape. That is a reproduction.
+
+Artefacts: `results/evaluations/flood_preproc_recovery_20260920/bn_fingerprint.json`,
+`bn_fingerprint_all_layers.json`, `bn_recovered_test_scores.json`.
+
+### 4. What was built, and why serving is still gated off by default
+
+`normalise_flood_input` in `backend/app/ml/adapters/flood_unet.py` implements the recovered
+normalisation (nan-aware percentiles, non-finite pixels replaced after scaling).
+`FloodSegmenterAdapter` gained a gate: `configs/models.yaml`'s new `preprocessing` key is `null` by
+default and the adapter keeps refusing exactly as before; set to `"bn_recovered_p2p98"` it serves, and
+every response then carries `preprocessing_provenance: "recovered_not_supplied"`, the measured
+recovered-versus-delivered numbers, and a warning, with the caveat stated in the answer text itself.
+Only that exact string opens the gate — a unit test asserts that `"true"`, `"p2p98"` and the uppercase
+form all keep it shut.
+
+**Why default off.** This is an *inference about what training did*, not a statement from the author.
+It is very likely right — a label-free method picking a preprocessing that then reproduces two
+independent statistics and a threshold response is strong evidence — but "very likely right" is a
+different claim from "confirmed", and flipping a model from *refuses* to *serves* changes what the
+system asserts at a demo. That is the user's call, not a side effect of a documentation commit.
+
+The delivered 0.30 threshold is offered but not imposed: under the recovered preprocessing it trades
+precision for recall at essentially unchanged IoU (0.6238 against 0.6244), so argmax is the default.
+
+### 5. Blast radius
+
+None by default: the gate ships closed, `predict()` refuses as before, and the suite went 430 → **434
+passed** with the same 3 pre-existing GDAL failures. If the gate is opened, the risk is that the
+recovered preprocessing is close but not identical to training, in which case served masks would be
+slightly worse than the delivered scores suggest — which is why the provenance travels with every
+response rather than living only in a document.
+
+### 6. What this means for the three "blocked on Ayushman" items
+
+- **Flood normalisation** — no longer blocking. Recovered and reproduced. His confirmation would
+  upgrade this from "recovered" to "confirmed", and remains worth asking for.
+- **Which burn-scar metric file is the 0.40 run** — was never blocking: Q-042 §3 settles it from the
+  byte-identical ROC-AUC.
+- **`terratorch` versions** — not blocking; an isolated venv against current releases can be tried.
+- **Why burn-scar training was from scratch** — genuinely needs him. It is a rationale, not a fact, and
+  no amount of inspection recovers it.
+
+### 7. Defence — answering a challenging reviewer
+
+*"You recovered a preprocessing the author never gave you. Why is that not just tuning until the number
+looked right?"* Because the selection never saw a label or a test scene. The preprocessing was chosen by
+matching 18 BatchNorm layers' stored statistics on the training split, then scored once on test. If the
+choice had been tuned to the score, the threshold response would not also have come out right — that is
+a second, independent statistic we did not fit.
+
+*"Then why is it not switched on?"* Because reproducing a number is evidence, not confirmation. The
+author can still say we guessed wrong about a detail that happens not to matter much on this split. Until
+he does, the capability ships off, and when it is on, every response says the preprocessing was
+recovered rather than supplied.
+
+*"Q-041 §5 said this was impossible. Which of you is wrong?"* Q-041 §5 is wrong, for two reasons now
+recorded: it searched with labels instead of the model's own statistics, and its harness silently
+poisoned every per-scene candidate on the six NaN-bearing scenes.

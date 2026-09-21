@@ -381,6 +381,13 @@ models:
     # reproduced the delivered global flood IoU 0.6292 over the Sen1Floods11 official test split
     # (90 scenes) and validation split (89 scenes); closest raw-value scheme 0.5403. The delivered
     # 0.30 threshold provably does not transfer, so it is NOT set here (Q-041 §5).
+    # Serving gate. null (default) => the adapter loads the real checkpoint but refuses to return a
+    # flood mask, because the delivery never documented the training-time normalisation.
+    # "bn_recovered_p2p98" => serve using the normalisation recovered from the checkpoint's own
+    # BatchNorm statistics: it reproduces the delivered scores (IoU 0.6244 vs 0.6292, F1 0.7684 vs
+    # 0.7724 on the official 90-scene test split) but is an inference about what training did, not a
+    # statement from the author, so every response carries that provenance. project/qna.md Q-044.
+    preprocessing: null
     threshold: null
     tta: false
     trained_gsd_m: 10.0
