@@ -1,6 +1,8 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import { AnimatePresence, motion } from "framer-motion";
+import { modalVariant, overlayVariant } from "@/lib/motion";
 import { useCommandPalette } from "./CommandPaletteContext";
 import { useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
@@ -134,8 +136,6 @@ export default function CommandPalette() {
     return () => window.removeEventListener("keydown", handleKey);
   }, [isOpen, filtered, activeIdx]);
 
-  if (!isOpen) return null;
-
   const groups: Record<string, CommandItem[]> = {};
   for (const item of filtered) {
     if (!groups[item.group]) groups[item.group] = [];
@@ -143,17 +143,30 @@ export default function CommandPalette() {
   }
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-start justify-center pt-[18vh]"
-      onClick={() => setIsOpen(false)}
-    >
-      <div className="absolute inset-0" style={{ background: "var(--scrim)" }} />
+    <AnimatePresence>
+      {isOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-start justify-center pt-[18vh]"
+          onClick={() => setIsOpen(false)}
+        >
+          <motion.div
+            className="absolute inset-0"
+            style={{ background: "var(--scrim)" }}
+            variants={overlayVariant}
+            initial="hidden"
+            animate="show"
+            exit="exit"
+          />
 
-      <div
-        className="relative w-full max-w-120 rounded-xl animate-slide-down overflow-hidden"
-        style={{ border: "1px solid var(--border-strong)", background: "var(--surface-2)", boxShadow: "var(--shadow-lg)" }}
-        onClick={(e) => e.stopPropagation()}
-      >
+          <motion.div
+            className="relative w-full max-w-120 rounded-xl overflow-hidden"
+            style={{ border: "1px solid var(--border-strong)", background: "var(--surface-2)", boxShadow: "var(--shadow-lg)" }}
+            onClick={(e) => e.stopPropagation()}
+            variants={modalVariant}
+            initial="hidden"
+            animate="show"
+            exit="exit"
+          >
         <div className="flex items-center gap-2.5 px-4" style={{ borderBottom: "1px solid var(--border)" }}>
           <svg
             className="w-3.5 h-3.5 shrink-0"
@@ -238,7 +251,9 @@ export default function CommandPalette() {
           <span><kbd style={{ color: "var(--text-2)" }}>&#8629;</kbd> open</span>
           <span><kbd style={{ color: "var(--text-2)" }}>ESC</kbd> close</span>
         </div>
-      </div>
-    </div>
+          </motion.div>
+        </div>
+      )}
+    </AnimatePresence>
   );
 }

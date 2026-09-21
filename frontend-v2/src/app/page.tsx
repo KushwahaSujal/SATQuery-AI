@@ -4,6 +4,7 @@ import { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { motion, useInView } from "framer-motion";
+import { fadeUp, stagger } from "@/lib/motion";
 import { api } from "@/lib/api";
 import { useJobs } from "@/hooks/useJobs";
 import { useAnalysisStore } from "@/stores/useAnalysisStore";
@@ -14,14 +15,6 @@ import { SpotlightCard } from "@/components/ui/spotlight-card";
 import { NumberTicker } from "@/components/ui/number-ticker";
 
 // ─── Animation Variants ──────────────────────────────────────────────────────
-const fadeUp = {
-  hidden: { opacity: 0, y: 24 },
-  show: { opacity: 1, y: 0, transition: { duration: 0.55, ease: [0.22, 1, 0.36, 1] as [number, number, number, number] } },
-};
-const stagger = {
-  hidden: {},
-  show: { transition: { staggerChildren: 0.1 } },
-};
 const scaleIn = {
   hidden: { opacity: 0, scale: 0.92 },
   show: { opacity: 1, scale: 1, transition: { duration: 0.5, ease: [0.22, 1, 0.36, 1] as [number, number, number, number] } },

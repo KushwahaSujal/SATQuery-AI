@@ -4,6 +4,7 @@ import Link from "next/link";
 import { taskLabel } from "@/lib/taskLabels";
 import { usePathname } from "next/navigation";
 import { motion } from "framer-motion";
+import { DURATION, EASE } from "@/lib/motion";
 import { api } from "@/lib/api";
 import { useJobs } from "@/hooks/useJobs";
 import { useAnalysisStore } from "@/stores/useAnalysisStore";
@@ -206,7 +207,7 @@ export default function Sidebar({ hideBrand = false, activeItem, className = "" 
           {navItems.map(({ key, href, label, icon }) => {
             const isActive = current === key;
             return (
-              <motion.div key={key} variants={itemVariants}>
+              <motion.div key={key} variants={itemVariants} whileHover={{ x: 2 }} whileTap={{ scale: 0.985 }} transition={{ duration: DURATION.fast, ease: EASE }}>
                 <Link
                   href={href}
                   onClick={key === "analysis" ? resetAnalysis : undefined}
@@ -294,7 +295,7 @@ export default function Sidebar({ hideBrand = false, activeItem, className = "" 
             {resourceItems.map(({ key, href, label, icon }) => {
               const isActive = current === key;
               return (
-                <motion.div key={key} variants={itemVariants}>
+                <motion.div key={key} variants={itemVariants} whileHover={{ x: 2 }} whileTap={{ scale: 0.985 }} transition={{ duration: DURATION.fast, ease: EASE }}>
                   <Link
                     href={href}
                     className={`relative flex items-center gap-3 px-3 py-2 rounded-lg transition-all duration-150 overflow-hidden ${

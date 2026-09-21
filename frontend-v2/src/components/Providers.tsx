@@ -1,5 +1,6 @@
 "use client";
 
+import { MotionConfig } from "framer-motion";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ThemeProvider } from "@/providers";
 import { MobileNavProvider } from "@/components/layout/MobileNavContext";
@@ -20,6 +21,10 @@ const queryClient = new QueryClient({
 export function Providers({ children }: { children: React.ReactNode }) {
   return (
     <QueryClientProvider client={queryClient}>
+      {/* globals.css already neutralises CSS animations under prefers-reduced-motion,
+          but framer-motion animates via inline transforms in JS, which that block cannot
+          reach. reducedMotion="user" makes the JS animations honour the same preference. */}
+      <MotionConfig reducedMotion="user">
       <ThemeProvider>
         <MobileNavProvider>
           {/* CommandPalette was complete but only ever mounted by the dead
@@ -30,6 +35,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
           </CommandPaletteProvider>
         </MobileNavProvider>
       </ThemeProvider>
+      </MotionConfig>
     </QueryClientProvider>
   );
 }

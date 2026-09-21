@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { motion } from "framer-motion";
+import { cardVariant, stagger } from "@/lib/motion";
 import Sidebar from "@/components/layout/Sidebar";
 import TopBar from "@/components/layout/TopBar";
 import { SpotlightCard } from "@/components/ui/spotlight-card";
@@ -21,16 +22,6 @@ import {
   type DemoResource,
 } from "@/lib/demoResources";
 
-const stagger = { hidden: {}, show: { transition: { staggerChildren: 0.05, delayChildren: 0.05 } } };
-const cardVariant = {
-  hidden: { opacity: 0, y: 14, scale: 0.98 },
-  show: {
-    opacity: 1,
-    y: 0,
-    scale: 1,
-    transition: { duration: 0.35, ease: [0.22, 1, 0.36, 1] as [number, number, number, number] },
-  },
-};
 
 const README_URL = demoResourceUrl("README.md");
 
