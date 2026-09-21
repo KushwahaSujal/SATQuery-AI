@@ -4925,3 +4925,86 @@ asserts nothing about how far along it is.
 is a diagnostic side channel for a run in flight, and it must never add a failure mode to the
 pipeline. A per-job file written atomically and read best-effort satisfies that; adding per-step
 database writes to the hot path would not.
+
+---
+
+## Q-051 · The tracked object was never boxed: the data was arriving and being discarded at the type boundary
+
+**Recorded** 2026-09-22, on `prototype` `f418aa7`. Extends Q-050. Prompted by the observation that a
+prompted vehicle is not boxed during playback and that the player lacks the controls the old
+frontend had.
+
+### 1. Mechanism
+
+`VideoFlag` in `backend/app/schemas/video.py` returns `metadata.track`: one point per sampled frame
+with `t`, `frame`, a normalised `box_2d` and the object's measured median `rgb`. On the verification
+job the first of three events carries **43 points**. That payload passes through `api.videoResult`
+untouched (`flags: result.flags || []`).
+
+The loss was at the type boundary. `frontend-v2`'s `VideoFlag` declared only nine fields --
+`flag_id`, timestamps, `label`, `reason`, `event_score` and three URLs. No `metadata`, no `box_2d`,
+no frame numbers. So the tracking data reached the browser on every video job and nothing could see
+it. Nothing had to be computed or added to the backend; the frontend only had to stop dropping it.
+
+### 2. Ported, not rewritten
+
+`frontend/` already had `TrackOverlay.tsx` and `useSegmentPlayer.ts`, both on the §6 parity list from
+Q-047 and never ported. They handle three things that are easy to get wrong and were worth keeping
+verbatim:
+
+- **Letterboxing.** A box is positioned against the area inside the `<video>` element where frames
+  are actually drawn, which is not the element's own box under `object-contain`.
+- **Gaps.** Track points are ~0.1s apart; a wider gap means the object was not visible, so no box is
+  interpolated across it rather than drawing a straight line through frames where it was absent.
+- **Segment end.** `timeupdate` fires roughly four times a second, which would overshoot a segment
+  end by up to 250ms. The end is checked on `requestAnimationFrame`, so "play this event and pause
+  at its end" lands on the end.
+
+### 3. What was added
+
+`VideoPlayer` composes those two with the controls the request asked for: a scrub bar with one
+marker per detected event at its true position, play/pause, prev/next stepping **between events**
+rather than by a fixed interval, an event counter, volume and fullscreen. Clicking an event -- on
+the bar or in the Detected events list on either page -- plays that range and pauses at its end. The
+list items became buttons driving the player through an imperative handle.
+
+Markers come from real `start_timestamp`/`end_timestamp`, so a clip with no detections has no
+markers. The bar never shows invented activity.
+
+### 4. Blast radius
+
+Frontend only; no backend change. Two pages switch from `<video controls>` to `VideoPlayer`
+(`/analysis/{jobId}` and `/video/{jobId}`). The stream URL is unchanged. Risk worth naming: the
+player now owns play state, so anything that assumed native controls would need revisiting -- both
+call sites were converted together.
+
+### 5. Verification
+
+Against a real 3-event job, 30.16s clip, video `readyState` 4:
+
+- 3 event markers on the bar, matching the 3 flags.
+- Clicking the `4.8s-8.2s` marker started playback and **paused at 8.16s**.
+- A track box was present at every sample and genuinely moved with the vehicle: `top` 40.8% ->
+  28.5% -> 17.3% -> 7.4% -> 0% while `width` shrank 26.5% -> 16.2% as it receded; 8 distinct
+  positions, so it tracks rather than sitting static.
+- `next` stepped 5.44s -> 15.49s -> 26.05s with the counter reading event 1/3 -> 2/3 -> 3/3;
+  `prev` returned to 15.46s.
+
+Not verified: fullscreen and the volume slider were not exercised, only rendered.
+
+### 6. Note on the reported 404
+
+`localhost:3000/stepper-check` returning 404 is not a defect. It was a temporary harness created to
+verify the mid-pipeline stepper visual deterministically (runs finish in seconds once models are
+warm, so the intermediate state is hard to photograph) and deleted immediately afterwards, as
+recorded in Q-050 §5. The route is gone on purpose.
+
+### 7. Defending this to a reviewer
+
+"Are the boxes real or drawn to look convincing?" They are SAM 2 mask-propagation output, already
+persisted with each flag, interpolated between samples and suppressed across gaps. The overlay
+computes no geometry of its own beyond mapping normalised coordinates onto the drawn frame area.
+
+"Why did this take a type change to fix?" Because that was the whole defect. The pipeline computed
+the tracks, the API returned them, and the interface in front of them described a narrower object,
+so every consumer was blind to them.
