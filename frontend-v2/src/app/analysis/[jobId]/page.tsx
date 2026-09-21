@@ -7,6 +7,7 @@ import { useJob, useAnalysisResult, useLayers, useVideoResult } from "@/hooks/us
 import { api } from "@/lib/api";
 import { useJobProgress } from "@/hooks/useJobProgress";
 import { PipelineProgress } from "@/components/analysis/PipelineProgress";
+import { VideoPlayer, type VideoPlayerHandle } from "@/components/video/VideoPlayer";
 import { ResultsSkeleton } from "@/components/analysis/ResultsSkeleton";
 import {
   describeJobStatus,
@@ -46,6 +47,7 @@ import {
   FileText,
   Layers,
   Loader2,
+  Play,
   MapPin,
   Maximize2,
   Minimize2,
@@ -92,6 +94,7 @@ export default function AnalysisJobPage() {
     status === "GENERATING_EVIDENCE";
   const isCompleted = status === "COMPLETED";
   const { data: progress } = useJobProgress(jobId, isRunning);
+  const playerRef = useRef<VideoPlayerHandle | null>(null);
 
   const layers = layersQuery.data?.layers ?? [];
   const currentLayer = useMemo(() => {
@@ -261,36 +264,16 @@ export default function AnalysisJobPage() {
 
                   {isCompleted && isVideoJob && (
                     <BlurFade className="absolute inset-0 flex flex-col p-4">
-                      <div className="relative min-h-0 flex-1 overflow-hidden rounded-xl border border-[var(--border)] bg-black">
-                        <video
-                          src={api.videoStreamUrl(jobId)}
-                          controls
-                          className="absolute inset-0 h-full w-full object-contain"
-                        />
-                        {videoFlags.length > 0 && videoMetadata && (
-                          <div className="absolute bottom-14 left-4 right-4 rounded-lg border border-white/15 bg-black/70 p-2 backdrop-blur-sm">
-                            <div className="mb-1 flex items-center justify-between text-[10px] text-white/70">
-                              <span>Detected moments</span>
-                              <span>{videoFlags.length} event{videoFlags.length === 1 ? "" : "s"}</span>
-                            </div>
-                            <div className="relative h-1.5 rounded-full bg-white/20">
-                              {videoFlags.map((flag) => (
-                                <span
-                                  key={flag.flag_id}
-                                  title={`${flag.label} at ${flag.start_timestamp.toFixed(1)}s`}
-                                  className="absolute -top-0.5 h-2.5 w-2.5 -translate-x-1/2 rounded-full bg-[var(--cyan)]"
-                                  style={{
-                                    left: `${Math.min(
-                                      (flag.start_timestamp / Math.max(videoMetadata.duration_sec, 1)) * 100,
-                                      98,
-                                    )}%`,
-                                  }}
-                                />
-                              ))}
-                            </div>
-                          </div>
-                        )}
-                      </div>
+                      {/* Boxes the tracked object while it moves, skips between detected
+                          events, and plays a single event start-to-end. The old markup
+                          was a bare <video controls> with a decorative marker strip that
+                          could not be clicked. */}
+                      <VideoPlayer
+                        ref={playerRef}
+                        src={api.videoStreamUrl(jobId)}
+                        flags={videoFlags}
+                        className="min-h-0 flex-1"
+                      />
                       <div className="mt-3 flex items-center justify-between rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-[10px] font-mono-data text-[var(--text-3)]">
                         <span>Video intelligence feed</span>
                         <span>{data?.video_metadata?.duration_sec?.toFixed(1) ?? "—"}s</span>
@@ -565,9 +548,13 @@ export default function AnalysisJobPage() {
                             {data?.flags && data.flags.length > 0 ? (
                               <div className="space-y-1.5">
                                 {data.flags.map((flag) => (
-                                  <div
+                                  <button
                                     key={flag.flag_id}
-                                    className="rounded-md border border-[var(--border)] bg-[var(--surface-2)] p-2"
+                                    type="button"
+                                    // Clicking an event plays exactly its range and pauses at the end.
+                                    onClick={() => playerRef.current?.playEvent(flag)}
+                                    title={`Play ${flag.start_timestamp.toFixed(1)}s to ${flag.end_timestamp.toFixed(1)}s`}
+                                    className="w-full rounded-md border border-[var(--border)] bg-[var(--surface-2)] p-2 text-left transition-colors hover:border-[var(--cyan)]/50 hover:bg-[var(--surface-hover)]"
                                   >
                                     <div className="flex items-center justify-between gap-2">
                                       <span className="truncate text-xs text-[var(--heading)]">{flag.label}</span>
@@ -575,10 +562,11 @@ export default function AnalysisJobPage() {
                                         {flag.event_score.toFixed(2)}
                                       </span>
                                     </div>
-                                    <p className="mt-1 text-[10px] text-[var(--text-3)]">
+                                    <p className="mt-1 flex items-center gap-1 text-[10px] text-[var(--text-3)]">
+                                      <Play className="h-2.5 w-2.5" fill="currentColor" />
                                       {flag.start_timestamp.toFixed(1)}s → {flag.end_timestamp.toFixed(1)}s
                                     </p>
-                                  </div>
+                                  </button>
                                 ))}
                               </div>
                             ) : (

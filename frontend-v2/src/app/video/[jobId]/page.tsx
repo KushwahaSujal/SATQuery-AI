@@ -1,5 +1,7 @@
 "use client";
 
+import { useRef } from "react";
+import { VideoPlayer, type VideoPlayerHandle } from "@/components/video/VideoPlayer";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
@@ -32,6 +34,7 @@ export default function VideoJobPage() {
   const result = query.data;
   const metadata = result?.video_metadata;
   const flags = result?.flags || [];
+  const playerRef = useRef<VideoPlayerHandle | null>(null);
   const duration = metadata?.duration_sec || 1;
   const status = result?.status || (query.isLoading ? "LOADING" : "UNKNOWN");
   const failed = status === "FAILED";
@@ -65,7 +68,12 @@ export default function VideoJobPage() {
                 {failed ? (
                   <div className="text-center text-sm text-[var(--error)]"><AlertCircle className="mx-auto mb-2 h-6 w-6" />{result?.errors?.[0] || "Video analysis failed"}</div>
                 ) : result ? (
-                  <video src={api.videoStreamUrl(jobId)} controls preload="metadata" className="h-full w-full object-contain" />
+                  <VideoPlayer
+                    ref={playerRef}
+                    src={api.videoStreamUrl(jobId)}
+                    flags={flags}
+                    className="h-full w-full border-0 rounded-none"
+                  />
                 ) : (
                   // No stream yet: draw an honest placeholder frame instead of
                   // leaving a tall dead black box.
@@ -104,14 +112,21 @@ export default function VideoJobPage() {
               </div>
               <div className="min-h-0 flex-1 overflow-y-auto">
                 {flags.length ? flags.map((flag) => (
-                  <article key={flag.flag_id} className="border-b border-[var(--border)] p-4">
+                  <button
+                    key={flag.flag_id}
+                    type="button"
+                    // Plays this event's range and pauses exactly at its end.
+                    onClick={() => playerRef.current?.playEvent(flag)}
+                    title={`Play ${time(flag.start_timestamp)} to ${time(flag.end_timestamp)}`}
+                    className="w-full border-b border-[var(--border)] p-4 text-left transition-colors hover:bg-[var(--surface-hover)]"
+                  >
                     <div className="flex items-center justify-between gap-2">
                       <span className="truncate text-xs font-medium text-[var(--heading)]">{flag.label}</span>
                       <span className="font-mono-data text-[10px] text-[var(--cyan)]">{flag.event_score.toFixed(2)}</span>
                     </div>
                     <p className="mt-1 flex items-center gap-1 text-[10px] text-[var(--text-3)]"><Clock3 className="h-3 w-3" />{time(flag.start_timestamp)} → {time(flag.end_timestamp)}</p>
                     <p className="mt-2 text-[11px] leading-relaxed text-[var(--text-2)]">{flag.reason}</p>
-                  </article>
+                  </button>
                 )) : (
                   <div className="p-5 text-center text-xs text-[var(--text-3)]">
                     {ACTIVE.has(status) ? "Detection is still running…" : result?.workflow_reason || "No events detected"}

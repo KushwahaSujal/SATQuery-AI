@@ -332,16 +332,47 @@ export interface VideoEvent {
   keyframe_url?: string;
 }
 
+/** One sample of a tracked object's position, as produced by SAM 2 mask propagation. */
+export interface VideoTrackPoint {
+  /** Seconds into the video. */
+  t: number;
+  frame: number;
+  /** [ymin, xmin, ymax, xmax], normalised 0-1 against the frame. */
+  box_2d: [number, number, number, number];
+  /** Median colour of the object's own mask pixels on this frame. */
+  rgb: [number, number, number] | null;
+}
+
 export interface VideoFlag {
   flag_id: string;
+  video_id?: string;
   start_timestamp: number;
   end_timestamp: number;
+  start_frame?: number;
+  end_frame?: number;
+  peak_frame?: number;
   label: string;
   reason?: string;
   event_score: number;
   keyframe_url?: string;
   overlay_url?: string;
   mask_url?: string;
+  /** [ymin, xmin, ymax, xmax] for the peak frame. */
+  box_2d?: [number, number, number, number];
+  model_scores?: Record<string, unknown>;
+  /**
+   * The backend already returns per-frame tracking under metadata.track -- typically one
+   * point every ~0.1s for the length of the event. It was reaching the browser untyped
+   * and unused, which is why the tracked object was never boxed during playback.
+   */
+  metadata?: {
+    track?: VideoTrackPoint[];
+    peak_frame?: number;
+    event_score_type?: string;
+    calibrated_model_probability?: number | null;
+    agent_verification?: Record<string, unknown> | null;
+    [key: string]: unknown;
+  };
 }
 
 export interface VideoMetadata {
