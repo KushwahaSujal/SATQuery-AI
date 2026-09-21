@@ -6,6 +6,7 @@ import Link from "next/link";
 import { motion, useInView } from "framer-motion";
 import { api } from "@/lib/api";
 import { useJobs } from "@/hooks/useJobs";
+import { useAnalysisStore } from "@/stores/useAnalysisStore";
 import Sidebar from "@/components/layout/Sidebar";
 import TopBar from "@/components/layout/TopBar";
 import { ShimmerButton } from "@/components/ui/shimmer-button";
@@ -130,6 +131,8 @@ export default function HomePage() {
   const router = useRouter();
   const [query, setQuery] = useState("");
   const [dragActive, setDragActive] = useState(false);
+  const handleUpload = useAnalysisStore((s) => s.handleUpload);
+  const uploadProgress = useAnalysisStore((s) => s.uploadProgress);
   const [isUploading, setIsUploading] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
@@ -151,14 +154,17 @@ export default function HomePage() {
   async function handleUploadFiles(files: FileList | File[]) {
     setIsUploading(true);
     setUploadError(null);
-    try {
-      await api.uploadRasters(Array.from(files));
-      router.push("/analysis");
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : "Upload failed";
-      setUploadError(msg);
-    } finally {
-      setIsUploading(false);
+    // Upload through the shared store rather than calling api.uploadRasters directly.
+    // The old code uploaded the files and then threw the response away, so /analysis
+    // opened with an empty workspace and the same file had to be picked a second time.
+    // The store is a module singleton, so what it holds survives the client-side
+    // navigation below. It also accepts video, which api.uploadRasters does not.
+    const ok = await handleUpload(Array.from(files));
+    setIsUploading(false);
+    if (ok) {
+      router.push(query.trim() ? `/analysis?q=${encodeURIComponent(query.trim())}` : "/analysis");
+    } else {
+      setUploadError(useAnalysisStore.getState().uploadError ?? "Upload failed");
     }
   }
 

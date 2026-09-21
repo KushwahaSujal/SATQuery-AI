@@ -45,6 +45,10 @@ function isVideoFile(file: File): boolean {
 interface AnalysisState {
   messages: ChatMessage[];
   rasters: UploadedRaster[];
+  /** Last upload failure, surfaced so a failed drop is not silent. */
+  uploadError: string | null;
+  /** Query typed on the home page, handed to the composer on /analysis. */
+  pendingPrompt: string | null;
   video: UploadedVideo | null;
   activeJobId: string | null;
   activeJobIsVideo: boolean;
@@ -56,7 +60,10 @@ interface AnalysisState {
 
   addMessage: (msg: Omit<ChatMessage, "id" | "timestamp">) => void;
   updateMessage: (id: string, patch: Partial<ChatMessage>) => void;
-  handleUpload: (files: FileList) => Promise<void>;
+  handleUpload: (files: FileList | File[]) => Promise<boolean>;
+  setPendingPrompt: (prompt: string | null) => void;
+  /** True when work from another page is waiting to be continued here. */
+  hasCarriedOverWork: () => boolean;
   startAnalysis: (prompt: string, taskType?: string) => Promise<void>;
   resetAnalysis: () => void;
 }
@@ -65,6 +72,8 @@ export const useAnalysisStore = create<AnalysisState>((set, get) => ({
   messages: [],
   rasters: [],
   video: null,
+  uploadError: null,
+  pendingPrompt: null,
   activeJobId: null,
   activeJobIsVideo: false,
   liveJob: null,
@@ -93,7 +102,7 @@ export const useAnalysisStore = create<AnalysisState>((set, get) => ({
     const videos = fileList.filter(isVideoFile);
     const images = fileList.filter((f) => !isVideoFile(f));
 
-    set({ uploadProgress: 0 });
+    set({ uploadProgress: 0, uploadError: null });
 
     try {
       if (images.length > 0) {
@@ -112,8 +121,14 @@ export const useAnalysisStore = create<AnalysisState>((set, get) => ({
       }
       set({ uploadProgress: 100 });
       setTimeout(() => set({ uploadProgress: null }), 800);
-    } catch {
-      set({ uploadProgress: null });
+      return true;
+    } catch (err) {
+      // A failed upload used to reset the progress bar and say nothing at all.
+      set({
+        uploadProgress: null,
+        uploadError: err instanceof Error ? err.message : "Upload failed",
+      });
+      return false;
     }
   },
 
@@ -158,6 +173,7 @@ export const useAnalysisStore = create<AnalysisState>((set, get) => ({
       // composer immediately so the next analysis starts with a clean slate.
       rasters: [],
       video: null,
+      uploadError: null,
       uploadProgress: null,
     }));
 
@@ -224,11 +240,19 @@ export const useAnalysisStore = create<AnalysisState>((set, get) => ({
     }
   },
 
+  setPendingPrompt: (prompt) => set({ pendingPrompt: prompt }),
+
+  hasCarriedOverWork: () => {
+    const s = get();
+    return s.rasters.length > 0 || s.video !== null || Boolean(s.pendingPrompt);
+  },
+
   resetAnalysis: () =>
     set({
       messages: [],
       rasters: [],
       video: null,
+      uploadError: null,
       activeJobId: null,
       activeJobIsVideo: false,
       liveJob: null,

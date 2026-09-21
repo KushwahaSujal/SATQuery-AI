@@ -32,6 +32,7 @@ export function ChatInput({
   videoPreview,
   uploadProgress,
   disabled = false,
+  initialPrompt,
   variant = "centered",
   className,
 }: {
@@ -42,10 +43,15 @@ export function ChatInput({
   videoPreview?: string | null;
   uploadProgress?: number | null;
   disabled?: boolean;
+  /** Prefills the composer, e.g. with a query typed on the home page. */
+  initialPrompt?: string;
   variant?: "centered" | "compact";
   className?: string;
 }) {
-  const [text, setText] = useState("");
+  // A query typed on the home page arrives as a prop rather than through the store:
+  // children render before the parent's effects run, so a store value written in an
+  // effect would land after this initializer had already read null.
+  const [text, setText] = useState(initialPrompt ?? "");
   const [isDragging, setIsDragging] = useState(false);
   const [analysisType, setAnalysisType] = useState<AnalysisType>("auto");
   const [showTypeSelector, setShowTypeSelector] = useState(false);
