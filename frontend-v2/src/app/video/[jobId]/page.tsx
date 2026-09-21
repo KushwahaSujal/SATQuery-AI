@@ -61,13 +61,28 @@ export default function VideoJobPage() {
                 <span className="font-mono-data text-[10px] uppercase tracking-wider text-[var(--text-3)]">Video feed</span>
                 <span className="font-mono-data text-[10px] text-[var(--text-3)]">{metadata?.codec || "—"}</span>
               </div>
-              <div className="flex min-h-0 flex-1 items-center justify-center bg-black p-4">
+              <div className="relative flex min-h-0 flex-1 items-center justify-center overflow-hidden bg-black">
                 {failed ? (
                   <div className="text-center text-sm text-[var(--error)]"><AlertCircle className="mx-auto mb-2 h-6 w-6" />{result?.errors?.[0] || "Video analysis failed"}</div>
+                ) : result ? (
+                  <video src={api.videoStreamUrl(jobId)} controls preload="metadata" className="h-full w-full object-contain" />
                 ) : (
-                  <video src={api.videoStreamUrl(jobId)} controls className="max-h-full w-full object-contain" />
+                  // No stream yet: draw an honest placeholder frame instead of
+                  // leaving a tall dead black box.
+                  <div className="flex h-full w-full flex-col items-center justify-center gap-2 border border-dashed border-[var(--border)] text-[var(--text-3)]">
+                    {query.isLoading ? (
+                      <>
+                        <Loader2 className="h-6 w-6 animate-spin text-[var(--cyan)]" />
+                        <span className="font-mono-data text-[10px] uppercase tracking-wider">Loading video feed</span>
+                      </>
+                    ) : (
+                      <>
+                        <AlertCircle className="h-6 w-6" />
+                        <span className="font-mono-data text-[10px] uppercase tracking-wider">No video stream for this job</span>
+                      </>
+                    )}
+                  </div>
                 )}
-                {query.isLoading && <Loader2 className="absolute h-6 w-6 animate-spin text-[var(--cyan)]" />}
               </div>
               <div className="border-t border-[var(--border)] bg-[var(--surface)] p-4">
                 <div className="mb-2 flex items-center justify-between">

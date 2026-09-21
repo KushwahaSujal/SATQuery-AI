@@ -52,7 +52,7 @@ export function ChatView() {
   const hasSources = attachedImages.length > 0 || Boolean(videoPreview);
 
   return (
-    <div className="h-full min-h-0 flex-1 flex flex-col bg-[var(--canvas)] overflow-hidden">
+    <div className="relative h-full min-h-0 flex-1 flex flex-col bg-[var(--canvas)] overflow-hidden">
       {/* Subtle grid background */}
       <div className="absolute inset-0 opacity-[0.03] pointer-events-none"
         style={{
@@ -119,7 +119,7 @@ export function ChatView() {
                   <span className="text-[var(--border)]">•</span>
                   <span>Evidence-backed results</span>
                   <span className="text-[var(--border)]">•</span>
-                  <span>Follow-up questions</span>
+                  <span>Automatic task routing</span>
                 </div>
               </div>
 

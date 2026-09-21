@@ -5,19 +5,23 @@ import { cn } from "@/lib/utils";
 import { ProgressiveFluxLoader } from "@/components/ui/progressive-flux-loader";
 import type { TaskType } from "@/lib/types";
 
+// "auto" is a client-side sentinel: it means "let the planner route this" and is
+// stripped before the request (see stores/useAnalysisStore.ts).
 type AnalysisType = TaskType | "auto";
 
 const ANALYSIS_TYPES: { value: AnalysisType; label: string; icon: string; category: string }[] = [
   { value: "auto", label: "Auto Detect", icon: "M13 10V3L4 14h7v7l9-11h-7z", category: "Smart" },
   { value: "single_image_vqa", label: "Image Analysis", icon: "M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z", category: "Single Image" },
   { value: "single_image_caption", label: "Captioning", icon: "M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z", category: "Single Image" },
+  { value: "single_image_classification", label: "Land Cover", icon: "M4 5a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM14 5a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1V5zM4 15a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H5a1 1 0 01-1-1v-4zM14 15a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z", category: "Single Image" },
   { value: "single_image_grounding", label: "Object Detection", icon: "M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z", category: "Single Image" },
   { value: "bi_temporal_change", label: "Change Detection", icon: "M13 7h8m0 0v8m0-8l-8 8-4-4-6 6", category: "Change Analysis" },
   { value: "bi_temporal_change_vqa", label: "Change VQA", icon: "M8 7v8a2 2 0 002 2h6M8 7V5a2 2 0 012-2h4.586a1 1 0 01.707.293l4.414 4.414a1 1 0 01.293.707V15a2 2 0 01-2 2h-2M8 7H6a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2v-2", category: "Change Analysis" },
   { value: "optical_sar_analysis", label: "Optical + SAR", icon: "M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4", category: "Multi-Modal" },
-  { value: "video_vqa", label: "Video Analysis", icon: "M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z", category: "Video" },
-  { value: "video_grounding", label: "Video Grounding", icon: "M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z", category: "Video" },
-  { value: "video_change", label: "Video Change", icon: "M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z", category: "Video" },
+  { value: "video_vqa", label: "Video Analysis", icon: "M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2v10zM10.5 7.5l5 3-5 3v-6z", category: "Video" },
+  { value: "video_grounding", label: "Video Grounding", icon: "M4 6a2 2 0 012-2h12a2 2 0 012 2v12a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM12 8.5v1.5m0 4v1.5m3.5-3.5H14m-4 0H8.5m5 0a1.5 1.5 0 11-3 0 1.5 1.5 0 013 0z", category: "Video" },
+  { value: "video_grounding_tracking", label: "Video Tracking", icon: "M8 17a2 2 0 11-4 0 2 2 0 014 0zM6 15v-3a3 3 0 013-3h8m-3-3l3 3-3 3", category: "Video" },
+  { value: "video_change", label: "Video Change", icon: "M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15", category: "Video" },
 ];
 
 export function ChatInput({
@@ -127,23 +131,12 @@ export function ChatInput({
                 <img
                   src={src}
                   alt={attachedImageLabels[i] || `Attached ${i + 1}`}
-                  className="relative z-10 h-full w-full object-cover"
+                  className="h-full w-full object-cover"
                   onError={(event) => {
                     event.currentTarget.style.display = "none";
                   }}
                 />
-                {/*<div className="absolute inset-0 z-0 flex flex-col items-center justify-center gap-1 p-1 text-center">*/}
-                {/*  <svg className="h-5 w-5 text-[var(--cyan)]/70" fill="none" stroke="currentColor" viewBox="0 0 24 24">*/}
-                {/*    <path d="M4 5a2 2 0 012-2h8l6 6v10a2 2 0 01-2 2H6a2 2 0 01-2-2V5zM14 3v6h6" strokeWidth="1.5" />*/}
-                {/*  </svg>*/}
-                {/*  <span className="max-w-full truncate text-[8px] text-[var(--text-3)]">*/}
-                {/*    {attachedImageLabels[i] || `Raster ${i + 1}`}*/}
-                {/*  </span>*/}
-                {/*</div>*/}
               </div>
-              {/*<div className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-[var(--cyan)] text-white flex items-center justify-center text-[8px] font-bold shadow">*/}
-              {/*  {i + 1}*/}
-              {/*</div>*/}
             </div>
           ))}
           <div className="h-12 w-12 rounded-lg border-2 border-dashed border-[var(--border)] flex items-center justify-center text-[var(--text-3)] hover:border-[var(--cyan)]/50 hover:text-[var(--cyan)] transition cursor-pointer sm:h-14 sm:w-14" onClick={() => fileRef.current?.click()}>

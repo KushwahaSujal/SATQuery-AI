@@ -3,6 +3,7 @@ export type TaskType =
   | "single_image_vqa"
   | "single_image_caption"
   | "single_image_grounding"
+  | "single_image_classification"
   | "bi_temporal_change"
   | "bi_temporal_change_vqa"
   | "optical_sar_analysis"
@@ -29,7 +30,10 @@ export type ModelLifecycle =
   | "NOT_CONFIGURED"
   | "AVAILABLE"
   | "LOADED"
-  | "FAILED";
+  | "FAILED"
+  // The registry reports a model whose checkpoint loads but which refuses to
+  // serve; /api/models carries the reason in `refusal_reason`.
+  | "PRESENT_NOT_SERVING";
 
 export type LayerProvenance =
   | "SOURCE_DATA"
@@ -65,6 +69,26 @@ export interface ModelInfo {
   available?: boolean;
   last_error?: string;
   validation_status?: string;
+  // Registry identity and provenance, all returned by /api/models. These were
+  // previously dropped by the mapper, which left the models view unable to say
+  // which checkpoint or adapter was behind a model.
+  model_id?: string;
+  family?: string;
+  version?: string;
+  adapter?: string;
+  checkpoint?: string;
+  license?: string;
+  precision?: string;
+  supported_modalities?: string[];
+  input_count?: number;
+  input_relationship?: string;
+  input_requirements?: Record<string, unknown>;
+  output_schema?: Record<string, unknown>;
+  device_requirements?: Record<string, unknown>;
+  // Why a PRESENT_NOT_SERVING model declines to serve. Surfacing this verbatim
+  // is the point -- it is the backend's honest refusal, not an error string.
+  refusal_reason?: string;
+  serving?: boolean;
 }
 
 export interface UploadedRaster {

@@ -115,6 +115,25 @@ export const api = {
       available: (m.available as boolean) || (m.availability as boolean) || false,
       last_error: m.last_error as string,
       validation_status: m.validation_status as string,
+      // Pass the registry's identity, provenance and refusal fields through
+      // untouched. Dropping them here previously meant the UI could show that a
+      // model was not serving but never why, which is the opposite of the
+      // backend's structurally honest refusals.
+      model_id: m.model_id as string,
+      family: m.family as string,
+      version: m.version as string,
+      adapter: m.adapter as string,
+      checkpoint: (m.checkpoint as string) || (m.checkpoint_path as string),
+      license: m.license as string,
+      precision: m.precision as string,
+      supported_modalities: Array.isArray(m.supported_modalities) ? (m.supported_modalities as string[]) : undefined,
+      input_count: m.input_count as number,
+      input_relationship: m.input_relationship as string,
+      input_requirements: m.input_requirements as Record<string, unknown>,
+      output_schema: m.output_schema as Record<string, unknown>,
+      device_requirements: m.device_requirements as Record<string, unknown>,
+      refusal_reason: m.refusal_reason as string,
+      serving: m.serving as boolean,
     }));
   },
 
