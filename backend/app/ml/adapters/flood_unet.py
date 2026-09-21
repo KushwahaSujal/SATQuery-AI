@@ -33,6 +33,10 @@ import torch.nn as nn
 #: Channel count the checkpoint's first convolution demands.
 FLOOD_INPUT_CHANNELS = 16
 
+#: Four 2x max-pools with no padding in the skip concatenations, so each spatial extent must be a
+#: multiple of 2**4. Training used 512x512.
+_SIZE_DIVISOR = 16
+
 #: Band order, for error messages and for the adapter's metadata.
 FLOOD_CHANNEL_NAMES = (
     "S1_VV", "S1_VH",
@@ -101,6 +105,20 @@ class UNetFromScratch(nn.Module):
         self.output_layer = nn.Conv2d(c1, num_classes, kernel_size=1)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        # Four 2x pools with no padding or cropping in the skip concatenations, so both spatial
+        # extents must be divisible by 16. Without this check a 513x513 tile fails deep inside the
+        # decoder with "Expected size 512 but got size 513", which says nothing about the cause.
+        # Training was at 512x512. Raising here cannot change any computation that would otherwise
+        # have succeeded — it only replaces an opaque error with a specific one.
+        if x.ndim != 4:
+            raise ValueError(f"Expected a 4-D (N, C, H, W) batch, got shape {tuple(x.shape)}.")
+        h, w = int(x.shape[-2]), int(x.shape[-1])
+        if h % _SIZE_DIVISOR or w % _SIZE_DIVISOR or h == 0 or w == 0:
+            raise ValueError(
+                f"Spatial size {h}x{w} is not usable: this U-Net pools four times, so height and "
+                f"width must each be a positive multiple of {_SIZE_DIVISOR} (it was trained at "
+                f"512x512). Pad or tile the input before calling."
+            )
         e1 = self.encoder1(x)
         e2 = self.encoder2(self.pool(e1))
         e3 = self.encoder3(self.pool(e2))

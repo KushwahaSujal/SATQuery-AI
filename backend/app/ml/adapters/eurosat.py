@@ -76,10 +76,32 @@ def to_rgb_array(image_input: Any) -> np.ndarray:
             arr = arr[..., :3]
         if arr.shape[-1] != 3:
             raise InvalidInputError(f"Expected 1, 3 or 4 channels, got {arr.shape[-1]}.")
+        if arr.size == 0:
+            raise InvalidInputError(f"Image array is empty (shape {arr.shape}).")
         if arr.dtype != np.uint8:
             a = arr.astype(np.float32)
-            # A float image is in [0, 1] by convention; anything larger is already 0-255.
-            a = a * 255.0 if float(np.nanmax(a)) <= 1.0 else a
+            # Refuse rather than clip. Both of these used to pass silently and come back with a
+            # >99%-confidence label: a non-finite array became a black tile (NaN casts to 0), and
+            # Sentinel-2 L1C reflectance (0-10000, the native scale of this model's own training
+            # data) saturated to a white tile. A confident answer about a blank image is worse than
+            # an error, so the caller is told to scale its pixels itself.
+            if not np.isfinite(a).all():
+                raise InvalidInputError(
+                    "Image contains NaN or infinite values; refusing to guess replacements."
+                )
+            hi = float(a.max())
+            lo = float(a.min())
+            if lo < 0.0:
+                raise InvalidInputError(f"Image has negative pixel values (min {lo:g}).")
+            if hi <= 1.0:
+                a = a * 255.0            # float image in [0, 1] by convention
+            elif hi > 255.0:
+                raise InvalidInputError(
+                    f"Image pixel values reach {hi:g}, beyond 8-bit range. This classifier expects "
+                    f"8-bit RGB or floats in [0, 1]; scale 16-bit or reflectance imagery (e.g. "
+                    f"Sentinel-2 L1C 0-10000) before calling, since clipping it here would "
+                    f"saturate the tile to white and still return a confident label."
+                )
             arr = np.clip(a, 0, 255).astype(np.uint8)
         return np.ascontiguousarray(arr)
     raise InvalidInputError(f"Unsupported image input type '{type(image_input).__name__}'.")
@@ -232,25 +254,45 @@ class EuroSatLandCoverAdapter(BaseModelAdapter):
             raise InvalidInputError(
                 "No image supplied: expected one of 'image', 'image_pil', 'image_path' or 'arr'."
             )
-        top_k = context.get("top_k")
-        if top_k is not None and (not isinstance(top_k, int) or top_k < 1):
+        self._validate_top_k(context.get("top_k"))
+
+    @staticmethod
+    def _validate_top_k(top_k: Any) -> None:
+        """`top_k` must be absent or a positive int. `bool` is rejected: True would mean top-1."""
+        if top_k is None:
+            return
+        if isinstance(top_k, bool) or not isinstance(top_k, int) or top_k < 1:
             raise InvalidInputError(f"top_k must be a positive integer, got {top_k!r}.")
 
     def _resolve_inputs(self, image_or_context: Any, kwargs: Dict[str, Any]) -> Any:
-        """Accepts either a positional image or a context dict; returns the raw image."""
+        """Accepts either a positional image or a context dict; returns (raw image, top_k).
+
+        `top_k` is validated on every path, not only the dict one. Before this was hoisted out of
+        the branches, `predict(img, top_k=-3)` silently returned `order[:-3]` — seven classes for a
+        request of minus three — while the identical dict call was a clean 400, and
+        `predict(img, top_k="x")` escaped as a bare ValueError (a 500) because the `int()` happened
+        outside predict's try block. `binary_segmenter._resolve_inputs` checks `threshold` after its
+        if/else for the same reason.
+        """
+        raw: Any = image_or_context
+        top_k = kwargs.get("top_k")
         if isinstance(image_or_context, dict):
             ctx = dict(image_or_context)
             ctx.update(kwargs)
             self.validate_inputs(ctx)
+            top_k = ctx.get("top_k")
             for key in ("image", "image_pil", "image_path", "arr"):
                 if ctx.get(key) is not None:
-                    return ctx[key], ctx.get("top_k")
+                    return ctx[key], top_k
+            return None, top_k
         if image_or_context is None:
             self.validate_inputs(dict(kwargs))
             for key in ("image", "image_pil", "image_path", "arr"):
                 if kwargs.get(key) is not None:
-                    return kwargs[key], kwargs.get("top_k")
-        return image_or_context, kwargs.get("top_k")
+                    return kwargs[key], top_k
+            return None, top_k
+        self._validate_top_k(top_k)
+        return raw, top_k
 
     def predict(self, image_or_context: Any = None, **kwargs: Any) -> ModelResult:
         """
@@ -266,7 +308,7 @@ class EuroSatLandCoverAdapter(BaseModelAdapter):
         raw, top_k = self._resolve_inputs(image_or_context, kwargs)
         self.load_model()
         names = self.class_names
-        k = min(int(top_k) if top_k else 3, len(names))
+        k = min(top_k if top_k is not None else 3, len(names))
 
         img = to_rgb_array(raw)
         h, w = img.shape[:2]

@@ -191,8 +191,14 @@ class FloodSegmenterAdapter(BaseModelAdapter):
                 f"{self.name} requires a 3-D (C, H, W) or (H, W, C) stack, got shape {arr.shape}."
             )
         # Either layout is accepted; only the channel count is a hard requirement, and a 3-channel
-        # RGB tile is the case that actually shows up from the pipeline.
-        channels = arr.shape[0] if arr.shape[0] <= arr.shape[-1] else arr.shape[-1]
+        # RGB tile is the case that actually shows up from the pipeline. Look for the required count
+        # on either axis rather than assuming the channel axis is the smaller one: a legitimate
+        # (16, 8, 8) CHW stack has more channels than rows, and the old `min` heuristic rejected it
+        # while reporting the wrong channel count in the message.
+        if FLOOD_INPUT_CHANNELS in (arr.shape[0], arr.shape[-1]):
+            channels = FLOOD_INPUT_CHANNELS
+        else:
+            channels = arr.shape[0] if arr.shape[0] <= arr.shape[-1] else arr.shape[-1]
         if int(channels) != FLOOD_INPUT_CHANNELS:
             raise InvalidInputError(
                 f"{self.name} requires exactly {FLOOD_INPUT_CHANNELS} co-registered channels in the "
@@ -245,8 +251,13 @@ class FloodSegmenterAdapter(BaseModelAdapter):
                 "required_channels": FLOOD_INPUT_CHANNELS,
                 "channel_names": self.channel_names,
                 "trained_gsd_m": self.trained_gsd_m,
-                "checkpoint_epoch": self._epoch,
-                "checkpoint_metrics": self._metrics,
+                # Deliberately NOT reporting the checkpoint's epoch or metrics here. The refusal
+                # never loads weights, so these would be None on a fresh adapter and populated only
+                # if something else had already called load_model() — and the registry hands out
+                # singletons, so one diagnostics call would silently change the shape of every
+                # later refusal in the process. `checkpoint_epoch: null` also reads as "there is no
+                # epoch" when in fact there is one. The delivered values are in docs/models/flood.md.
+                "checkpoint_inspected": bool(self._loaded),
                 "model_class": "UNetFromScratch",
                 "device": str(self.device),
                 "qna": "Q-041 §5",

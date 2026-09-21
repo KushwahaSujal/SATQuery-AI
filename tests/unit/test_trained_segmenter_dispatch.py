@@ -154,11 +154,25 @@ def test_exclusion_keys_name_real_targets():
 
 
 def test_multi_class_and_isprs_models_are_registered_but_never_routed():
-    """They are callable adapters (deliberate), but no vocabulary maps a query onto them."""
-    for key in ("landcover_segmenter", "isprs_potsdam_segmenter", "isprs_vaihingen_segmenter"):
+    """They are callable adapters (deliberate), but no vocabulary maps a query onto them.
+
+    `eurosat_classifier` and `flood_segmenter` are here for two further reasons (project/qna.md
+    Q-041): EuroSAT returns one scene label with neither a mask nor a box, so it cannot satisfy the
+    grounding pipeline's response contract, and the flood model needs 16 co-registered S1+S2+DEM
+    bands that the pipeline cannot supply and refuses to serve anyway.
+    """
+    for key in (
+        "landcover_segmenter",
+        "isprs_potsdam_segmenter",
+        "isprs_vaihingen_segmenter",
+        "eurosat_classifier",
+        "flood_segmenter",
+    ):
         assert key in model_registry.ADAPTER_CLASSES
         assert key not in TRAINED_SEGMENTER_TARGETS
         assert key not in STRATEGY_BY_MODEL
+        assert key not in MASK_NOUN_BY_MODEL
+        assert key not in TRAINED_SEGMENTER_EXCLUSIONS
 
 
 def test_flag_disabled_falls_back_even_for_a_plain_category_request(monkeypatch):
