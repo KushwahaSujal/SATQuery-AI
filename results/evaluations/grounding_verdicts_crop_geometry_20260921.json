@@ -1,0 +1,100 @@
+{
+  "selection": "first 300 unique VRSBench referring records; absent = fixed-pool substitution",
+  "absent_pool": [
+    "airplane",
+    "ship",
+    "windmill",
+    "storage tank",
+    "baseball diamond",
+    "tennis court",
+    "swimming pool",
+    "roundabout",
+    "harbor",
+    "stadium",
+    "dam",
+    "chimney",
+    "bridge"
+  ],
+  "modes": {
+    "pad": {
+      "n_present": 300,
+      "n_absent": 300,
+      "n_absent_attribute": 220,
+      "present_found": 0.9467,
+      "present_R_at_0_5": 0.33,
+      "present_mIoU": 0.3086,
+      "present_decisions": {
+        "accepted_disputed": 75,
+        "accepted_verified": 190,
+        "accepted_unconfirmed": 19,
+        "not_found": 13,
+        "None": 3
+      },
+      "by_strategy": {
+        "attribute": {
+          "n": 272,
+          "R_at_0_5": 0.3456,
+          "mIoU": 0.3252
+        },
+        "plain": {
+          "n": 28,
+          "R_at_0_5": 0.1786,
+          "mIoU": 0.1471
+        }
+      },
+      "absent_returned_a_box": 0.2833,
+      "absent_decisions": {
+        "not_found": 215,
+        "accepted_verified": 28,
+        "accepted_unconfirmed": 57
+      },
+      "absent_attribute_top_candidate_verdict": {
+        "contradicted": 0.65,
+        "verified": 0.2136,
+        "unverified": 0.1227,
+        "no_candidates": 0.0136
+      },
+      "seconds": 353.4
+    },
+    "inset": {
+      "n_present": 300,
+      "n_absent": 300,
+      "n_absent_attribute": 220,
+      "present_found": 0.9567,
+      "present_R_at_0_5": 0.3367,
+      "present_mIoU": 0.3176,
+      "present_decisions": {
+        "accepted_disputed": 53,
+        "accepted_verified": 205,
+        "accepted_unconfirmed": 29,
+        "not_found": 10,
+        "None": 3
+      },
+      "by_strategy": {
+        "attribute": {
+          "n": 272,
+          "R_at_0_5": 0.3456,
+          "mIoU": 0.3252
+        },
+        "plain": {
+          "n": 28,
+          "R_at_0_5": 0.25,
+          "mIoU": 0.2439
+        }
+      },
+      "absent_returned_a_box": 0.34,
+      "absent_decisions": {
+        "not_found": 198,
+        "accepted_verified": 27,
+        "accepted_unconfirmed": 75
+      },
+      "absent_attribute_top_candidate_verdict": {
+        "contradicted": 0.5591,
+        "unverified": 0.1636,
+        "verified": 0.2636,
+        "no_candidates": 0.0136
+      },
+      "seconds": 337.1
+    }
+  }
+}

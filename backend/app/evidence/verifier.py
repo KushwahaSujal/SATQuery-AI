@@ -27,6 +27,11 @@ ground-truth crops (results/evaluations/remoteclip_verifier_probe_20260914.json)
 
 `target_probability` is a softmax over the vocabulary — a relative score, not a calibrated
 probability that the detection is correct.
+
+Crops are kept inside the frame (Q-046). The original geometry handed PIL an out-of-bounds box,
+which PIL fills with black. Re-measuring the probe above on a rebuilt 973-crop sample, 711 of the
+crops (73.1%) left the frame and were 45.5% fabricated by area on average.
+See `DetectionVerifier.crop`.
 """
 from __future__ import annotations
 
@@ -67,8 +72,12 @@ class VerificationVerdict:
 class DetectionVerifier:
     """RemoteCLIP-backed contrastive verifier for detector candidates."""
 
-    def __init__(self, clip_adapter=None, cfg: Optional[AgentVerificationSettings] = None):
+    def __init__(self, clip_adapter=None, cfg: Optional[AgentVerificationSettings] = None,
+                 crop_mode: str = "inset"):
         self.cfg = cfg or settings.agent_verification
+        if crop_mode not in self.CROP_MODES:
+            raise ValueError(f"crop_mode must be one of {self.CROP_MODES}, got {crop_mode!r}")
+        self.crop_mode = crop_mode
         self._clip = clip_adapter
         self._text_cache: Dict[Tuple[str, ...], torch.Tensor] = {}
         self._group_of: Dict[str, str] = {}
@@ -107,13 +116,51 @@ class DetectionVerifier:
                 return self._group_of[word]
         return label
 
+    # Crop geometry (Q-046). `Image.crop` fills out-of-bounds coordinates with black — a crop taken
+    # 20 px outside a solid 64x64 image comes back 75% exact zeros — so the pre-Q-046 geometry fed
+    # RemoteCLIP fabricated pixels whenever the padded square left the frame: 711 of the 973 rebuilt
+    # probe crops, 45.5% of the crop by area on average, scored by the encoder as image content.
+    # All three geometries were measured on one sample in one process
+    # (results/evaluations/verifier_edge_crops_20260921.json):
+    #   "inset"  the square side is capped at min(width, height) and the window is translated back
+    #            inside the frame. No fabricated pixels; the side, and so the object's scale inside
+    #            the crop, is preserved; and the window contains the whole box whenever a square
+    #            in-frame window can -- i.e. whenever max(box_w, box_h) <= min(width, height), since
+    #            the side is at least the box's longer edge and shifting it in by the overhang cannot
+    #            push the box out. A box longer than the image's short side cannot be contained by ANY
+    #            square in-frame window, so it is cropped; measured over 576 synthetic boxes across
+    #            512x512, 400x300 and 97x640 frames, all 48 non-containing cases were exactly that
+    #            impossible geometry and none was a defect (Q-046 §2).
+    #            Best true/wrong separation (contrastive AUC 0.9755 vs 0.9626) and the only geometry
+    #            that removes the false contradiction from both DISPUTED answers on 05945_0000.png.
+    #            This is what ships.
+    #   "clamp"  the window edges are clamped: also free of fabricated pixels, but the crop stops
+    #            being square and the open_clip transform centre-crops the longer axis away. AUC
+    #            0.9725, and it repairs only one of the two 05945 answers.
+    #   "pad"    the pre-Q-046 geometry, kept only so the harness can re-measure the old numbers.
+    CROP_MODES = ("inset", "clamp", "pad")
+
     def crop(self, image: Image.Image, box: Sequence[float]) -> Tuple[Image.Image, List[int]]:
-        """Square crop around the box with context padding (same geometry as the measured probe)."""
+        """Square crop around the box with context padding, kept inside the frame."""
+        width, height = image.size
         x1, y1, x2, y2 = [float(v) for v in box[:4]]
         side = max(x2 - x1, y2 - y1, 1.0) * (1.0 + self.cfg.crop_pad)
         side = max(side, float(self.cfg.min_crop_side))
         cx, cy = (x1 + x2) / 2.0, (y1 + y2) / 2.0
+
         cb = [int(cx - side / 2), int(cy - side / 2), int(cx + side / 2), int(cy + side / 2)]
+        if self.crop_mode == "pad" or (cb[0] >= 0 and cb[1] >= 0 and cb[2] <= width and cb[3] <= height):
+            # Already inside the frame: no geometry to repair, and returning the identical box keeps
+            # every non-edge measurement bit-identical to the pre-Q-046 numbers.
+            return image.crop(tuple(cb)), cb
+
+        if self.crop_mode == "clamp":
+            cb = [max(0, cb[0]), max(0, cb[1]), min(width, cb[2]), min(height, cb[3])]
+        else:  # "inset"
+            s = max(1, min(int(round(side)), width, height))
+            left = min(max(int(round(cx - s / 2.0)), 0), width - s)
+            top = min(max(int(round(cy - s / 2.0)), 0), height - s)
+            cb = [left, top, left + s, top + s]
         return image.crop(tuple(cb)), cb
 
     @torch.no_grad()

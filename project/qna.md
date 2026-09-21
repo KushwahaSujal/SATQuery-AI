@@ -4334,3 +4334,134 @@ its decoder BatchNorms never accumulated statistics, so at inference they do not
 matches how it was trained is unestablished, its headline IoU cannot be reproduced without imagery we do
 not have, and 10 of its 264 test scenes are complete misses. It should not be presented as a working
 capability.
+
+---
+
+## Q-046 · Verifier crops fabricated black pixels at image edges; fixing it moved two Q-009 numbers the wrong way
+
+**Recorded** 2026-09-21, atop `prototype` `e9b7f70`. Closes the owner's post-demo item #3 ("Verifier
+crop at image edges"). Evidence:
+`results/evaluations/{verifier_edge_crops,disputed_edge_boxes_05945,grounding_verdicts_crop_geometry}_20260921.json`;
+reproducers `scripts/eval_verifier_edge_crops.py`, `eval_disputed_edge_boxes.py`,
+`eval_grounding_verdicts_vrsbench.py`.
+
+### 1. Mechanism
+
+`DetectionVerifier.crop` built a square window of `2x` the box's longer side (floor 96 px) around the
+box centre and passed it straight to `PIL.Image.crop`, which **fills out-of-frame coordinates with
+zeros**. Verified rather than assumed: cropping `(-20,-20,20,20)` from a solid `(200,100,50)` 64x64
+image returns a 40x40 image that is **exactly 75.0% pure black**. So RemoteCLIP was being handed a
+black L-shape and scoring it as image content.
+
+This was not an edge case. On the 973-crop probe (all frames 512x512), **711 crops (73.1%) left the
+frame**, and among those the fabricated area averaged **45.5%** (median 46.5%, max 93.2%); 306 crops
+were more than half fabricated. Two causes: 308 where the doubled side alone exceeded 512 px, and 403
+where the side fitted but the window sat off-frame.
+
+`crop()` now returns the legacy box untouched when it is already inside the frame — so no non-edge
+measurement can move — and otherwise caps the side at `min(width, height)` and translates the window
+back inside. `crop_mode` is selectable (`inset` default, `clamp`, `pad`) so the old behaviour is one
+argument away.
+
+### 2. Verified independently here, and one overstated claim corrected
+
+The implementation is correct, but its comment claimed "the box always stays inside the window". That
+is false in one case, and the claim was tightened. Property test over 576 synthetic boxes across
+512x512, 400x300 and 97x640 frames: `pad` fabricates black in **466** crops, `inset` in **0**. `inset`
+failed to contain the whole box in **48** cases — and all 48 are boxes longer than the frame's short
+side, where **no** square in-frame window can contain the box. **Real defects: 0.** The comment now
+states the containment guarantee with its actual precondition.
+
+### 3. The two DISPUTED answers on `05945_0000.png`
+
+| geometry | query | decision | verdict | crop box | out of frame |
+|---|---|---|---|---|---|
+| pad (before) | segment the largest building | `accepted_disputed` | contradicted | `[102,-241,648,304]` | yes |
+| pad (before) | find the white car at the bottom left | `accepted_disputed` | contradicted | `[-53,278,82,413]` | yes |
+| **inset (after)** | segment the largest building | `accepted_unconfirmed` | unverified | `[0,0,512,512]` | no |
+| **inset (after)** | find the white car at the bottom left | `accepted_unconfirmed` | unverified | `[0,279,135,414]` | no |
+
+The before-state reproduces Q-009 §3 **exactly** — top matches "ground track field" and "roundabout" —
+so the baseline is the one Q-009 describes. Boxes are unchanged (these are attribute queries, label
+only). **Neither becomes `verified`:** the false *contradiction* is gone and the label drops DISPUTED →
+UNCONFIRMED, but the verifier still cannot positively confirm either. `clamp` was measured and rejected
+because it repairs only one of the two and separates true from wrong less well (AUC 0.9725 vs 0.9755).
+
+### 4. Two Q-009 numbers moved the wrong way — stated plainly
+
+**In favour:** contrastive AUC 0.9626 → **0.9755**; true-label accept 0.820 → **0.870**; false
+contradiction on true labels 0.1336 → **0.0976**; across 300 present VRSBench queries DISPUTED answers
+fall **75 → 53** (22 of 75, 29%, stop being falsely disputed) while R@0.5 rises 0.330 → 0.337 and mIoU
+0.3086 → 0.3176.
+
+**Against:**
+- **`absent_returned_a_box` 0.2833 → 0.3400 (+5.7 pts)** — the number Q-009 headlines as 28.0%. The
+  extra boxes are all `accepted_unconfirmed` (57 → 75); `accepted_verified` on absent queries is flat
+  (28 → 27), so **nothing newly claims to have found an absent object**, but more absent queries return
+  a box at all.
+- **On vehicles — the demo's main class** — `vehicle_crop_as_vehicle` verified falls 0.555 → 0.465 and
+  `nonvehicle_as_vehicle` rises 0.164 → 0.273.
+
+Mechanism of the regression: black padding was destroying the surrounding scene context, and context
+labels (road, parking lot, grass field, trees) are the verifier's main competitors. Removing the
+padding restores that context, which makes the verifier less pessimistic — good for true positives, bad
+for rejecting absent objects. **The old 28.0% was partly bought with fabricated pixels.**
+
+Shipped anyway. Handing an encoder zero-fill and scoring it as image content is not defensible under
+questioning at any accuracy, and the absent-object protection Q-009 actually relies on is the *label*,
+which still holds. The lever that would restore 28.0% is `top_k` (3 → 2), not the padding —
+**NOT MEASURED**, and `configs/app.yaml` was deliberately left alone because changing it reopens
+Q-009's measured rule. Reversible in one argument: `DetectionVerifier(crop_mode="pad")`.
+
+### 5. Q-009's recorded numbers are not exactly reproducible by anyone, independent of this change
+
+The scripts behind the Q-009 evaluation files and the per-query cache they replayed were **never
+committed** — confirmed against full git history, no such file has ever existed. There was no cached
+harness to run, so it was rebuilt from the same source data under a stated deterministic rule.
+
+Evidence the reconstruction is the right sample: it yields **n = 973** exactly (first 40 records per
+`obj_cls` over 26 classes, two classes short of 40) and the 200-crop vehicle rows reproduce Q-009
+**digit for digit** (`vehicle_crop_as_vehicle` 0.555, `vehicle_crop_as_airplane` 0.035). The remaining
+973-crop rows sit ~1.3 points off the recorded ones, and the 300/300 deliberation sample is
+demonstrably a different draw (272/28 attribute/plain versus Q-009's 206/94), which is why present
+recall sits lower in absolute terms. Before/after comparisons here are like-for-like because every
+geometry was measured on one sample in one process; **absolute comparisons against 2026-09-14 are
+not.** Wrong-label pairing is seeded (`SEED=20260914`) because the original pairing was not recorded.
+
+This is a process failure worth fixing beyond this entry: a measured claim whose harness is not
+committed cannot be defended, only asserted. The three new scripts are committed for exactly that
+reason.
+
+### 6. Blast radius
+
+The 262 probe crops already inside the frame are **bit-identical across all three geometries**, so no
+non-edge number can move; all movement is on the 711 edge crops. `backend/app/video/flagger.py:211`
+calls `verifier.verify()` and therefore inherits the change, so **Q-008's video event counts (3 events
+→ 0 on road footage, one dropped real white car) are NOT MEASURED** under the new geometry — the most
+likely place a demo number has shifted without being looked at. `crop_box` is otherwise only echoed
+into evidence metadata, and `remoteclip.py` is untouched (it only runs open_clip's Resize+CenterCrop).
+
+### 7. Verification
+
+20 new unit tests in `tests/unit/test_verifier_edge_crops.py`: every edge, every corner, a box larger
+than the image, a 1-px box, a 1-px corner box, a box entirely outside on each side, a non-square frame,
+and an 11x11 x 3-size position sweep. Each builds an image with **no pure-black pixel** (`randint(1,256)`)
+and asserts the crop is `array_equal` to the source region it names — so "no fabricated pixels" is proved
+by identity with the source, not by a colour heuristic. One test pins the old `pad` defect so the
+before/after comparison cannot silently rot, and one `models`-marked test asserts pad → contradicted
+and inset → not contradicted on the real image. Suite: **549 passed, 3 failed** (the pre-existing GDAL
+failures), up from 530 by exactly the 19 new non-models tests.
+
+### 8. Defence
+
+*"You made your headline absent-object number worse."* Yes, from 28.0% to 34.0%, and it is in the
+record. The 28.0% was measured while 73% of verification crops contained fabricated black pixels
+averaging 45% of their area; suppressing the context labels the verifier competes against is what
+bought part of that number. A figure obtained through a bug is not a figure we can defend, and the
+protection the pipeline actually relies on — refusing to label an absent object `verified` — is
+unchanged at 28 versus 27 queries.
+
+*"Then why not keep the old behaviour and the old number?"* Because it would mean knowingly feeding a
+vision encoder zero-fill and scoring it as if it were imagery, having measured that this happens on
+73% of crops. The fix is also what removes the false contradiction from both DISPUTED demo answers,
+which is the defect we set out to fix.
