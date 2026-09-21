@@ -31,7 +31,8 @@ Two things you did that made it immediately usable, and that I want to ask you t
 
 **What works:** the checkpoint is real. We reconstructed the architecture from the 118 state_dict
 entries and it loads with `strict=True` — encoder 16/32/64/128, bottleneck 256, transposed-conv
-decoder, `output_layer` 1x1 to 2 classes, all convs `bias=False`. Both checkpoint hashes match your
+decoder, `output_layer` 1x1 to 2 classes, the 18 `DoubleConv` 3x3 convolutions bias-free and the
+four transposed convs plus `output_layer` with bias. Both checkpoint hashes match your
 `SHA256SUMS.json`.
 
 **What blocks it:** the delivery documents the 16-channel order but **never states the training-time

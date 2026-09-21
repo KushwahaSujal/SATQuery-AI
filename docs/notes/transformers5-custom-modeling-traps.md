@@ -1,6 +1,7 @@
 # Two silent-failure traps when loading HF models with custom modeling code on transformers 5.x
 
-**Recorded 2026-09-20** while reclaiming disk (`project/qna.md` Q-041 §7). This repo runs
+**Recorded 2026-09-20** while reclaiming disk. The disk reclamation and this rescue are recorded in
+`project/handoff/ayushman-delivery-2026-09-20.md` §5 and `project/qna.md` Q-043 §4. This repo runs
 **transformers 5.16.1**. Both traps below were hit for real, diagnosed, and fixed in this project —
 and both fail *silently*, producing plausible-looking output rather than an error.
 

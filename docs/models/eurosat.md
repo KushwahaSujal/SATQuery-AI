@@ -3,11 +3,11 @@
 `eurosat_classifier` is an EfficientNet-B0 trained on EuroSAT RGB, 10 classes, delivered
 2026-09-20 (project/qna.md Q-041). It is **registered and callable, and deliberately not routed**
 from the grounding pipeline: that pipeline's response contract is a mask or a box, and a
-scene-level classifier produces neither. Same reasoning as the crater detector (Q-028) and land
+scene-level classifier produces neither. Same reasoning as the crater detector (Q-028t) and land
 cover (Q-037). **This model closes mandatory requirement #1** — see the section below.
 
 All numbers below are copied from the delivered evaluation artefacts under `docs/models/eurosat/`
-and from project/qna.md Q-041. Nothing here is estimated. Anything unmeasured says `NOT MEASURED`.
+and from project/qna.md Q-041 §4, with Q-042 §7 and Q-043 §2 refining the `y_prob` claim. Nothing here is estimated. Anything unmeasured says `NOT MEASURED`.
 
 | Registry key | Checkpoint | Architecture | Routed? | QNA |
 |---|---|---|---|---|
@@ -82,6 +82,24 @@ These are the ImageNet constants, which is what an ImageNet-initialised Efficien
 Unlike the flood model in `docs/models/flood.md`, the preprocessing here **was** documented by the
 sender, which is the single reason this model serves and that one does not.
 
+### What the adapter refuses, and why it matters for a demo
+
+`backend/app/ml/adapters/eurosat.py` rejects input rather than coercing it (commit `53c93a7`,
+project/qna.md Q-043 §3). This is the most demo-relevant property of the adapter, because the obvious
+thing to feed a 10 m Sentinel-2 model is 16-bit reflectance — and that used to fail silently:
+
+| input | before `53c93a7` | now |
+|---|---|---|
+| 16-bit / reflectance (e.g. S2 L1C 0-10000) | clipped to 255 -> a **white tile**, answered `SeaLake` @ 0.9930 | `InvalidInputError` telling the caller to scale its own pixels |
+| array containing NaN or inf | NaN cast to 0 -> a **black tile**, answered `SeaLake` @ 0.9906 | `InvalidInputError` |
+| negative values | clipped to 0 | `InvalidInputError` |
+| empty array | bare `ValueError` from numpy | `InvalidInputError` |
+| float in [0, 1] | scaled by 255 | unchanged — still accepted |
+| `top_k` = 0, -3, 2.9, `"x"`, `True` | positional path skipped validation; `-3` returned **seven** classes and `"x"` escaped as an HTTP 500 | `InvalidInputError` on every path |
+
+A confident label on a blank tile is worse than an error, which is why these are refusals rather than
+best-effort conversions. Accepted input is 8-bit RGB, or floats in [0, 1].
+
 ## Measured metrics — 4050 held-out test samples
 
 From `docs/models/eurosat/evaluation/evaluation_metrics.json`:
@@ -138,7 +156,7 @@ Independently recomputed from the delivered per-sample predictions
 |---|---|
 | accuracy | 0.9832098765432099 — matches the delivered value to 16 dp |
 | balanced accuracy | 0.9824222222222222 — matches to 16 dp |
-| `y_prob` rows sum to 1 | yes, to within 2.1e-07 (stored float32 widened to float64) |
+| `y_prob` rows sum to 1 | to within 2.2e-07 (max deviation 2.1043325660e-07). The file is stored **float64**, carrying values that are exactly float32-representable — so they were computed in float32, but nothing is widened on read |
 | `argmax(y_prob) == y_pred` | true for all 4050 rows |
 | support per class | 450, 450, 450, 375, 375, 300, 375, 450, 375, 450 — matches the report |
 | `strict=True` load | passes into `efficientnet_b0` with `Linear(1280, 10)`; forward gives `(1, 10)` |
@@ -179,7 +197,7 @@ should treat this model as untested.
 **There is no head-to-head against the live pipeline.** There is nothing to compare against: the
 Grounding DINO + V4 + SAM 2 path has no scene-classification capability, and `bigearthnet`
 produces multi-label tags over a different taxonomy on 12-channel Sentinel-2, not a single label
-over these 10 classes. The Q-025/Q-026-style comparisons that justified routing roads and
+over these 10 classes. The Q-025t/Q-026t-style comparisons that justified routing roads and
 buildings were never run for this model and cannot be.
 
 ## Caveats recorded in the transcript

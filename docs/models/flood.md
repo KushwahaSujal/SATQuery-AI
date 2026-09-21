@@ -4,16 +4,23 @@
 `strict=True` load of all 118 state_dict entries, and both files match their delivered sha256
 manifest — but it does not serve, because its training-time normalisation was never documented and
 could not be recovered.** On a BatchNorm network a wrong input scale does not crash; it silently
-predicts badly. Seventeen preprocessing and threshold combinations were measured on real
-Sen1Floods11 imagery and none reproduced the delivered configuration (project/qna.md Q-041 §5).
+predicts badly. Seventeen preprocessing schemes were measured on real Sen1Floods11
+imagery — 7 scored on test, 10 selected on validation — and none reproduced the delivered
+configuration (project/qna.md Q-041 §5, Q-043). Counting thresholds and splits separately the number
+of scored combinations is higher; 17 is the count of distinct preprocessing schemes.
 
-`flood_segmenter` is therefore registered as **NOT_CONFIGURED**: the adapter loads the real
-checkpoint, validates 16-channel input and returns a structured refusal naming the missing
-normalisation. It never returns a mask. It is not routed, and it must not be described as a working
-flood capability.
+`flood_segmenter` is therefore registered as **NOT_CONFIGURED**. Its `predict()` returns a structured
+refusal naming the missing normalisation, and **never returns a mask**. The refusal is
+*unconditional*: `predict()` deliberately neither validates the input nor loads the weights first,
+because the blocker is the missing normalisation rather than anything the caller did, and demanding a
+valid 16-band stack before refusing would imply the request is fixable. `load_model()` does work and
+does load the real checkpoint with `strict=True`, for whoever recovers the preprocessing, and
+`validate_inputs()` enforces the 16-channel contract for that path. Not routed, and it must not be
+described as a working flood capability.
 
 All numbers below are copied from the delivered artefacts under `docs/models/flood/`, from
-`results/evaluations/flood_preproc_recovery_20260920/`, and from project/qna.md Q-041 §5. Nothing
+`results/evaluations/flood_preproc_recovery_20260920/`, and from project/qna.md Q-041 §5, Q-042 §5-§6 (the
+test-above-validation gap and the unrecorded sweep cells) and Q-043 (corrections). Nothing
 here is estimated. Anything unmeasured says `NOT MEASURED`; anything measured but not written down
 says `NOT RECORDED`.
 
@@ -21,7 +28,11 @@ says `NOT RECORDED`.
 |---|---|---|---|---|---|
 | `flood_segmenter` | `checkpoints/flood_seg/{best.pt,last.pt}` | U-Net from scratch, 16-channel input, 2 classes | **no** | no | Q-041 §2, §5 |
 
-Architecture module: `backend/app/ml/adapters/flood_unet.py` (`UNetFromScratch`).
+Adapter: `backend/app/ml/adapters/flood_segmenter.py` (`FloodSegmenterAdapter`) — the registered
+entry point, which refuses.
+Architecture module: `backend/app/ml/adapters/flood_unet.py` (`UNetFromScratch`, `build_flood_model`).
+Its `forward` requires both spatial extents to be multiples of 16 (four 2x pools, no padding in the
+skip concatenations) and raises a specific `ValueError` otherwise; training was at 512x512.
 Config: `configs/models.yaml`, key `flood_segmenter`, `threshold: null` (see "the 0.30 threshold"
 below). Frontend: a chip already advertises this capability — see the last section.
 
@@ -79,7 +90,7 @@ No training script was delivered. Every layer name, width and bias flag in
 | decoder | `ConvTranspose2d` upsampling, skip concatenation |
 | `DoubleConv` block | Conv3x3(bias=False) → BN → ReLU, twice; ReLUs at `block` indices 2 and 5 so the stored `block.0/1/3/4` line up |
 | `output_layer` | 1x1 convolution → 2 classes |
-| every convolution | `bias=False` |
+| bias | **only** the 18 `DoubleConv` 3x3 convolutions are bias-free; the four `ConvTranspose2d` upsamplers (`up4`..`up1`) and `output_layer` each carry a bias, as PyTorch defaults them |
 | training input size | 512 x 512 |
 | `ignore_index` | 255 |
 
@@ -115,7 +126,7 @@ validation sweep behind that choice is `NOT AVAILABLE` here.
 From `docs/models/flood/evaluation/test_evaluation_report.json` and
 `calibrated_test_evaluation_report.json`. **These are the sender's measurements, not ours.**
 
-| Metric | argmax | threshold 0.30 |
+| Metric — **all pooled/global over the 15,152,361 valid pixels** of the 67 scenes | argmax | threshold 0.30 |
 |---|---|---|
 | test scenes | 67 | 67 |
 | pixel accuracy | 0.9557442566211298 | 0.9506767295208978 |
@@ -232,7 +243,7 @@ conditions. The seventh row is in the probe script's candidate list but is not q
 
 **No comparison against the live Grounding DINO + V4 + SAM 2 path exists for flood.** It could not
 be run meaningfully: this model needs 16 co-registered channels that the pipeline never has, and the
-model's own predictions are not trustworthy under unknown normalisation. The Q-025/Q-026-style
+model's own predictions are not trustworthy under unknown normalisation. The Q-025t/Q-026t-style
 head-to-heads that justified routing roads and buildings have no analogue here.
 
 ## What would unblock this

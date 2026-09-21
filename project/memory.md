@@ -1,6 +1,6 @@
 # Memory — Live Project State
 
-**Updated:** 2026-09-15 (demo day, early hours)
+**Updated:** 2026-09-21 (Ayushman delivery integrated)
 **Read this first at the start of every session. Update it at the end of every session.**
 
 > **§0 below is the current state.** Sections 1–6 describe the project as of 2026-09-04 and are kept as
@@ -12,17 +12,17 @@
 
 | | |
 |---|---|
-| Branch | `prototype` at `d0daed7` (`github.com/KushwahaSujal/SATQuery-AI`), plus uncommitted work below |
+| Branch | `prototype` at `53c93a7` — **local only**; `origin/prototype` is still at `d0daed7`, so this is unpushed |
 | Tests | `pytest -m "not models" -q` → **430 passed, 3 failed** — the 3 are pre-existing GDAL failures in `tests/unit/test_geotiff_georeferencing.py` |
 | GPU | RTX 3070 8 GB — models are released and reloaded on out-of-memory (Q-010) |
 | Measured status | [`pre-demo.md`](pre-demo.md) → "Progress log 2026-09-14"; newer measurements are in `qna.md` |
-| Change record | [`qna.md`](qna.md) Q-007 … **Q-041** |
+| Change record | [`qna.md`](qna.md) Q-007 … **Q-043** |
 | Who does what next | [`split-ushnik-ayushman.md`](split-ushnik-ayushman.md) |
 
-> **Test collection was broken at `d0daed7`** and is fixed here: `tests/__init__.py` had never been
-> tracked in git, so `tests/unit/test_mask_all_instances.py` failed to import `tests.models` and
-> collection aborted. Earlier "352 passed" runs relied on an untracked local file. The empty
-> `tests/__init__.py` must be committed.
+> **Test collection was broken at `d0daed7`** and is fixed in `dce3ac3`: `tests/__init__.py` had never
+> been tracked in git, so `tests/unit/test_mask_all_instances.py` failed to import `tests.models` and
+> collection aborted entirely. Any earlier run reporting "352 passed" relied on an untracked local
+> file and was never reproducible from a clean checkout. The empty `tests/__init__.py` is now tracked.
 
 **Done 2026-09-14** (commits on the branch, oldest first)
 - `dee8e53` ChangeFormer fixed: Ayushman's epoch-20 checkpoint on vendored upstream architecture.
@@ -44,7 +44,7 @@
 - `45e745e` HTTP demo rehearsal 10/10 COMPLETED; found a silent 512-px window fallback (Q-011's AOI 14,101 px
   was windowed; native is 13,902), and the inference mode is now reported. Q-014.
 
-**Done 2026-09-20 — Ayushman's delivery (uncommitted; `qna.md` Q-041)**
+**Done 2026-09-20/21 — Ayushman's delivery (committed `dce3ac3` + `53c93a7`; `qna.md` Q-041, Q-042, Q-043)**
 - **EuroSAT land cover** (`eurosat_classifier`): EfficientNet-B0, 10 classes, **closes mandatory
   requirement #1**. Test accuracy **0.9832** over 4050 samples, balanced accuracy 0.9824 —
   independently recomputed from his per-sample predictions, matching to 10 dp. Registered and serving;

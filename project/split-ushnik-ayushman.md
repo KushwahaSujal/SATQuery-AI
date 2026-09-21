@@ -9,8 +9,13 @@ Ayushman takes model- and data-side work where his training background is the ad
 are guesses, not measurements.
 
 **Working agreement**
-- Branch off `refactor/s0-remove-dead-layers`: `feat/ayushman-<topic>`, `feat/ushnik-<topic>`.
-- Before any PR: `pytest -q` → **180 passed, 0 failed** is the baseline to beat.
+- Branch off `prototype` (as of 2026-09-21; the 2026-09-14 cut said `refactor/s0-remove-dead-layers`,
+  which has since been superseded): `feat/ayushman-<topic>`, `feat/ushnik-<topic>`.
+- Before any PR, the baseline to beat (updated 2026-09-21; the original 2026-09-14 figure was
+  `pytest -q` → 180 passed, 0 failed): **`pytest -m "not models" -q` → 430 passed, 3 failed**, where
+  the 3 are the long-standing GDAL failures in `tests/unit/test_geotiff_georeferencing.py`. Use the
+  `-m "not models"` form — the plain `pytest -q` also runs the checkpoint-dependent tests, which skip
+  or fail depending on which weights happen to be on the machine, so it is not a stable gate.
 - Anything >3 files, a model/dataset swap, or a claim for the demo/paper → a `qna.md` entry, written as
   you go. It never blocks the merge.
 - Never fabricate a number. If it wasn't measured, write `NOT MEASURED`.

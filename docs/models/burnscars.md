@@ -123,14 +123,16 @@ validation split.
 | held-out test | 264 | **the dataset's original validation partition, reused as test** |
 
 Split artefact: `docs/models/burnscars/train_val_split_seed42.pt` (3 KB). Scene tiles are 512 x 512
-with ~262,144 valid pixels each (`per_scene_metrics_threshold_040.csv`).
+with **at most** 262,144 valid pixels each: 102 of the 264 scenes carry nodata, the smallest having
+159,741 valid pixels (61% of the tile), for **68,627,952** valid pixels in total — not 264 x 262,144
+= 69,206,016 (`per_scene_metrics_threshold_040.csv`).
 
 **The HLS Burn Scars dataset provides no official independent test split.** The delivery is explicit
 about this: the 264-scene original validation partition was treated as the held-out test set after
 carving a new 432/108 split out of the original training partition. The 264 scenes were not used for
 threshold selection, so the threshold is honest — but these are **not** benchmark-comparable numbers
 and must not be quoted against published HLS Burn Scars leaderboards. This is the same class of
-caveat as the DeepGlobe and ISPRS splits (Q-025, `docs/models/isprs_urban.md`).
+caveat as the DeepGlobe and ISPRS splits (Q-025t and Q-036, `docs/models/isprs_urban.md`).
 
 ## Problem 1 — it was trained from scratch
 
@@ -185,7 +187,7 @@ the *internal validation* split.
 only one that reports IoU and pixel accuracy at all. The canonical held-out test numbers are
 therefore:
 
-| Metric (264 held-out scenes, threshold 0.40) | Value |
+| Metric — **pooled/global over all 68,627,952 valid pixels** of the 264 held-out scenes, threshold 0.40 | Value |
 |---|---|
 | precision (burn scar) | 0.785723297356267 |
 | recall (burn scar) | 0.7999760727514289 |
@@ -287,7 +289,9 @@ trade-off either side of it.
 
 Both F1 (0.832304) and burn IoU (0.712775) peak at 0.40, and the peak is flat: 0.35 and 0.45 are
 within 0.003 IoU, so the choice is not over-tuned. Pixel accuracy peaks at 0.50 instead, which is
-why it is the wrong metric to select on for a 9 %-foreground class. Note that the internal-validation
+why it is the wrong metric to select on for a **11.96 %**-foreground class (that is this
+internal-validation split's burn fraction, derived two independent ways from every row of the sweep;
+9.26 % is the *held-out test* split's figure). Note that the internal-validation
 IoU at 0.40 (0.7128) is **0.056 above** the held-out test IoU (0.6567) — the expected direction, and
 a reminder that the threshold was chosen on the easier split.
 
@@ -338,8 +342,10 @@ state is only needed to resume training — which nothing here plans to do.
 **No comparison against the live Grounding DINO + V4 + SAM 2 path exists, and none can be run
 today** — the model cannot be loaded. The pipeline also has no burn-scar capability and no
 six-band HLS input path, so there is no baseline to compare against even in principle. Every number
-in this document is the sender's measurement, re-read from the delivered artefacts; **nothing here
-was measured by running this model in this repository.**
+in this document is either the sender's measurement, re-read from the delivered artefacts, or was
+derived here from those artefacts and labelled as such (the per-scene counts, the mean/median IoU, the
+355-tensor census, the parameter count and the `val/mIoU` callback state). **Nothing here was measured
+by running this model in this repository** — it cannot be run at all without `terratorch`.
 
 ## Caveats recorded in the transcript
 
@@ -348,7 +354,7 @@ is a Prithvi-shaped ViT-L and **not** foundation-model adaptation — a legitima
 and an illegitimate transfer-learning claim (Q-041 §6.2, §9). Two delivered metric files disagree
 for the same claimed 264-scene test set; only `final_test_metrics_threshold_040.json` may be quoted
 (Q-041 §6.1). The pooled IoU 0.6567 hides 10 scenes at IoU 0.0, six of which predict no burn pixels
-at all against 1.4–5.2 % ground-truth burn (Q-041 §6.3). The dataset ships no official independent
+at all against 1.4–5.2 % ground-truth burn (Q-042 §1, superseding Q-041 §6.3). The dataset ships no official independent
 test split, so the original 264-scene validation partition was reused as the held-out test set and
 these numbers are not leaderboard-comparable. The checkpoint was selected on `val/mIoU` 0.8308, a
 two-class mean dominated by the unburned class, not on burn IoU. The delivered `model_config.yaml`

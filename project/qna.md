@@ -3641,6 +3641,11 @@ Two modules were written, neither yet registered:
   `block` indices 2 and 5 so the stored `block.0/1/3/4` line up. `strict=True` is what proves the
   reconstruction, and it passes.
 
+  > **SUPERSEDED in part by Q-043 §3.** "every conv `bias=False`" is wrong: 18 of the 23 conv/deconv
+  > tensors are bias-free (the `DoubleConv` 3x3 convolutions), while the four `ConvTranspose2d`
+  > upsamplers `up4`..`up1` and `output_layer` each carry a bias. The code was always correct; this
+  > sentence over-generalised it.
+
 ### 3. Rationale — why this over the rejected alternative
 
 **EuroSAT is registered but deliberately not routed.** The grounding pipeline's response contract is a
@@ -3753,7 +3758,14 @@ Three things that must be settled before any burn-scar number is claimed:
 
 Nothing in the serving path yet: neither new adapter is registered, `configs/models.yaml`,
 `registry.py`, `intent_classifier.py` and `trained_segmenter.py` are untouched, so the 352-passing
-suite and every existing capability are unaffected. The staged checkpoints sit under gitignored
+suite and every existing capability are unaffected.
+
+> **SUPERSEDED in part by Q-043 §1.** Two errors here. (a) "the 352-passing suite" was never
+> reproducible from a clean checkout — 352 depended on an untracked `tests/__init__.py`; the real
+> pre-work baseline was **394 passed, 3 failed**. (b) "neither new adapter is registered … untouched"
+> was true when written but stopped being true the same day: `eurosat_classifier` and
+> `flood_segmenter` were registered in `dce3ac3`, and `configs/models.yaml` and `registry.py` were
+> both edited. Current suite: **430 passed, 3 failed**. The staged checkpoints sit under gitignored
 `checkpoints/`. The risk is **documentary**: if the flood or burn-scar numbers were quoted as ours, the
 flood threshold would be wrong and the burn-scar model would be misdescribed as foundation-model
 adaptation. That is what §5 and §6 exist to prevent.
@@ -3887,6 +3899,11 @@ than claimed — accuracy and balanced accuracy agree to **16 decimal places**, 
 Q-041 says the `y_prob` rows "sum to 1"; they sum to 1 **within 2.1e-07** (float32 probabilities
 widened to float64). The claim stands, the wording was loose.
 
+> **SUPERSEDED by Q-043 §2.** Both halves of this are wrong: the measured maximum deviation is
+> 2.1043325660e-07, which *exceeds* the stated 2.1e-07 bound, and `y_prob.npy` is stored as
+> **float64** (carrying exactly-float32-representable values), so nothing is widened on read. The
+> underlying claim — the rows sum to 1 to float32 precision — stands.
+
 ### 8. Why this matters more than the arithmetic
 
 Three of the errors in Q-041 §6.3 all pushed the same way: they made the burn-scar failure sound
@@ -3895,3 +3912,138 @@ A transcript that overstates a weakness is as bad as one that launders a strengt
 numbers cannot be trusted, and a reviewer who checks the CSV finds the record wrong. The cause was
 reading a 15-row summary extract instead of the 264-row source. **Rule going forward: quote per-scene
 statistics only from `per_scene_metrics_*.csv`, never from a `*_summary.csv` extract.**
+
+---
+
+## Q-043 · Two independent audits of Q-041/Q-042 and the new model docs: what they found
+
+**Recorded** 2026-09-21, atop `prototype` `53c93a7`. **Supersedes Q-041 §7 and Q-042 §7 in part**, both
+annotated in place and left standing. Two read-only audits were run over the delivery work: a numeric
+fact-check recomputing every figure from the primary artefacts, and a link/path integrity audit. Both
+found real errors. This entry records them, because a record that only contains the findings and not
+the corrections is not a transcript.
+
+### 1. Q-041 §7 was wrong about the test baseline, and went stale on registration
+
+"the 352-passing suite" was never reproducible from a clean checkout: 352 depended on an **untracked**
+`tests/__init__.py`, without which collection aborts entirely. The real pre-work baseline was **394
+passed, 3 failed**; after the delivery work it is **430 passed, 3 failed** (the 3 are the long-standing
+GDAL failures in `tests/unit/test_geotiff_georeferencing.py`). The same sentence's claim that "neither
+new adapter is registered … `configs/models.yaml`, `registry.py` … are untouched" was true at the
+moment of writing and false by the end of the day: both were registered in `dce3ac3`.
+
+### 2. Q-042 §7's tightening of the `y_prob` claim was itself wrong, in both halves
+
+It said the rows sum to 1 "within 2.1e-07 (float32 probabilities widened to float64)". Measured maximum
+deviation is **2.1043325660e-07**, which *exceeds* that bound, and `y_prob.npy` is stored as
+**float64** whose values are exactly float32-representable — so they were computed in float32, but
+nothing is widened on read. Correct statement: within **2.2e-07**, stored float64 carrying float32
+precision. The underlying claim is unharmed; a section written specifically to tighten loose wording
+introduced two new inaccuracies, which is worth noticing about this failure mode.
+
+### 3. Three factual errors in the new model docs, all now corrected
+
+- **`flood.md` claimed "every convolution `bias=False`".** False, and it sat five lines above the
+  document's own "`strict=True` is what proves the reconstruction … a spurious bias makes the load fail
+  loudly" — i.e. inside the proof argument, about the exact property the argument turns on. Measured:
+  of 23 conv/deconv weight tensors, **18 are bias-free** (the `DoubleConv` 3x3 convolutions) and **5
+  carry a bias** — the four `ConvTranspose2d` upsamplers `up4`..`up1` and `output_layer`, which take
+  PyTorch's default `bias=True`. The code was always right (`flood_unet.py` passes `bias=False` inside
+  `DoubleConv` only); the prose generalised it. The same wrong claim was propagated into Q-041 §2, the
+  handoff doc, the request to Ayushman and the `dce3ac3` commit message; the first is annotated here and
+  the rest are fixed.
+- **`burnscars.md` said "~262,144 valid pixels each"**, sourced to the file that refutes it: 102 of the
+  264 scenes carry nodata, the smallest having **159,741** valid pixels (61% of the tile), for
+  **68,627,952** in total rather than 264 x 262,144 = 69,206,016. That is the pixel base for every
+  pooled metric in the document.
+- **`burnscars.md` attributed a 9%-foreground figure to the internal-validation split.** 9.26% is the
+  *held-out test* split's burn fraction; the internal-validation split is **11.96%** (derived two
+  independent ways from all 17 rows of the threshold sweep, identical to 6 dp on every row). Q-042 §2's
+  mirror figure — background "~88% of pixels" — is correct, since 1 − 0.1196 = 88.04%. So the pair was
+  right in the transcript and wrong in the doc.
+
+### 4. `CHECKPOINT_INVENTORY.md` asserted that two absent checkpoints were verified on disk
+
+The highest-severity finding, and **pre-existing** rather than introduced by this work.
+`grounding_dino` and `sam2` were both listed `Verified on Disk? YES` with timed real inference (1.408 s
+/ 1.105 s) and status **AVAILABLE**. Neither directory exists; `find / -xdev` over the whole machine
+finds no `*groundingdino*` or `*sam2_hiera*` above 10 MB. They are HuggingFace-backed —
+`scripts/verify_checkpoints.py:38` lists both in `HUGGINGFACE_BACKED` and reports them `HF-backed`
+rather than `MISSING` — so they download at first use. That is fine; asserting they are on disk and
+timed is not, in the one document whose entire purpose is checkpoint provenance, and it is exactly the
+kind of claim a mentor falsifies with one `ls`.
+
+Three sizes in the same table were also wrong, re-measured 2026-09-21: `changeformer` **493 MB**
+(492,593,071 B) not 164 MB; `cdvqa` **56.5 MB** (56,460,598 B) not 46 MB; `optical_sar` **30.0 MB**
+(29,962,729 B) not 18.8 MB. Consequently the "3.896 GB for the ten original files" subtotal is the sum
+of the table's own claimed sizes, **not a measurement**, despite sitting under a heading that says
+measured — and it describes a fully warmed HF cache, not the current tree. The row count was also
+wrong (11, actually 13 rows / 14 files), and "Combined Disk Footprint 7.884 GB" invited a
+factor-of-two misreading: `du -sh checkpoints` is **15 GB** across ~40 weight files, because this table
+documents 14 and silently omits the locally trained segmenters, `lae_dino` (1.45 GB) and
+`scene_vlm_qwen3vl4b_nf4` (2.87 GB). All corrected, with the coverage boundary now stated.
+
+Also corrected there: the `Real Inference Tested?` column, renamed to `Inference actually run? (what,
+exactly)`, because it was misleading in opposite directions for the two new rows. EuroSAT's "YES" sat
+in a column whose every other YES carries a wall-clock latency on real imagery, when what ran was a
+load plus a forward — no accuracy was re-measured from pixels here. Flood's "LOADS ONLY" was right
+about serving and wrong about inference: 17 real GPU sweeps over 179 scenes were run on that exact
+checkpoint.
+
+### 5. `flood.md` described the opposite of what the adapter does
+
+It said the adapter "loads the real checkpoint, validates 16-channel input and returns a structured
+refusal". `FloodSegmenterAdapter.predict` does none of the first two: the refusal is **unconditional**,
+by design, because the blocker is the missing normalisation rather than anything the caller did, and
+demanding a valid 16-band stack before refusing would imply the request is fixable. `load_model()` and
+`validate_inputs()` do behave as described, but they are not on the serving path. The document also
+never named `flood_segmenter.py` at all, only the architecture module.
+
+### 6. What the audits confirmed — including the thing that was wrong last time
+
+Q-042 §1's per-scene burn-scar statistics, which existed *because* Q-041 §6.3 got them wrong, are now
+**completely correct**: `burn_iou == 0.0` → 10 scenes, `predicted_burn_pixels == 0` → 6
+{193,198,203,223,224,234}, `true_positive == 0` → 10, zero-prediction GT range 1.4378%–5.1937%, counts
+below IoU 0.01/0.05/0.10 → 11/23/30, mean 0.5634, median 0.6584. Every one of the 264 rows is
+internally self-consistent (TP+FP+FN+TN = valid_pixels, TP+FN = burn_pixels, recomputed IoU matches to
+<1e-9). Not a single per-scene number disagrees with the source.
+
+Independently confirmed as well: all four checkpoint hashes and byte sizes; all six EuroSAT metrics
+(accuracy and balanced accuracy **bit-identical**, the four AUCs to ≤2.3e-16, recomputed without
+sklearn since it is not installed); all 52 cells of the EuroSAT per-class table; all 17x6 cells of the
+burn-scar threshold sweep, with burn IoU and F1 both peaking at 0.40; both burn-scar metric files
+recomputing bit-exactly from their own confusion matrices, with **identical** ROC-AUC (0.9774894441090206)
+and identical GT-positive totals (6,352,590) — which strengthens Q-042 §3's argument that the two files
+are the same model and scenes at different operating points; the 264-row CSV summing exactly to the
+0.40 file's confusion matrix; all seven flood subset IoUs re-deriving exactly; the flood checkpoint's
+`validation_flood_iou` 0.4358341431549679 appearing in no delivered JSON (Q-042 §5 confirmed); and
+every burn-scar architecture claim including 355 tensors, **324,411,275** parameters and the
+`val/mIoU` 0.8308090567588806 callback state at epoch 08.
+
+The link audit confirmed every markdown link in ten documents resolves, `QueryBar.tsx:18` really is
+the unrouted "Flood extent" chip, and `FRONTEND_POLISH.md:153` really does flag it.
+
+### 7. Blast radius
+
+Documentation only. No serving code changed in this entry's work; the suite is unchanged at 430 passed
+/ 3 pre-existing failures. The risk being closed is reputational rather than functional: four of these
+errors (§3's bias claim, §4's two absent checkpoints, §1's test count) are the kind a reviewer
+falsifies in one command, and three of them sat inside the arguments they were meant to support.
+
+### 8. Defence — what these audits say about the record
+
+*"How much of your documentation is wrong?"* Two audits recomputed every number in five documents from
+the primary artefacts. They found one false architecture fact, two wrong pixel/foreground figures, one
+stale test count, one code-contradicting description, and a pre-existing inventory that vouched for two
+checkpoints that are not on disk. Everything else — several hundred figures, including every per-scene
+statistic, every hash, every metric recomputation and every architecture claim — reproduced exactly.
+All six are corrected above and in the documents.
+
+*"Why should we trust the corrections more than the originals?"* Because the corrections are
+recomputations from the delivered artefacts with the commands recorded, not re-readings of prose. The
+pattern worth noting is that **the errors clustered in summary prose, not in tables**: generalising
+"`DoubleConv` convolutions have no bias" into "every convolution", rounding "at most 262,144" into
+"~262,144 each", carrying a test count from a peer's message without reproducing it. The tables, which
+were transcribed from the source files, were right. Q-042 §8's rule (quote per-scene statistics only
+from the 264-row source, never a summary extract) generalises: **prose that summarises a table is a
+claim and needs checking against the table.**

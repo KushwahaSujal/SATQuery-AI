@@ -35,7 +35,10 @@ Three **new** models, plus two that were already integrated.
 
 ---
 
-## Files already changed / added (uncommitted)
+## Files changed / added
+
+> These were uncommitted while the investigation below was being written. They landed in
+> `dce3ac3`, and the review fixes in `53c93a7`. Nothing here is outstanding.
 
 **Checkpoints** (gitignored, staged on disk):
 - `checkpoints/flood_seg/{best.pt,last.pt}` — renamed from `best_model.pt`/`last_model.pt` to the
@@ -52,7 +55,7 @@ Three **new** models, plus two that were already integrated.
   per-sample predictions (`y_true/y_pred/y_prob.npy`).
 
 **Code written:**
-- `backend/app/ml/adapters/eurosat.py` — **complete, not yet registered or tested.**
+- `backend/app/ml/adapters/eurosat.py` — complete. *(Registered and tested later the same day; see DONE §1.)*
 - `backend/app/ml/adapters/flood_unet.py` — **complete.** The 16-channel `UNetFromScratch`
   architecture, reconstructed from the checkpoint's 118 state_dict entries; loads `strict=True`.
 
@@ -92,7 +95,8 @@ per tile, no localisation. Do not route it from the grounding pipeline.
 
 The architecture is certain: `flood_unet.py` loads the 118-entry state_dict with `strict=True`
 (encoder 16→32→64→128, bottleneck 256, transposed-conv decoder, `output_layer` 1×1 → 2 classes,
-all convs `bias=False`).
+the 18 `DoubleConv` 3x3 convolutions bias-free, the four `ConvTranspose2d`
+upsamplers and `output_layer` with bias — 5 of the 23 conv/deconv tensors have one).
 
 **The problem:** the delivery documents the 16-channel order but **never states the training-time
 normalisation**, and `training_config.json`, `model_metadata.json` and the checkpoint's embedded
@@ -187,10 +191,13 @@ Also: the checkpoint is 3.6 GB of which ~2/3 is AdamW optimiser state. Stripping
   flood work — do not let it be deleted.
 - Their revised 153 GB cleanup is agreed and is being held until this work is done.
 - `prototype` has moved to `d0daed7` (their Q-038…Q-040 work). My working tree has not been rebased
-  onto it yet — **do this before committing.**
-- Agreed with them: burn-scar and flood get registered **without** routing, for the same reason
-  crater detection is unrouted — nothing in the pipeline distinguishes sensor/domain, so a
-  Sentinel-scale multispectral model must not auto-fire on an aerial RGB photo.
+  onto it yet. *(Resolved: the working tree already sat on top of `d0daed7`, so no rebase was needed;
+  `d0daed7` is an ancestor of `53c93a7`.)*
+- Agreed with them at the time: burn-scar and flood get registered **without** routing, for the same
+  reason crater detection is unrouted — nothing in the pipeline distinguishes sensor/domain, so a
+  Sentinel-scale multispectral model must not auto-fire on an aerial RGB photo. **Superseded for burn
+  scars:** it was never registered, because `terratorch` is absent so the checkpoint cannot be loaded
+  at all. Only `flood_segmenter` was registered. See DONE §3.
 
 ---
 
