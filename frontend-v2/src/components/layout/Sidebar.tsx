@@ -65,14 +65,15 @@ const navItems = [
       <path d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" strokeLinecap="round" strokeLinejoin="round" />
     ),
   },
-  {
-    key: "history",
-    href: "/history",
-    label: "History",
-    icon: (
-      <path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" strokeLinecap="round" strokeLinejoin="round" />
-    ),
-  },
+    // it already has history in the recent history section, so we can remove this from the main nav
+  // {
+  //   key: "history",
+  //   href: "/history",
+  //   label: "History",
+  //   icon: (
+  //     <path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" strokeLinecap="round" strokeLinejoin="round" />
+  //   ),
+  // },
 ];
 
 const resourceItems = [
@@ -156,7 +157,7 @@ export default function Sidebar({ hideBrand = false, activeItem, className = "" 
         id="app-sidebar"
         className={`fixed inset-y-0 left-0 z-40 w-[17rem] max-w-[85vw] transform transition-transform duration-200 ease-out md:static md:z-20 md:w-60 md:min-w-[15rem] md:max-w-[15rem] md:translate-x-0 ${
           isOpen ? "translate-x-0" : "-translate-x-full"
-        } h-full min-h-0 bg-[var(--sidebar-bg)] border-r border-[var(--sidebar-border)] flex flex-col justify-between pt-4 pb-14 px-3 shrink-0 overflow-y-auto select-none ${className}`}
+        } h-full min-h-0 bg-[var(--sidebar-bg)] border-r border-[var(--sidebar-border)] flex flex-col justify-between pt-4 pb-14 px-3 shrink-0 overflow-hidden select-none ${className}`}
         data-purpose="sidebar"
         aria-hidden={isOpen ? undefined : "true"}
       >
