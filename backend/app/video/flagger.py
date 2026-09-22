@@ -13,8 +13,20 @@ from PIL import Image, ImageDraw
 
 from backend.app.schemas.video import VideoFlag, VideoFlagConfig
 from backend.app.config import settings, VideoEventScoringSettings
-from backend.app.geo.rendering import create_change_overlay, save_image
+from backend.app.geo.rendering import save_image
 from backend.app.logging import logger
+
+
+def draw_mask_outline(image: Image.Image, mask: np.ndarray, color_rgb=(0, 230, 150), thickness: int = 2) -> Image.Image:
+    """Draws only the boundary of a binary mask, leaving the object's own pixels (and colour) untouched."""
+    from scipy import ndimage
+    m = np.squeeze(mask) > 0
+    out = np.array(image.convert("RGB"))
+    if m.shape != out.shape[:2] or not m.any():
+        return image
+    edge = m & ~ndimage.binary_erosion(m, iterations=thickness)
+    out[edge] = color_rgb
+    return Image.fromarray(out)
 
 
 class FrameDetection:
@@ -252,16 +264,12 @@ class VideoFlagger:
                 label_text = f"{peak_det.label} ({event_score:.2f})"
                 draw.text((box_px[0] + 4, max(0, box_px[1] - 16)), label_text, fill=(0, 230, 150))
 
-                # 3. If SAM2 mask is present, apply alpha mask overlay
+                # 3. If SAM2 mask is present, outline it
                 if peak_det.mask is not None:
                     bin_mask = (peak_det.mask > 0).astype(np.uint8)
-                    # Pass the PIL image, NOT a numpy array. create_change_overlay routes
-                    # arrays through render_display_rgb, a 2-98 percentile contrast stretch
-                    # built for multi-band satellite rasters; on ordinary video it recolours
-                    # the whole frame and a red car renders green (project/pre-demo.md 3f).
-                    # It also already returns a PIL Image -- re-wrapping it in
-                    # Image.fromarray() previously raised "expected string or buffer".
-                    annotated_img = create_change_overlay(annotated_img, bin_mask, color_rgb=(0, 230, 150), alpha=0.45)
+                    # Outline, not a 45% fill: the fill tinted a red car green, so the colour the user asked for
+                    # could not be checked on the keyframe (Q-019).
+                    annotated_img = draw_mask_outline(annotated_img, bin_mask, color_rgb=(0, 230, 150))
 
                     # Save raw binary mask
                     mask_filename = f"{flag_id}_mask_frame_{peak_det.frame_index}.png"

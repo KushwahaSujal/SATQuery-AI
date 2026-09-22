@@ -1,0 +1,187 @@
+{
+  "source": "VRSBench_EVAL_referring.json, first 40 records per obj_cls (26 classes)",
+  "config": {
+    "crop_pad": 1.0,
+    "min_crop_side": 96,
+    "top_k": 3,
+    "prompt_template": "a satellite photo of a {label}"
+  },
+  "wrong_label_seed": 20260914,
+  "legacy_out_of_frame_crops": 711,
+  "modes": {
+    "inset": {
+      "n": 973,
+      "fabricated_black_pixel_fraction_mean": 0.0027,
+      "crops_with_any_black_pixel": 110,
+      "probe": {
+        "auc_raw": 0.9486,
+        "auc_contrastive": 0.9755,
+        "top3_accept_true": 0.8695,
+        "top3_accept_wrong": 0.0545,
+        "raw_pos_mean": 0.288,
+        "raw_neg_mean": 0.2062
+      },
+      "three_way": {
+        "true_label": {
+          "verified": 0.8695,
+          "unverified": 0.0329,
+          "contradicted": 0.0976
+        },
+        "wrong_label": {
+          "verified": 0.0545,
+          "unverified": 0.0771,
+          "contradicted": 0.8684
+        },
+        "vehicle_crop_as_vehicle": {
+          "verified": 0.465,
+          "unverified": 0.325,
+          "contradicted": 0.21
+        },
+        "vehicle_crop_as_airplane": {
+          "verified": 0.025,
+          "unverified": 0.505,
+          "contradicted": 0.47
+        }
+      },
+      "sweep_row": {
+        "pad": 1.0,
+        "min_side": 96,
+        "top_k": 3,
+        "vehicle_true_accept": 0.465,
+        "all_true_accept": 0.8695,
+        "all_wrong_accept": 0.0545,
+        "nonvehicle_as_vehicle": 0.2733
+      },
+      "true_label_by_subset": {
+        "legacy_padded": {
+          "n": 711,
+          "verified": 0.8861,
+          "unverified": 0.0225,
+          "contradicted": 0.0914
+        },
+        "inside_frame": {
+          "n": 262,
+          "verified": 0.8244,
+          "unverified": 0.0611,
+          "contradicted": 0.1145
+        }
+      }
+    },
+    "clamp": {
+      "n": 973,
+      "fabricated_black_pixel_fraction_mean": 0.002,
+      "crops_with_any_black_pixel": 100,
+      "probe": {
+        "auc_raw": 0.9442,
+        "auc_contrastive": 0.9725,
+        "top3_accept_true": 0.8458,
+        "top3_accept_wrong": 0.0452,
+        "raw_pos_mean": 0.289,
+        "raw_neg_mean": 0.2091
+      },
+      "three_way": {
+        "true_label": {
+          "verified": 0.8458,
+          "unverified": 0.0462,
+          "contradicted": 0.1079
+        },
+        "wrong_label": {
+          "verified": 0.0452,
+          "unverified": 0.0935,
+          "contradicted": 0.8613
+        },
+        "vehicle_crop_as_vehicle": {
+          "verified": 0.485,
+          "unverified": 0.315,
+          "contradicted": 0.2
+        },
+        "vehicle_crop_as_airplane": {
+          "verified": 0.025,
+          "unverified": 0.5,
+          "contradicted": 0.475
+        }
+      },
+      "sweep_row": {
+        "pad": 1.0,
+        "min_side": 96,
+        "top_k": 3,
+        "vehicle_true_accept": 0.485,
+        "all_true_accept": 0.8458,
+        "all_wrong_accept": 0.0452,
+        "nonvehicle_as_vehicle": 0.2154
+      },
+      "true_label_by_subset": {
+        "legacy_padded": {
+          "n": 711,
+          "verified": 0.8537,
+          "unverified": 0.0408,
+          "contradicted": 0.1055
+        },
+        "inside_frame": {
+          "n": 262,
+          "verified": 0.8244,
+          "unverified": 0.0611,
+          "contradicted": 0.1145
+        }
+      }
+    },
+    "pad": {
+      "n": 973,
+      "fabricated_black_pixel_fraction_mean": 0.3341,
+      "crops_with_any_black_pixel": 722,
+      "probe": {
+        "auc_raw": 0.9308,
+        "auc_contrastive": 0.9626,
+        "top3_accept_true": 0.8201,
+        "top3_accept_wrong": 0.0627,
+        "raw_pos_mean": 0.2724,
+        "raw_neg_mean": 0.1993
+      },
+      "three_way": {
+        "true_label": {
+          "verified": 0.8201,
+          "unverified": 0.0462,
+          "contradicted": 0.1336
+        },
+        "wrong_label": {
+          "verified": 0.0627,
+          "unverified": 0.0884,
+          "contradicted": 0.8489
+        },
+        "vehicle_crop_as_vehicle": {
+          "verified": 0.555,
+          "unverified": 0.255,
+          "contradicted": 0.19
+        },
+        "vehicle_crop_as_airplane": {
+          "verified": 0.035,
+          "unverified": 0.465,
+          "contradicted": 0.5
+        }
+      },
+      "sweep_row": {
+        "pad": 1.0,
+        "min_side": 96,
+        "top_k": 3,
+        "vehicle_true_accept": 0.555,
+        "all_true_accept": 0.8201,
+        "all_wrong_accept": 0.0627,
+        "nonvehicle_as_vehicle": 0.164
+      },
+      "true_label_by_subset": {
+        "legacy_padded": {
+          "n": 711,
+          "verified": 0.8186,
+          "unverified": 0.0408,
+          "contradicted": 0.1406
+        },
+        "inside_frame": {
+          "n": 262,
+          "verified": 0.8244,
+          "unverified": 0.0611,
+          "contradicted": 0.1145
+        }
+      }
+    }
+  }
+}

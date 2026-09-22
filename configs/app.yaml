@@ -71,6 +71,11 @@ agent_verification:
     - [helicopter, helicopters]
     - [bridge, bridges]
 
+# Direct trained-segmenter dispatch for plain "mark all roads" / "segment buildings" style queries
+# (project/qna.md Q-025t, Q-026t, Q-038). Env override: SATQUERY_TRAINED_SEGMENTERS_ENABLED.
+trained_segmenter_routing:
+  enabled: true
+
 # ChangeFormer vs CDVQA adjudication (project/qna.md Q-012).
 change_adjudication:
   # ChangeFormer building-change ratio treated as "buildings changed". On the 1,113 no-change LEVIR-CD test

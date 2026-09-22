@@ -1,0 +1,19 @@
+{
+  "evaluation_type": "test_set",
+  "checkpoint": "C:\\Users\\user\\Desktop\\Satq_Prithvi\\checkpoints\\flood_segmentation\\best_model.pt",
+  "checkpoint_epoch": 9,
+  "test_scenes": 67,
+  "loss": 0.3963821826697285,
+  "pixel_accuracy_global": 0.9557442566211298,
+  "precision_global": 0.7872536536758193,
+  "recall_global": 0.7580408192637181,
+  "f1_score_global": 0.7723711112038946,
+  "flood_iou_global": 0.6291568390520142,
+  "true_positive": 1137676,
+  "false_positive": 307444,
+  "true_negative": 13344106,
+  "false_negative": 363135,
+  "per_scene_mean_pixel_accuracy": 0.9548709410340038,
+  "per_scene_mean_flood_iou": 0.40749901569615216,
+  "evaluation_timestamp": "2026-09-19T22:22:06.190239"
+}

@@ -213,6 +213,8 @@ export interface AnalysisResult {
   workflow_reason: string;
   query?: string;
   answer?: string;
+  answer_source?: string;
+  answer_facts?: string;
   confidence?: number;
   models_used: string[];
   parameters: Record<string, unknown>;
@@ -314,6 +316,20 @@ export interface VideoFlag {
   keyframe_url?: string;
   overlay_url?: string;
   mask_url?: string;
+  box_2d?: number[];
+  metadata?: {
+    /** Object track inside the event window (video only): box per frame, normalised [ymin, xmin, ymax, xmax]. */
+    track?: VideoTrackPoint[];
+    [key: string]: unknown;
+  };
+}
+
+export interface VideoTrackPoint {
+  t: number;
+  frame: number;
+  box_2d: [number, number, number, number];
+  /** Median colour of the object's own mask pixels on this frame. */
+  rgb: [number, number, number] | null;
 }
 
 export interface VideoMetadata {

@@ -1,4 +1,4 @@
-from typing import List, Optional
+from typing import Dict, List, Optional
 from datetime import datetime
 import time
 from backend.app.agent.state import AgentState
@@ -10,6 +10,7 @@ from backend.app.evidence.confidence import ConfidenceEvaluator
 from backend.app.evidence.consistency import ConsistencyChecker
 from backend.app.schemas.agent import JobStatus, TaskType
 from backend.app.schemas.responses import AnalyzeResponse
+from backend.app.answers.writer import apply_answer_writer
 from backend.app.artifacts.manager import artifact_manager
 from backend.app.exceptions import SatQueryException
 from backend.app.logging import logger
@@ -33,6 +34,8 @@ class AgentController:
     Drives job state machine: QUEUED -> VALIDATING -> PLANNING -> RUNNING -> GENERATING_EVIDENCE -> COMPLETED / FAILED.
     Synchronizes observable execution states, model runs, results, and artifacts with PostgreSQL.
     """
+    _planned_steps: Dict[str, List[str]] = {}
+
     async def _safe_db_op(self, coro_func):
         """Helper to execute database operations without crashing pipeline if DB is unavailable."""
         try:
@@ -42,6 +45,42 @@ class AgentController:
                 await session.commit()
         except Exception as e:
             logger.warning(f"Database persistence step non-fatal warning: {e}")
+
+    def _publish_progress(
+        self,
+        state: AgentState,
+        planned_steps: Optional[List[str]] = None,
+        current_step: Optional[str] = None,
+        completed_steps: Optional[List[str]] = None,
+    ) -> None:
+        """Write the live progress file a running job can be polled for.
+
+        Execution steps only reach the database after the pipeline finishes, so without
+        this a client has nothing to show during a run but a spinner. Best-effort by
+        design: a progress write must never be the reason an analysis fails.
+        """
+        try:
+            trace = [
+                step.model_dump() if hasattr(step, "model_dump") else dict(step)
+                for step in state.execution_trace
+            ]
+            artifact_manager.save_progress_json(
+                state.request_id,
+                {
+                    "job_id": state.request_id,
+                    "status": state.status.value if hasattr(state.status, "value") else str(state.status),
+                    "task": state.task.value if state.task else None,
+                    "query": state.query,
+                    "planned_steps": planned_steps if planned_steps is not None else self._planned_steps.get(state.request_id, []),
+                    "completed_steps": completed_steps or [],
+                    "current_step": current_step,
+                    "selected_models": list(state.selected_models or []),
+                    "trace": trace,
+                    "updated_at": datetime.utcnow().isoformat() + "Z",
+                },
+            )
+        except Exception as e:  # noqa: BLE001 - progress is diagnostic, never fatal
+            logger.debug(f"Could not publish progress for {state.request_id}: {e}")
 
     async def run_pipeline(self, state: AgentState) -> AnalyzeResponse:
         pipeline_start = time.perf_counter()
@@ -82,6 +121,11 @@ class AgentController:
                 status="success",
                 details=f"Capability: {orchestrated_plan.capability.name}. Routing Confidence: {orchestrated_plan.routing_confidence:.2f}. Reason: {plan.reason}"
             )
+
+            # The planned tool list is the checkpoint list a client renders, and it is
+            # known here, before any of it runs.
+            self._planned_steps[state.request_id] = list(plan.steps)
+            self._publish_progress(state, planned_steps=list(plan.steps))
 
             # Persist PLANNING status in DB
             await self._safe_db_op(
@@ -136,10 +180,15 @@ class AgentController:
                     )
                 )
 
+                completed: List[str] = []
+                self._publish_progress(state, current_step=plan.steps[0] if plan.steps else None, completed_steps=completed)
                 for tool_name in plan.steps:
                     if tool_name == "generate_report":
                         state.status = JobStatus.GENERATING_EVIDENCE
+                    self._publish_progress(state, current_step=tool_name, completed_steps=list(completed))
                     await SafeToolExecutor.execute_tool(tool_name, state)
+                    completed.append(tool_name)
+                    self._publish_progress(state, current_step=None, completed_steps=list(completed))
 
                 # 7. Output Quality Validation
                 w = state.metadata[0].width if state.metadata else 256
@@ -195,10 +244,12 @@ class AgentController:
             )
 
             state.status = JobStatus.COMPLETED
+            self._publish_progress(state, current_step=None, completed_steps=self._planned_steps.get(state.request_id, []) if state.status == JobStatus.COMPLETED else [])
             state.add_trace("Analysis completed successfully", status="success")
 
         except SatQueryException as e:
             state.status = JobStatus.FAILED
+            self._publish_progress(state, current_step=None, completed_steps=self._planned_steps.get(state.request_id, []) if state.status == JobStatus.COMPLETED else [])
             state.errors.append(e.message)
             logger.error(f"[{state.request_id}] Pipeline aborted due to domain error: {e.message}")
             state.add_trace(f"Pipeline failed: {e.code}", status="error", details=e.message)
@@ -206,6 +257,7 @@ class AgentController:
                 operational_health.record_workflow_execution(state.workflow_id, 0.0, success=False)
         except Exception as e:
             state.status = JobStatus.FAILED
+            self._publish_progress(state, current_step=None, completed_steps=self._planned_steps.get(state.request_id, []) if state.status == JobStatus.COMPLETED else [])
             err_msg = str(e)
             state.errors.append(err_msg)
             logger.exception(f"[{state.request_id}] Unexpected error in agent pipeline: {err_msg}")
@@ -229,6 +281,52 @@ class AgentController:
                 "cache_hit": state.cache_hit
             }
 
+        # Model refusals (Q-045). ModelResult.status is now enforced rather than advisory: a result
+        # whose status is a refusal carries no mask, box, logit or confidence (the schema refuses to
+        # build one that does), and the refusal is surfaced here as an explicit top-level response
+        # field plus an undroppable warning. Deliberately not an HTTP error: a refusal is a truthful
+        # informative answer, and 503/MODEL_CHECKPOINT_MISSING is reserved for a checkpoint that is
+        # genuinely absent.
+        model_refusals = [
+            {
+                "model": mr.model_name,
+                "task": mr.task,
+                "status": (mr.status or "").strip().upper(),
+                "code": mr.metadata.get("code", "MODEL_NOT_CONFIGURED"),
+                "reason": mr.refusal_reason,
+            }
+            for mr in state.model_results if mr.is_refusal
+        ]
+        for refusal in model_refusals:
+            note = (
+                f"{refusal['model']} returned {refusal['status']} for task '{refusal['task']}': no "
+                f"model output was produced."
+            )
+            if note not in state.warnings:
+                state.warnings.append(note)
+        if model_refusals:
+            state.add_trace(
+                f"{len(model_refusals)} model(s) refused: "
+                + ", ".join(f"{r['model']}={r['status']}" for r in model_refusals),
+                status="warning",
+                details="; ".join(str(r["reason"]) for r in model_refusals),
+            )
+            if all(mr.is_refusal for mr in state.model_results):
+                # Nothing measured anything, so there is no score to report. ConfidenceEvaluator
+                # already returns None over an all-None list; this makes it impossible for a later
+                # step to leave a stale number behind a refusal.
+                state.confidence = None
+
+        answer_source, answer_facts = "template", state.answer
+        # A refusal is never handed to the answer writer. The writer is an LLM that rewrites
+        # state.answer from the evidence package, and its number guard (numbers_grounded) only checks
+        # that numbers are grounded — it cannot tell that a fluent paraphrase has dropped the word
+        # NOT_CONFIGURED. The adapter's own refusal text is what ships.
+        if state.status != JobStatus.FAILED and not model_refusals:
+            answer_source, answer_facts = await apply_answer_writer(state)
+        elif model_refusals:
+            answer_source = "template:refusal"
+
         response = AnalyzeResponse(
             request_id=state.request_id,
             status=state.status,
@@ -237,6 +335,8 @@ class AgentController:
             workflow_reason=state.reason or "No workflow determined.",
             query=state.query,
             answer=state.answer,
+            answer_source=answer_source,
+            answer_facts=answer_facts,
             confidence=state.confidence,
             models_used=state.selected_models,
             parameters=state.parameters,
@@ -244,6 +344,7 @@ class AgentController:
             execution_trace=state.execution_trace,
             warnings=state.warnings,
             errors=state.errors,
+            model_refusals=model_refusals,
             artifacts=state.artifacts,
             orchestration=orchestration_meta
         )
@@ -308,6 +409,7 @@ class AgentController:
                 await JobRepository.save_artifacts(s, state.request_id, art_items)
 
         await self._safe_db_op(_persist_final_db_records)
+        self._planned_steps.pop(state.request_id, None)
 
         return response
 

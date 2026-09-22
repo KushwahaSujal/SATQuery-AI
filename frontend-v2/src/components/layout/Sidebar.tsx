@@ -1,29 +1,20 @@
 "use client";
 
 import Link from "next/link";
+import { taskLabel } from "@/lib/taskLabels";
 import { usePathname } from "next/navigation";
 import { motion } from "framer-motion";
+import { DURATION, EASE } from "@/lib/motion";
 import { api } from "@/lib/api";
 import { useJobs } from "@/hooks/useJobs";
 import { useAnalysisStore } from "@/stores/useAnalysisStore";
+import { useMobileNav } from "@/components/layout/MobileNavContext";
 
 interface SidebarProps {
   hideBrand?: boolean;
   activeItem?: string;
   className?: string;
 }
-
-const TASK_LABELS: Record<string, string> = {
-  bi_temporal_change: "Change Detection",
-  bi_temporal_change_vqa: "Change VQA",
-  single_image_vqa: "VQA",
-  single_image_grounding: "Grounding",
-  single_image_caption: "Captioning",
-  video_grounding_tracking: "Video",
-  video_vqa: "Video VQA",
-  video_change: "Video Change",
-  optical_sar_analysis: "Optical + SAR",
-};
 
 function timeAgo(dateStr: string): string {
   const diff = Date.now() - new Date(dateStr).getTime();
@@ -74,6 +65,14 @@ const navItems = [
       <path d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" strokeLinecap="round" strokeLinejoin="round" />
     ),
   },
+  {
+    key: "history",
+    href: "/history",
+    label: "History",
+    icon: (
+      <path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" strokeLinecap="round" strokeLinejoin="round" />
+    ),
+  },
 ];
 
 const resourceItems = [
@@ -83,6 +82,22 @@ const resourceItems = [
     label: "Documentation",
     icon: (
       <path d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" strokeLinecap="round" strokeLinejoin="round" />
+    ),
+  },
+  {
+    key: "models",
+    href: "/models",
+    label: "Models",
+    icon: (
+      <path d="M4 7v10l8 4 8-4V7l-8-4-8 4zm8 4l8-4m-8 4L4 7m8 4v10" strokeLinecap="round" strokeLinejoin="round" />
+    ),
+  },
+  {
+    key: "system",
+    href: "/system",
+    label: "System",
+    icon: (
+      <path d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z" strokeLinecap="round" strokeLinejoin="round" />
     ),
   },
 ];
@@ -105,10 +120,12 @@ export default function Sidebar({ hideBrand = false, activeItem, className = "" 
     .map((j: Record<string, unknown>) => ({
       id: (j.job_id || j.id) as string,
       title: (j.query as string)?.slice(0, 40) || "Analysis",
-      type: TASK_LABELS[(j.task as string) || ""] || (j.task as string) || "Analysis",
+      type: taskLabel(j.task as string),
       status: (j.status as string) || "UNKNOWN",
       time: timeAgo((j.created_at as string) || new Date().toISOString()),
     }));
+
+  const { isOpen, close } = useMobileNav();
 
   const current = activeItem || (
     pathname === "/" ? "home" :
@@ -116,14 +133,44 @@ export default function Sidebar({ hideBrand = false, activeItem, className = "" 
     pathname.startsWith("/history") ? "history" :
     pathname.startsWith("/datasets") ? "datasets" :
     pathname.startsWith("/reports") ? "reports" :
-    pathname.startsWith("/documentation") ? "documentation" : ""
+    pathname.startsWith("/documentation") ? "documentation" :
+    pathname.startsWith("/models") ? "models" :
+    pathname.startsWith("/system") ? "system" :
+    pathname.startsWith("/visual-analytics") ? "history" :
+    pathname.startsWith("/video") ? "history" : ""
   );
 
   return (
-    <aside
-      className={`h-full min-h-0 w-60 min-w-[15rem] max-w-[15rem] bg-[var(--sidebar-bg)] border-r border-[var(--sidebar-border)] flex flex-col justify-between py-4 px-3 shrink-0 z-20 overflow-y-auto select-none ${className}`}
-      data-purpose="sidebar"
-    >
+    <>
+      {/* Scrim, mobile only. The drawer sits over the content at small widths because
+          the sidebar used to be a hard 15rem, which ate ~60% of a 390px viewport and
+          clipped the body copy of every page. */}
+      {isOpen && (
+        <div
+          className="fixed inset-0 z-30 bg-[var(--scrim)] md:hidden"
+          onClick={close}
+          aria-hidden="true"
+        />
+      )}
+      <aside
+        id="app-sidebar"
+        className={`fixed inset-y-0 left-0 z-40 w-[17rem] max-w-[85vw] transform transition-transform duration-200 ease-out md:static md:z-20 md:w-60 md:min-w-[15rem] md:max-w-[15rem] md:translate-x-0 ${
+          isOpen ? "translate-x-0" : "-translate-x-full"
+        } h-full min-h-0 bg-[var(--sidebar-bg)] border-r border-[var(--sidebar-border)] flex flex-col justify-between pt-4 pb-14 px-3 shrink-0 overflow-y-auto select-none ${className}`}
+        data-purpose="sidebar"
+        aria-hidden={isOpen ? undefined : "true"}
+      >
+        {/* Close control, mobile only */}
+        <button
+          type="button"
+          onClick={close}
+          aria-label="Close navigation"
+          className="md:hidden absolute top-3 right-3 p-1.5 rounded-lg text-[var(--text-3)] hover:text-[var(--heading)] hover:bg-[var(--surface-hover)] transition-colors"
+        >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+            <path d="M6 18L18 6M6 6l12 12" strokeLinecap="round" />
+          </svg>
+        </button>
       <div>
         {/* Brand */}
         {!hideBrand && (
@@ -160,7 +207,7 @@ export default function Sidebar({ hideBrand = false, activeItem, className = "" 
           {navItems.map(({ key, href, label, icon }) => {
             const isActive = current === key;
             return (
-              <motion.div key={key} variants={itemVariants}>
+              <motion.div key={key} variants={itemVariants} whileHover={{ x: 2 }} whileTap={{ scale: 0.985 }} transition={{ duration: DURATION.fast, ease: EASE }}>
                 <Link
                   href={href}
                   onClick={key === "analysis" ? resetAnalysis : undefined}
@@ -248,7 +295,7 @@ export default function Sidebar({ hideBrand = false, activeItem, className = "" 
             {resourceItems.map(({ key, href, label, icon }) => {
               const isActive = current === key;
               return (
-                <motion.div key={key} variants={itemVariants}>
+                <motion.div key={key} variants={itemVariants} whileHover={{ x: 2 }} whileTap={{ scale: 0.985 }} transition={{ duration: DURATION.fast, ease: EASE }}>
                   <Link
                     href={href}
                     className={`relative flex items-center gap-3 px-3 py-2 rounded-lg transition-all duration-150 overflow-hidden ${
@@ -310,30 +357,8 @@ export default function Sidebar({ hideBrand = false, activeItem, className = "" 
         </div>
       </motion.div>
 
-      {/* Bottom Mission Card */}
-      <motion.div
-        initial={{ opacity: 0, y: 8 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.5, duration: 0.4 }}
-        className="mt-4 p-3 rounded-lg bg-[var(--surface-2)] border border-[var(--border)]"
-      >
-        <div className="flex items-start gap-2.5">
-          <div className="w-6 h-6 rounded-md bg-[var(--primary-glow)] border border-[var(--primary)]/20 flex items-center justify-center shrink-0 mt-0.5">
-            <svg className="w-3 h-3 text-[var(--primary)]" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-              <path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10Z" />
-              <path d="M2 21c0-3 1.85-5.36 5.08-6C9.5 14.52 12 13 13 12" />
-            </svg>
-          </div>
-          <div>
-            <p className="text-[11px] font-semibold text-[var(--heading)] leading-snug">
-              Better insights <br />
-              <span className="text-[var(--text-2)] font-normal">for a healthier planet</span>
-            </p>
-            <p className="text-[9px] text-[var(--text-3)] leading-tight mt-1">AI-powered remote sensing for a sustainable future.</p>
-          </div>
-        </div>
-      </motion.div>
     </aside>
+    </>
   );
 }
 

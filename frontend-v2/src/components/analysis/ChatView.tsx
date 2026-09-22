@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import { useAnalysisStore } from "@/stores/useAnalysisStore";
+import { useJobProgress } from "@/hooks/useJobProgress";
 import { ChatThread } from "./ChatThread";
 import { ChatInput } from "./ChatInput";
 import { cn } from "@/lib/utils";
@@ -19,13 +20,14 @@ const SUGGESTED_PROMPTS = [
   { text: "Analyze land use and land cover patterns", icon: "M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z", category: "Land Use" },
 ];
 
-export function ChatView() {
+export function ChatView({ initialPrompt }: { initialPrompt?: string } = {}) {
   const router = useRouter();
   const queryClient = useQueryClient();
   const messages = useAnalysisStore((s) => s.messages);
   const rasters = useAnalysisStore((s) => s.rasters);
   const isSubmitting = useAnalysisStore((s) => s.isSubmittingAnalysis);
   const activeJobId = useAnalysisStore((s) => s.activeJobId);
+  const pendingJobId = useAnalysisStore((s) => s.pendingJobId);
   const activeJobIsVideo = useAnalysisStore((s) => s.activeJobIsVideo);
   const startAnalysis = useAnalysisStore((s) => s.startAnalysis);
   const handleUpload = useAnalysisStore((s) => s.handleUpload);
@@ -44,6 +46,10 @@ export function ChatView() {
   }, [activeJobId, activeJobIsVideo, queryClient, router]);
 
   const isRunning = isSubmitting || Boolean(activeJobId);
+  // pendingJobId is set before POST /analyze (which does not resolve until the pipeline
+  // finishes), so this is the id that can actually be watched while the work happens.
+  const watchedJobId = pendingJobId ?? activeJobId;
+  const { data: progress } = useJobProgress(watchedJobId, isRunning);
   const hasMessages = messages.length > 0;
   const attachedImages = rasters.map((r) => r.preview_url).filter(Boolean) as string[];
   const attachedImageLabels = rasters.map((r) => r.filename);
@@ -52,7 +58,7 @@ export function ChatView() {
   const hasSources = attachedImages.length > 0 || Boolean(videoPreview);
 
   return (
-    <div className="h-full min-h-0 flex-1 flex flex-col bg-[var(--canvas)] overflow-hidden">
+    <div className="relative h-full min-h-0 flex-1 flex flex-col bg-[var(--canvas)] overflow-hidden">
       {/* Subtle grid background */}
       <div className="absolute inset-0 opacity-[0.03] pointer-events-none"
         style={{
@@ -90,7 +96,7 @@ export function ChatView() {
 
         <div className="flex min-h-0 w-full max-w-5xl mx-auto flex-1 flex-col overflow-hidden px-4 sm:px-6">
           {hasMessages ? (
-            <ChatThread messages={messages} isRunning={isRunning} />
+            <ChatThread messages={messages} isRunning={isRunning} progress={progress ?? null} />
           ) : (
             <motion.div
               initial={{ opacity: 0 }}
@@ -119,7 +125,7 @@ export function ChatView() {
                   <span className="text-[var(--border)]">•</span>
                   <span>Evidence-backed results</span>
                   <span className="text-[var(--border)]">•</span>
-                  <span>Follow-up questions</span>
+                  <span>Automatic task routing</span>
                 </div>
               </div>
 
@@ -191,6 +197,7 @@ export function ChatView() {
             videoPreview={videoPreview}
             uploadProgress={uploadProgress}
             disabled={isRunning}
+            initialPrompt={initialPrompt}
             variant="centered"
           />
           </div>

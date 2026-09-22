@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { useJob, useAnalysisResult } from "@/hooks/useSystem";
 import { api } from "@/lib/api";
+import { useConnection } from "@/lib/connection";
 import type { AnalysisResult } from "@/lib/types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -26,6 +27,9 @@ const PIPELINE_STEPS = [
 ];
 
 export default function ResultsPanel({ result: propsResult, isAnalyzing, jobId }: ResultsPanelProps) {
+  // Re-renders once real localStorage connection settings replace the SSR defaults, so the
+  // Download Results link below picks up the key instead of staying stale after hydration.
+  useConnection();
   const job = useJob(jobId || undefined);
   const fetchedResult = useAnalysisResult(jobId || undefined, job.data?.status === "COMPLETED");
   const result = propsResult || fetchedResult.data;
@@ -84,6 +88,11 @@ export default function ResultsPanel({ result: propsResult, isAnalyzing, jobId }
                   <GlowCard className="border-l-2 border-l-[var(--accent)]">
                     <p className="text-xs text-[var(--t1)] leading-relaxed m-0">
                       {result.answer}
+                    </p>
+                    <p className="font-mono-data text-[10px] text-[var(--t4)] mt-2 mb-0" title={result.answer_facts}>
+                      {result.answer_source && result.answer_source !== "template"
+                        ? `Written by ${result.answer_source} from measured evidence`
+                        : "Measured answer"}
                     </p>
                   </GlowCard>
                 )}

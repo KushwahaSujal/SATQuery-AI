@@ -1,602 +1,540 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
 import { motion } from "framer-motion";
+import { cardVariant, stagger } from "@/lib/motion";
 import Sidebar from "@/components/layout/Sidebar";
 import TopBar from "@/components/layout/TopBar";
 import { SpotlightCard } from "@/components/ui/spotlight-card";
+import {
+  CATEGORY_COUNTS,
+  CATALOGUED_FILE_COUNT,
+  DEMO_CATEGORIES,
+  DEMO_RESOURCES,
+  MEASUREMENT_PROVENANCE,
+  ROUTING_NOTE,
+  demoResourceUrl,
+  formatBytes,
+  isVideoPath,
+  type DemoCategoryId,
+  type DemoFile,
+  type DemoResource,
+} from "@/lib/demoResources";
 
-const stagger = { hidden: {}, show: { transition: { staggerChildren: 0.07, delayChildren: 0.05 } } };
-const cardVariant = { hidden: { opacity: 0, y: 16, scale: 0.97 }, show: { opacity: 1, y: 0, scale: 1, transition: { duration: 0.4, ease: [0.22, 1, 0.36, 1] as [number, number, number, number] } } };
 
-interface DatasetItem {
-  id: string;
-  name: string;
-  source: string;
-  type: string;
-  resolution: string;
-  format: string;
-  years: string;
-  region: string;
-  size: string;
-  dateAdded: string;
-  cropClass: string;
-  typeColor: string;
-  bands?: string;
-  projection?: string;
-  files?: string;
-  license?: string;
-  desc?: string;
+const README_URL = demoResourceUrl("README.md");
+
+function categoryLabel(id: DemoCategoryId): string {
+  return DEMO_CATEGORIES.find((c) => c.id === id)?.label ?? id;
 }
 
-const DATASETS: DatasetItem[] = [
-  {
-    id: "delhi-urban",
-    name: "Urban Area Detection (Delhi)",
-    source: "ESA · Sentinel-2",
-    type: "Optical",
-    resolution: "10 m",
-    format: "Tiff",
-    years: "2022 - 2025",
-    region: "Delhi, India",
-    size: "2.4 GB",
-    dateAdded: "Oct 12, 2025",
-    cropClass: "sat-crop-urban",
-    typeColor: "bg-sky-950 text-sky-400 border-sky-800/60",
-    bands: "B02, B03, B04, B08, B11, B12",
-    projection: "UTM Zone 44N (EPSG:32644)",
-    files: "12 GeoTIFF files",
-    license: "Open Data (CC BY 4.0)",
-    desc: "High-resolution optical imagery for urban area analysis and land use classification in Delhi region.",
-  },
-  {
-    id: "sentinel-india",
-    name: "Sentinel-2 Land Cover (India)",
-    source: "ESA · Sentinel-2",
-    type: "Optical",
-    resolution: "10 m",
-    format: "Tiff",
-    years: "2024 - 2025",
-    region: "India",
-    size: "3.8 GB",
-    dateAdded: "Oct 11, 2025",
-    cropClass: "sat-crop-river",
-    typeColor: "bg-sky-950 text-sky-400 border-sky-800/60",
-    bands: "B02, B03, B04, B08",
-    projection: "WGS 84 / UTM 43N",
-    files: "18 GeoTIFF files",
-    license: "Open Data (CC BY 4.0)",
-    desc: "Comprehensive multispectral optical data surveying diverse land cover classes across the Indian subcontinent.",
-  },
-  {
-    id: "risat-sar",
-    name: "RISAT-1 SAR (India)",
-    source: "ISRO · RISAT-1",
-    type: "SAR",
-    resolution: "25 m",
-    format: "Tiff",
-    years: "2023 - 2025",
-    region: "India",
-    size: "1.9 GB",
-    dateAdded: "Oct 05, 2025",
-    cropClass: "sat-crop-sar",
-    typeColor: "bg-purple-950 text-purple-300 border-purple-800/60",
-    bands: "C-band (HH, HV)",
-    projection: "LCC (ISRO Indian Grid)",
-    files: "8 GeoTIFF files",
-    license: "ISRO Open Science",
-    desc: "Active synthetic aperture radar imagery providing all-weather, day-and-night surface backscatter observation.",
-  },
-  {
-    id: "bangladesh-coast",
-    name: "Bangladesh Coastal Change",
-    source: "NASA · Sentinel-2",
-    type: "Bi-temporal",
-    resolution: "10 m",
-    format: "Tiff",
-    years: "2023 - 2025",
-    region: "Bangladesh",
-    size: "4.8 GB",
-    dateAdded: "Oct 10, 2025",
-    cropClass: "sat-crop-coastal",
-    typeColor: "bg-[var(--green-bg)] text-emerald-400 border-emerald-800/60",
-    bands: "B02, B03, B04, B08, NDVI",
-    projection: "UTM Zone 45N",
-    files: "14 GeoTIFF files",
-    license: "Open Data (CC BY 4.0)",
-    desc: "Multi-year coastal shoreline change detection and erosion tracking in the Bengal delta region.",
-  },
-  {
-    id: "amazon-forest",
-    name: "Forest Monitoring (Amazon)",
-    source: "ESA · Sentinel-2",
-    type: "Multispectral",
-    resolution: "10 m",
-    format: "Tiff",
-    years: "2021 - 2025",
-    region: "Amazon, Brazil",
-    size: "3.6 GB",
-    dateAdded: "Oct 08, 2025",
-    cropClass: "sat-crop-amazon",
-    typeColor: "bg-purple-950 text-purple-300 border-purple-800/60",
-    bands: "All 13 Sentinel-2 Bands",
-    projection: "UTM Zone 20S",
-    files: "24 GeoTIFF files",
-    license: "Copernicus Open Access",
-    desc: "Dense rainforest canopy observation and biomass disturbance tracking across the Brazilian Amazon basin.",
-  },
-  {
-    id: "ganges-water",
-    name: "Water Resources (Ganges Basin)",
-    source: "ISRO · RISAT + Sentinel-2",
-    type: "Optical + SAR",
-    resolution: "10 m / 25 m",
-    format: "Tiff",
-    years: "2023 - 2025",
-    region: "India",
-    size: "5.2 GB",
-    dateAdded: "Oct 02, 2025",
-    cropClass: "sat-crop-water",
-    typeColor: "bg-[var(--surface-2)] text-[var(--cyan)] border-cyan-800/60",
-    bands: "Optical RGB-NIR + SAR HH/HV",
-    projection: "UTM Zone 44N",
-    files: "16 GeoTIFF files",
-    license: "Joint Mission Research",
-    desc: "Fused optical and SAR telemetry monitoring hydrologic extent, flood plains, and riverbank dynamics.",
-  },
-];
+function isKnownWeak(id: DemoCategoryId): boolean {
+  return DEMO_CATEGORIES.find((c) => c.id === id)?.knownWeak === true;
+}
 
-export default function DatasetsPage() {
-  const [selectedFilter, setSelectedFilter] = useState("All");
-  const [searchQuery, setSearchQuery] = useState("");
-  const [selectedDataset, setSelectedDataset] = useState<DatasetItem>(DATASETS[0]);
-  const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
-  const [carouselIndex, setCarouselIndex] = useState(1);
+/** Renders a preview for a demo file: image, video, or an honest "cannot preview" state. */
+function Preview({
+  path,
+  className,
+  rounded = "rounded-lg",
+}: {
+  path?: string;
+  className?: string;
+  rounded?: string;
+}) {
+  if (!path) {
+    return (
+      <div
+        className={`${className} ${rounded} flex items-center justify-center bg-[var(--surface-3)] border border-[var(--border)] px-3 text-center`}
+      >
+        <span className="text-[10px] text-[var(--text-3)]">No previewable file</span>
+      </div>
+    );
+  }
 
-  const filterCounts: Record<string, number> = {
-    All: 124,
-    Optical: 68,
-    SAR: 32,
-    Multispectral: 18,
-    "Bi-temporal": 6,
-  };
-
-  const filteredDatasets = DATASETS.filter((item) => {
-    const matchesFilter = selectedFilter === "All" || item.type.includes(selectedFilter);
-    const matchesSearch =
-      item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      item.region.toLowerCase().includes(searchQuery.toLowerCase());
-    return matchesFilter && matchesSearch;
-  });
+  if (isVideoPath(path)) {
+    return (
+      <video
+        src={demoResourceUrl(path)}
+        className={`${className} ${rounded} bg-[var(--surface-3)] border border-[var(--border)] object-cover`}
+        controls
+        muted
+        playsInline
+        preload="metadata"
+      />
+    );
+  }
 
   return (
-    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.35 }} className="bg-[var(--canvas)] text-[var(--text)] antialiased font-sans h-screen overflow-hidden flex flex-col selection:bg-cyan-500/30 selection:text-[var(--cyan)]">
-      {/* Full-width TopBar */}
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src={demoResourceUrl(path)}
+      alt={path}
+      loading="lazy"
+      className={`${className} ${rounded} bg-[var(--surface-3)] border border-[var(--border)] object-cover`}
+    />
+  );
+}
+
+function KnownWeakBadge() {
+  return (
+    <span className="inline-flex items-center gap-1 rounded-full border border-[var(--amber)]/40 bg-[var(--amber-bg)] px-2 py-0.5 text-[10px] font-semibold text-[var(--amber)]">
+      <svg className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+        <path d="M12 9v4m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+      Known weak
+    </span>
+  );
+}
+
+function FileRow({ file }: { file: DemoFile }) {
+  return (
+    <li className="flex items-start justify-between gap-3 border-b border-[var(--border)] py-2 last:border-b-0">
+      <div className="min-w-0">
+        <div className="truncate text-[11px] font-medium text-[var(--text)]">{file.label}</div>
+        <div className="break-all font-mono text-[10px] text-[var(--text-3)]">{file.path}</div>
+        <div className="mt-0.5 flex flex-wrap items-center gap-2 text-[10px] text-[var(--text-3)]">
+          <span>{formatBytes(file.bytes)}</span>
+          {file.pixels && <span>{file.pixels} px</span>}
+          {!file.previewable && (
+            <span className="rounded border border-[var(--amber)]/40 bg-[var(--amber-bg)] px-1.5 py-0.5 font-medium text-[var(--amber)]">
+              {file.path.toLowerCase().endsWith(".geojson") ? "GeoJSON — not an image" : "GeoTIFF — not previewable in browser"}
+            </span>
+          )}
+        </div>
+      </div>
+      <a
+        href={demoResourceUrl(file.path)}
+        download
+        className="mt-0.5 shrink-0 rounded-lg border border-[var(--border)] bg-[var(--surface-2)] px-2 py-1 text-[10px] font-medium text-[var(--text-2)] transition-colors hover:border-[var(--cyan)] hover:text-[var(--cyan)]"
+      >
+        Download
+      </a>
+    </li>
+  );
+}
+
+export default function DatasetsPage() {
+  const [selectedCategory, setSelectedCategory] = useState<DemoCategoryId | "all">("all");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
+  const [selectedId, setSelectedId] = useState<string>(DEMO_RESOURCES[0].id);
+  const [preview, setPreview] = useState<{ entryId: string; path: string; caption: string } | null>(null);
+
+  const query = searchQuery.trim().toLowerCase();
+
+  const filtered = useMemo(() => {
+    return DEMO_RESOURCES.filter((entry) => {
+      const matchesCategory = selectedCategory === "all" || entry.category === selectedCategory;
+      if (!matchesCategory) return false;
+      if (!query) return true;
+      const haystack = [
+        entry.name,
+        entry.folder,
+        entry.provenance,
+        entry.description ?? "",
+        entry.failure ?? "",
+        categoryLabel(entry.category),
+        ...entry.runs.map((r) => `${r.prompt} ${r.result} ${r.note ?? ""}`),
+        ...entry.files.map((f) => f.path),
+      ]
+        .join(" ")
+        .toLowerCase();
+      return haystack.includes(query);
+    });
+  }, [selectedCategory, query]);
+
+  const selected: DemoResource | undefined =
+    filtered.find((e) => e.id === selectedId) ?? filtered[0] ?? DEMO_RESOURCES.find((e) => e.id === selectedId);
+
+  const shownFileCount = filtered.reduce((total, entry) => total + entry.files.length, 0);
+
+  const activePreview =
+    selected && preview && preview.entryId === selected.id
+      ? preview
+      : selected
+        ? { entryId: selected.id, path: selected.thumbnail ?? "", caption: selected.thumbnailCaption ?? "Input file" }
+        : null;
+
+  const pills: Array<{ id: DemoCategoryId | "all"; label: string; count: number; weak?: boolean }> = [
+    { id: "all", label: "All", count: DEMO_RESOURCES.length },
+    ...DEMO_CATEGORIES.map((c) => ({
+      id: c.id as DemoCategoryId | "all",
+      label: c.label,
+      count: CATEGORY_COUNTS[c.id],
+      weak: c.knownWeak,
+    })),
+  ];
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={{ duration: 0.35 }}
+      className="flex h-screen flex-col overflow-hidden bg-[var(--canvas)] font-sans text-[var(--text)] antialiased selection:bg-[var(--cyan-glow)] selection:text-[var(--cyan)]"
+    >
       <TopBar
         showBrand={true}
-        searchPlaceholder="Search datasets, locations, or keywords..."
+        searchPlaceholder="Search demo resources by name, prompt or file..."
         onSearch={(q) => setSearchQuery(q)}
       />
 
-      {/* Main Body Layout */}
       <div className="flex flex-1 overflow-hidden">
-        {/* Left Navigation Sidebar */}
         <Sidebar hideBrand={true} activeItem="datasets" className="h-full" />
 
-        {/* Workspace Center Content */}
-        <main className="flex-1 overflow-y-auto px-6 py-5" data-purpose="datasets-workspace">
-          {/* Workspace Header */}
-          <div className="flex items-start justify-between mb-5">
-            <div>
-              <h1 className="text-2xl font-bold text-[var(--heading)] tracking-tight mb-1">Datasets</h1>
-              <p className="text-xs text-[var(--text-3)]">
-                Browse and manage satellite imagery datasets. Use these datasets for your analysis or upload your own.
+        <div className="flex min-w-0 flex-1 flex-col overflow-y-auto lg:flex-row lg:overflow-hidden">
+          <main className="min-w-0 flex-1 px-4 py-5 sm:px-6 lg:overflow-y-auto" data-purpose="demo-resources-workspace">
+            {/* Header */}
+            <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div className="min-w-0">
+                <h1 className="mb-1 text-2xl font-bold tracking-tight text-[var(--heading)]">Demo resources</h1>
+                <p className="max-w-2xl text-xs text-[var(--text-3)]">
+                  The sample imagery, image pairs and videos committed to this repository under{" "}
+                  <span className="font-mono text-[var(--text-2)]">demo_resources/</span> —{" "}
+                  {DEMO_RESOURCES.length} entries over {CATALOGUED_FILE_COUNT} files (35 MB on disk). This is the repo&apos;s own
+                  demo data, served straight from the working tree. It is not a live catalog and there is no dataset API
+                  behind it.
+                </p>
+              </div>
+              <Link
+                href="/analysis"
+                className="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg bg-[var(--cyan)] px-4 py-2 text-xs font-semibold text-[var(--canvas)] shadow-[0_0_15px_var(--cyan-glow)] transition hover:opacity-90"
+              >
+                <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
+                  <path d="M12 4v16m8-8H4" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+                <span>Run an analysis</span>
+              </Link>
+            </div>
+
+            {/* Provenance */}
+            <div className="mb-4 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-3.5 text-[11px] leading-relaxed text-[var(--text-2)]">
+              <p>{MEASUREMENT_PROVENANCE}</p>
+              <p className="mt-1.5 text-[var(--text-3)]">{ROUTING_NOTE}</p>
+              <p className="mt-1.5">
+                Prompts, results and caveats on this page are quoted from{" "}
+                <a
+                  href={README_URL}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="font-mono text-[var(--cyan)] underline decoration-dotted underline-offset-2"
+                >
+                  demo_resources/README.md
+                </a>
+                . Fields the README does not state — acquisition dates for the VRSBench scenes, ground resolution, sensor,
+                cloud cover, licence, accuracy — are left out rather than guessed.
               </p>
             </div>
-            <Link
-              href="/analysis?action=upload"
-              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-[var(--cyan)] hover:bg-cyan-300 text-[var(--canvas)] text-xs font-semibold shadow-[0_0_15px_rgba(6,182,212,0.4)] transition"
-            >
-              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
-                <path d="M12 4v16m8-8H4" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-              <span>Upload Dataset</span>
-            </Link>
-          </div>
 
-          {/* Filter Pills Row */}
-          <div className="flex items-center gap-2 mb-4 overflow-x-auto pb-1" data-purpose="category-filters">
-            {["All", "Optical", "SAR", "Multispectral", "Bi-temporal"].map((filter) => {
-              const active = selectedFilter === filter;
-              return (
-                <button
-                  key={filter}
-                  onClick={() => setSelectedFilter(filter)}
-                  className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium transition cursor-pointer ${
-                    active
-                      ? "bg-cyan-950/60 border border-[var(--cyan)]/50 text-[var(--cyan)] shadow-[0_0_10px_rgba(6,182,212,0.15)]"
-                      : "bg-[var(--surface-2)] border border-[var(--border)] text-[var(--text-2)] hover:border-[var(--border-strong)]"
-                  }`}
-                >
-                  <span>{filter}</span>
-                  <span
-                    className={`text-[10px] px-1.5 py-0.2 rounded-full ${
-                      active ? "bg-cyan-500/20 text-[var(--cyan)]" : "bg-[var(--surface-2)] text-[var(--text-3)]"
+            {/* Category filters — counts are computed from the catalog itself */}
+            <div className="mb-3 flex items-center gap-2 overflow-x-auto pb-1" data-purpose="category-filters">
+              {pills.map((pill) => {
+                const active = selectedCategory === pill.id;
+                return (
+                  <button
+                    key={pill.id}
+                    onClick={() => setSelectedCategory(pill.id)}
+                    className={`flex shrink-0 cursor-pointer items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-medium transition ${
+                      active
+                        ? "border border-[var(--cyan)]/50 bg-[var(--cyan-glow)] text-[var(--cyan)]"
+                        : "border border-[var(--border)] bg-[var(--surface-2)] text-[var(--text-2)] hover:border-[var(--border-strong)]"
                     }`}
                   >
-                    {filterCounts[filter] ?? 0}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-
-          {/* Secondary Controls & Filter Dropdowns */}
-          <div className="flex flex-wrap items-center justify-between gap-3 mb-5" data-purpose="secondary-filter-bar">
-            {/* Sub Search Input */}
-            <div className="relative flex-1 min-w-[200px] max-w-xs">
-              <svg className="absolute left-3 top-2.5 w-3.5 h-3.5 text-[var(--text-3)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <circle cx="11" cy="11" r="8" />
-                <line x1="21" x2="16.65" y1="21" y2="16.65" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-              <input
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full bg-[var(--surface-2)] border border-[var(--border)] rounded-lg pl-9 pr-3 py-1.5 text-xs text-[var(--text)] placeholder-[var(--text-3)] focus:outline-none focus:border-[var(--cyan)]"
-                placeholder="Search datasets..."
-                type="text"
-              />
+                    <span className={pill.weak && !active ? "text-[var(--amber)]" : undefined}>{pill.label}</span>
+                    <span
+                      className={`rounded-full px-1.5 text-[10px] ${
+                        active ? "bg-[var(--cyan-glow)] text-[var(--cyan)]" : "bg-[var(--surface-3)] text-[var(--text-3)]"
+                      }`}
+                    >
+                      {pill.count}
+                    </span>
+                  </button>
+                );
+              })}
             </div>
 
-            <div className="flex items-center gap-2.5">
-              {/* Dropdown: Regions */}
-              <button className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[var(--surface-2)] border border-[var(--border)] text-xs text-[var(--text-2)] hover:border-[var(--border-strong)]">
-                <svg className="w-3.5 h-3.5 text-[var(--text-3)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path d="M12 21s-6-5.33-6-10a6 6 0 0112 0c0 4.67-6 10-6 10z" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" />
+            {/* Search + view switcher */}
+            <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+              <div className="relative min-w-[200px] max-w-xs flex-1">
+                <svg
+                  className="absolute left-3 top-2.5 h-3.5 w-3.5 text-[var(--text-3)]"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <circle cx="11" cy="11" r="8" />
+                  <line x1="21" x2="16.65" y1="21" y2="16.65" strokeLinecap="round" strokeLinejoin="round" />
                 </svg>
-                <span>All Regions</span>
-                <svg className="w-3 h-3 text-[var(--text-3)] ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path d="M19 9l-7 7-7-7" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" />
-                </svg>
-              </button>
+                <input
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full rounded-lg border border-[var(--border)] bg-[var(--surface-2)] py-1.5 pl-9 pr-3 text-xs text-[var(--text)] placeholder-[var(--text-3)] focus:border-[var(--cyan)] focus:outline-none"
+                  placeholder="Search name, prompt, file path..."
+                  type="text"
+                />
+              </div>
 
-              {/* Dropdown: Resolutions */}
-              <button className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[var(--surface-2)] border border-[var(--border)] text-xs text-[var(--text-2)] hover:border-[var(--border-strong)]">
-                <svg className="w-3.5 h-3.5 text-[var(--text-3)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <rect height="7" rx="1" width="7" x="3" y="3" />
-                  <rect height="7" rx="1" width="7" x="14" y="3" />
-                  <rect height="7" rx="1" width="7" x="14" y="14" />
-                  <rect height="7" rx="1" width="7" x="3" y="14" />
-                </svg>
-                <span>All Resolutions</span>
-                <svg className="w-3 h-3 text-[var(--text-3)] ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path d="M19 9l-7 7-7-7" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" />
-                </svg>
-              </button>
-
-              {/* Dropdown: Sort */}
-              <button className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[var(--surface-2)] border border-[var(--border)] text-xs text-[var(--text-2)] hover:border-[var(--border-strong)]">
-                <svg className="w-3.5 h-3.5 text-[var(--text-3)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" />
-                </svg>
-                <span>Newest First</span>
-                <svg className="w-3 h-3 text-[var(--text-3)] ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path d="M19 9l-7 7-7-7" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" />
-                </svg>
-              </button>
-
-              {/* View Switcher (Grid / List) */}
-              <div className="flex items-center rounded-lg bg-[var(--surface-2)] border border-[var(--border)] p-0.5">
+              <div className="flex items-center rounded-lg border border-[var(--border)] bg-[var(--surface-2)] p-0.5">
                 <button
                   onClick={() => setViewMode("grid")}
-                  className={`p-1 rounded transition ${viewMode === "grid" ? "bg-[var(--surface-2)] text-[var(--cyan)]" : "text-[var(--text-3)] hover:text-[var(--text)]"}`}
-                  title="Grid View"
+                  className={`rounded p-1 transition ${viewMode === "grid" ? "bg-[var(--surface-3)] text-[var(--cyan)]" : "text-[var(--text-3)] hover:text-[var(--text)]"}`}
+                  title="Grid view"
+                  aria-pressed={viewMode === "grid"}
                 >
-                  <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
+                  <svg className="h-3.5 w-3.5" fill="currentColor" viewBox="0 0 20 20">
                     <path d="M5 3a2 2 0 00-2 2v2a2 2 0 002 2h2a2 2 0 002-2V5a2 2 0 00-2-2H5zM5 11a2 2 0 00-2 2v2a2 2 0 002 2h2a2 2 0 002-2v-2a2 2 0 00-2-2H5zM11 5a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V5zM11 13a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
                   </svg>
                 </button>
                 <button
                   onClick={() => setViewMode("list")}
-                  className={`p-1 rounded transition ${viewMode === "list" ? "bg-[var(--surface-2)] text-[var(--cyan)]" : "text-[var(--text-3)] hover:text-[var(--text)]"}`}
-                  title="List View"
+                  className={`rounded p-1 transition ${viewMode === "list" ? "bg-[var(--surface-3)] text-[var(--cyan)]" : "text-[var(--text-3)] hover:text-[var(--text)]"}`}
+                  title="List view"
+                  aria-pressed={viewMode === "list"}
                 >
-                  <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
-                    <path fillRule="evenodd" d="M3 5a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 5a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 5a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z" clipRule="evenodd" />
+                  <svg className="h-3.5 w-3.5" fill="currentColor" viewBox="0 0 20 20">
+                    <path d="M3 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM3 10a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM3 16a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z" />
                   </svg>
                 </button>
               </div>
             </div>
-          </div>
 
-          {/* Dataset Cards Grid */}
-          <motion.div
-            variants={stagger}
-            initial="hidden"
-            animate="show"
-            className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 mb-8"
-            data-purpose="dataset-card-grid"
-          >
-            {filteredDatasets.map((dataset) => {
-              const isSelected = selectedDataset.id === dataset.id;
-              return (
-                <motion.div key={dataset.id} variants={cardVariant}>
-                <SpotlightCard
-                  spotlightColor="rgba(0, 199, 217, 0.06)"
-                  onClick={() => setSelectedDataset(dataset)}
-                  className={`rounded-xl bg-[var(--surface-2)] border transition-all duration-150 group flex flex-col cursor-pointer overflow-hidden ${
-                    isSelected ? "border-[var(--cyan)] shadow-[0_0_15px_rgba(6,182,212,0.2)]" : "border-[var(--border)] hover:border-[var(--border-strong)]"
-                  }`}
-                >
-                  <div className={`h-32 ${dataset.cropClass} relative overflow-hidden`}>
-                    <span className="absolute bottom-2.5 left-2.5 px-2 py-0.5 rounded text-[10px] font-medium bg-sky-500/80 text-[var(--heading)] backdrop-blur">
-                      {dataset.type}
-                    </span>
-                  </div>
-                  <div className="p-3.5 flex-1 flex flex-col justify-between">
-                    <div>
-                      <h3 className="text-xs font-semibold text-[var(--heading)] group-hover:text-[var(--cyan)] transition">{dataset.name}</h3>
-                      <p className="text-[11px] text-[var(--text-3)] mt-0.5">{dataset.source}</p>
-                      <div className="flex items-center gap-3 text-[10px] text-[var(--text-3)] mt-2.5">
-                        <span className="flex items-center gap-1">
-                          <svg className="w-3 h-3 text-[var(--text-3)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <circle cx="12" cy="12" r="10" />
-                            <polyline points="12 6 12 12 16 14" />
-                          </svg>
-                          {dataset.resolution}
-                        </span>
-                        <span className="flex items-center gap-1">
-                          <svg className="w-3 h-3 text-[var(--text-3)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" />
-                          </svg>
-                          {dataset.format}
-                        </span>
-                        <span className="flex items-center gap-1">
-                          <svg className="w-3 h-3 text-[var(--text-3)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <rect height="18" rx="2" width="18" x="3" y="4" />
-                            <line x1="16" x2="16" y1="2" y2="6" />
-                            <line x1="8" x2="8" y1="2" y2="6" />
-                            <line x1="3" x2="21" y1="10" y2="10" />
-                          </svg>
-                          {dataset.years}
-                        </span>
-                      </div>
-                    </div>
-                    <div className="flex items-center justify-between mt-3 pt-2.5 border-t border-[var(--border)]/80">
-                      <span className="text-[10px] px-2 py-0.5 rounded bg-[var(--surface-2)] text-[var(--text-2)]">{dataset.region}</span>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          alert(`Downloading metadata for ${dataset.name}`);
-                        }}
-                        className="p-1 text-[var(--text-3)] hover:text-[var(--heading)] transition"
-                        title="Download"
+            {/* Entries */}
+            {filtered.length === 0 ? (
+              <div className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-8 text-center">
+                <p className="text-sm font-medium text-[var(--heading)]">No entry matches this filter</p>
+                <p className="mt-1 text-xs text-[var(--text-3)]">
+                  {DEMO_RESOURCES.length} entries exist in demo_resources/. Clear the search to see them all.
+                </p>
+              </div>
+            ) : (
+              <motion.div
+                variants={stagger}
+                initial="hidden"
+                animate="show"
+                className={
+                  viewMode === "grid"
+                    ? "grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3"
+                    : "flex flex-col gap-2"
+                }
+              >
+                {filtered.map((entry) => {
+                  const weak = isKnownWeak(entry.category);
+                  const active = selected?.id === entry.id;
+                  const promptCount = entry.runs.length;
+
+                  if (viewMode === "list") {
+                    return (
+                      <motion.button
+                        key={entry.id}
+                        variants={cardVariant}
+                        onClick={() => setSelectedId(entry.id)}
+                        className={`flex w-full items-center gap-3 rounded-xl border px-3 py-2.5 text-left transition ${
+                          active
+                            ? "border-[var(--cyan)]/50 bg-[var(--cyan-glow)]"
+                            : "border-[var(--border)] bg-[var(--surface)] hover:border-[var(--border-strong)]"
+                        }`}
                       >
-                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" />
-                        </svg>
-                      </button>
-                    </div>
-                  </div>
-                </SpotlightCard>
-                </motion.div>
-              );
-            })}
-          </motion.div>
-
-          {/* Recent Datasets Table */}
-          <section className="rounded-xl bg-[var(--surface-2)] border border-[var(--border)] p-4 mb-4" data-purpose="recent-datasets-section">
-            <div className="flex items-center justify-between mb-3.5">
-              <h2 className="text-xs font-semibold text-[var(--heading)] tracking-wide">Recent Datasets</h2>
-              <button onClick={() => setSelectedFilter("All")} className="text-xs font-medium text-[var(--cyan)] hover:text-[var(--cyan)] transition">
-                View All
-              </button>
-            </div>
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse">
-                <thead>
-                  <tr className="border-b border-[var(--border)] text-[10px] font-semibold text-[var(--text-3)] uppercase tracking-wider">
-                    <th className="py-2.5 px-3">Name</th>
-                    <th className="py-2.5 px-3">Type</th>
-                    <th className="py-2.5 px-3">Resolution</th>
-                    <th className="py-2.5 px-3">Region</th>
-                    <th className="py-2.5 px-3">Date Added</th>
-                    <th className="py-2.5 px-3">Size</th>
-                    <th className="py-2.5 px-3 text-right">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="text-xs divide-y divide-slate-800/60 font-normal">
-                  {DATASETS.map((ds) => (
-                    <tr
-                      key={ds.id}
-                      onClick={() => setSelectedDataset(ds)}
-                      className="hover:bg-[var(--surface-hover)]/30 transition cursor-pointer"
-                    >
-                      <td className="py-3 px-3">
-                        <div className="flex items-center gap-2.5">
-                          <div className={`w-7 h-7 rounded ${ds.cropClass} shrink-0 border border-[var(--border)]`} />
-                          <span className="font-medium text-[var(--text)]">{ds.name}</span>
+                        <Preview path={entry.thumbnail} className="h-12 w-12 shrink-0" rounded="rounded-md" />
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="truncate text-xs font-semibold text-[var(--heading)]">{entry.name}</span>
+                            {weak && <KnownWeakBadge />}
+                          </div>
+                          <div className="truncate font-mono text-[10px] text-[var(--text-3)]">{entry.folder}</div>
                         </div>
-                      </td>
-                      <td className="py-3 px-3">
-                        <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-medium border ${ds.typeColor}`}>
-                          {ds.type}
-                        </span>
-                      </td>
-                      <td className="py-3 px-3 text-[var(--text-2)]">{ds.resolution}</td>
-                      <td className="py-3 px-3 text-[var(--text-2)]">{ds.region}</td>
-                      <td className="py-3 px-3 text-[var(--text-3)]">{ds.dateAdded}</td>
-                      <td className="py-3 px-3 text-[var(--text-2)] font-mono text-[11px]">{ds.size}</td>
-                      <td className="py-3 px-3 text-right">
-                        <button className="text-[var(--text-3)] hover:text-[var(--heading)] p-1">⋮</button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </section>
-        </main>
+                        <div className="shrink-0 text-right text-[10px] text-[var(--text-3)]">
+                          <div>{entry.files.length} files</div>
+                          <div>{promptCount === 0 ? "no measured run" : `${promptCount} prompt${promptCount === 1 ? "" : "s"}`}</div>
+                        </div>
+                      </motion.button>
+                    );
+                  }
 
-        {/* Right Detail Panel */}
-        <aside
-          className="w-[360px] border-l border-[var(--border)] bg-[var(--surface)] overflow-y-auto shrink-0 flex flex-col p-4 select-none"
-          data-purpose="dataset-detail-panel"
-        >
-          {/* Preview Carousel Card */}
-          <div className="relative rounded-xl overflow-hidden h-52 sat-preview-delhi-main border border-[var(--border)] mb-4 group shadow-lg">
-            <div className="absolute top-2.5 right-2.5 z-10 px-2 py-0.5 rounded bg-[var(--scrim)] backdrop-blur text-[10px] font-semibold text-[var(--heading)] border border-[var(--border)]">
-              {carouselIndex}/4
-            </div>
-            <button
-              onClick={() => setCarouselIndex((prev) => (prev > 1 ? prev - 1 : 4))}
-              className="absolute left-2 top-1/2 -translate-y-1/2 z-10 w-6 h-6 rounded-full bg-[var(--scrim)] hover:bg-[var(--scrim)]/80 flex items-center justify-center text-[var(--heading)] border border-[var(--border)] transition"
-            >
-              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path d="M15 19l-7-7 7-7" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" />
-              </svg>
-            </button>
-            <button
-              onClick={() => setCarouselIndex((prev) => (prev < 4 ? prev + 1 : 1))}
-              className="absolute right-2 top-1/2 -translate-y-1/2 z-10 w-6 h-6 rounded-full bg-[var(--scrim)] hover:bg-[var(--scrim)]/80 flex items-center justify-center text-[var(--heading)] border border-[var(--border)] transition"
-            >
-              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path d="M9 5l7 7-7 7" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" />
-              </svg>
-            </button>
-          </div>
+                  return (
+                    <motion.div key={entry.id} variants={cardVariant}>
+                      <SpotlightCard
+                        className={`h-full cursor-pointer rounded-xl border transition ${
+                          active
+                            ? "border-[var(--cyan)]/50 bg-[var(--surface-2)]"
+                            : "border-[var(--border)] bg-[var(--surface)] hover:border-[var(--border-strong)]"
+                        }`}
+                        onClick={() => setSelectedId(entry.id)}
+                      >
+                        <div className="relative">
+                          <Preview path={entry.thumbnail} className="h-36 w-full" rounded="rounded-t-xl" />
+                          <div className="absolute left-2 top-2 flex flex-wrap gap-1.5">
+                            <span className="rounded-full border border-[var(--border)] bg-[var(--scrim)] px-2 py-0.5 text-[10px] font-medium text-[var(--heading)] backdrop-blur">
+                              {categoryLabel(entry.category)}
+                            </span>
+                            {weak && <KnownWeakBadge />}
+                          </div>
+                        </div>
+                        <div className="p-3">
+                          <h3 className="truncate text-xs font-semibold text-[var(--heading)]">{entry.name}</h3>
+                          <p className="mt-0.5 break-all font-mono text-[10px] text-[var(--text-3)]">{entry.folder}</p>
+                          {entry.failure && (
+                            <p className="mt-2 text-[10px] leading-relaxed text-[var(--amber)]">{entry.failure}</p>
+                          )}
+                          {!entry.failure && entry.description && (
+                            <p className="mt-2 line-clamp-2 text-[10px] leading-relaxed text-[var(--text-2)]">
+                              {entry.description}
+                            </p>
+                          )}
+                          <div className="mt-2.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] text-[var(--text-3)]">
+                            <span>{entry.files.length} files</span>
+                            <span>
+                              {entry.runs.length === 0
+                                ? "no measured run"
+                                : `${entry.runs.length} prompt${entry.runs.length === 1 ? "" : "s"} recorded`}
+                            </span>
+                            {entry.duration && <span>{entry.duration}</span>}
+                          </div>
+                        </div>
+                      </SpotlightCard>
+                    </motion.div>
+                  );
+                })}
+              </motion.div>
+            )}
 
-          {/* Detail Header */}
-          <div className="mb-3">
-            <div className="flex items-start justify-between gap-2 mb-1">
-              <h2 className="text-sm font-bold text-[var(--heading)] leading-tight">{selectedDataset.name}</h2>
-              <span className={`px-2 py-0.5 rounded text-[10px] font-medium border shrink-0 ${selectedDataset.typeColor}`}>
-                {selectedDataset.type}
-              </span>
+            <div className="pt-4 text-xs text-[var(--text-3)]">
+              Showing <span className="font-medium text-[var(--text)]">{filtered.length}</span> of{" "}
+              <span className="font-medium text-[var(--text)]">{DEMO_RESOURCES.length}</span> entries ·{" "}
+              <span className="font-medium text-[var(--text)]">{shownFileCount}</span> of{" "}
+              <span className="font-medium text-[var(--text)]">{CATALOGUED_FILE_COUNT}</span> files
             </div>
-            <p className="text-[11px] text-[var(--text-3)]">{selectedDataset.source}</p>
-          </div>
+          </main>
 
-          {/* Quick Specs Row */}
-          <div className="flex items-center gap-3 text-[11px] text-[var(--text-2)] pb-3 mb-3 border-b border-[var(--border)]">
-            <span className="flex items-center gap-1">
-              <svg className="w-3.5 h-3.5 text-[var(--text-3)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <circle cx="12" cy="12" r="10" />
-                <polyline points="12 6 12 12 16 14" />
-              </svg>
-              {selectedDataset.resolution}
-            </span>
-            <span className="flex items-center gap-1">
-              <svg className="w-3.5 h-3.5 text-[var(--text-3)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" />
-              </svg>
-              {selectedDataset.format}
-            </span>
-            <span className="text-[var(--text-3)]">{selectedDataset.years}</span>
-          </div>
-
-          {/* Location Badge */}
-          <div className="mb-3">
-            <span className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded bg-[var(--surface-2)]/80 text-[var(--cyan)] border border-[var(--border)]">
-              <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path d="M12 21s-6-5.33-6-10a6 6 0 0112 0c0 4.67-6 10-6 10z" />
-              </svg>
-              {selectedDataset.region}
-            </span>
-          </div>
-
-          {/* Text Description */}
-          <p className="text-[11px] text-[var(--text-3)] leading-relaxed mb-4">
-            {selectedDataset.desc || "High-resolution optical imagery for remote sensing and land use classification."}
-          </p>
-
-          {/* Dataset Information List */}
-          <div className="space-y-2 mb-5">
-            <h3 className="text-[11px] font-bold text-[var(--text-2)] uppercase tracking-wider mb-2">Dataset Information</h3>
-            <div className="flex justify-between text-xs py-0.5 border-b border-[var(--border)]">
-              <span className="text-[var(--text-3)]">Source</span>
-              <span className="text-[var(--text)] font-medium">{selectedDataset.source.split("·")[0].trim()}</span>
-            </div>
-            <div className="flex justify-between text-xs py-0.5 border-b border-[var(--border)]">
-              <span className="text-[var(--text-3)]">Sensor</span>
-              <span className="text-[var(--text)] font-medium">{selectedDataset.source.split("·")[1]?.trim() || "Multi"}</span>
-            </div>
-            <div className="flex justify-between text-xs py-0.5 border-b border-[var(--border)]">
-              <span className="text-[var(--text-3)]">Bands</span>
-              <span className="text-[var(--text)] font-medium">{selectedDataset.bands || "Optical RGB-NIR"}</span>
-            </div>
-            <div className="flex justify-between text-xs py-0.5 border-b border-[var(--border)]">
-              <span className="text-[var(--text-3)]">Projection</span>
-              <span className="text-[var(--text)] font-medium">{selectedDataset.projection || "WGS 84 / UTM"}</span>
-            </div>
-            <div className="flex justify-between text-xs py-0.5 border-b border-[var(--border)]">
-              <span className="text-[var(--text-3)]">Size</span>
-              <span className="text-[var(--text)] font-medium font-mono">{selectedDataset.size}</span>
-            </div>
-            <div className="flex justify-between text-xs py-0.5 border-b border-[var(--border)]">
-              <span className="text-[var(--text-3)]">Files</span>
-              <span className="text-[var(--text)] font-medium">{selectedDataset.files || "12 files"}</span>
-            </div>
-            <div className="flex justify-between text-xs py-0.5">
-              <span className="text-[var(--text-3)]">License</span>
-              <span className="text-[var(--text)] font-medium">{selectedDataset.license || "Open Data (CC BY 4.0)"}</span>
-            </div>
-          </div>
-
-          {/* Action Buttons */}
-          <div className="space-y-2 mb-6" data-purpose="detail-actions">
-            <Link
-              href={`/analysis?dataset=${encodeURIComponent(selectedDataset.id)}`}
-              className="w-full flex items-center justify-center gap-2 py-2.5 rounded-lg bg-[var(--cyan)] hover:bg-cyan-300 text-[var(--canvas)] font-semibold text-xs transition shadow-[0_0_15px_rgba(6,182,212,0.3)]"
-            >
-              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
-                <path d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-              <span>Open in Analysis</span>
-            </Link>
-            <button
-              onClick={() => alert(`Starting download for ${selectedDataset.name}`)}
-              className="w-full flex items-center justify-center gap-2 py-2.5 rounded-lg bg-[var(--surface-2)] hover:bg-[var(--surface-hover)] border border-[var(--border)] text-[var(--text)] text-xs font-medium transition"
-            >
-              <svg className="w-3.5 h-3.5 text-[var(--text-3)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" />
-              </svg>
-              <span>Download Dataset</span>
-            </button>
-          </div>
-
-          {/* Related Datasets Section */}
-          <div>
-            <h3 className="text-[11px] font-bold text-[var(--text-3)] uppercase tracking-wider mb-2.5">Related Datasets</h3>
-            <div className="space-y-2.5">
-              {DATASETS.filter((d) => d.id !== selectedDataset.id)
-                .slice(0, 3)
-                .map((rel) => (
-                  <div
-                    key={rel.id}
-                    onClick={() => setSelectedDataset(rel)}
-                    className="flex items-center justify-between p-2 rounded-lg bg-[var(--surface-2)] border border-[var(--border)] hover:border-[var(--border-strong)] transition cursor-pointer"
-                  >
-                    <div className="flex items-center gap-2.5">
-                      <div className={`w-10 h-10 rounded ${rel.cropClass} shrink-0 border border-[var(--border)]`} />
-                      <div>
-                        <p className="text-xs font-medium text-[var(--text)]">{rel.name}</p>
-                        <p className="text-[10px] text-[var(--text-3)] mt-0.5">
-                          {rel.resolution} · {rel.years}
-                        </p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-1.5">
-                      <span className={`px-1.5 py-0.5 rounded text-[9px] font-medium border ${rel.typeColor}`}>
-                        {rel.type}
-                      </span>
-                    </div>
+          {/* Details panel */}
+          <aside className="w-full shrink-0 space-y-4 border-t border-[var(--border)] bg-[var(--surface)] p-5 lg:w-[26rem] lg:border-l lg:border-t-0 lg:overflow-y-auto">
+            {!selected ? (
+              <p className="text-xs text-[var(--text-3)]">Select an entry to see its files and recorded runs.</p>
+            ) : (
+              <>
+                <div>
+                  <div className="mb-1.5 flex flex-wrap items-center gap-2">
+                    <span className="rounded-full border border-[var(--border)] bg-[var(--surface-3)] px-2 py-0.5 text-[10px] font-medium text-[var(--text-2)]">
+                      {categoryLabel(selected.category)}
+                    </span>
+                    {isKnownWeak(selected.category) && <KnownWeakBadge />}
+                    {selected.duration && (
+                      <span className="text-[10px] text-[var(--text-3)]">{selected.duration}</span>
+                    )}
                   </div>
-                ))}
-            </div>
-          </div>
-        </aside>
+                  <h2 className="text-base font-bold tracking-tight text-[var(--heading)]">{selected.name}</h2>
+                  <p className="mt-0.5 break-all font-mono text-[10px] text-[var(--text-3)]">
+                    demo_resources/{selected.folder}
+                  </p>
+                </div>
+
+                {isKnownWeak(selected.category) && (
+                  <div className="rounded-lg border border-[var(--amber)]/40 bg-[var(--amber-bg)] p-3 text-[11px] leading-relaxed text-[var(--amber)]">
+                    <span className="font-semibold">Known weak — do not demo this.</span> It is kept in{" "}
+                    <span className="font-mono">5_known_weak/</span>, and listed here, so nobody picks it by accident.
+                    {selected.failure && <> What goes wrong: {selected.failure}</>}
+                  </div>
+                )}
+
+                {activePreview && (
+                  <div>
+                    <Preview path={activePreview.path || undefined} className="h-56 w-full" rounded="rounded-xl" />
+                    {activePreview.path && (
+                      <p className="mt-1.5 text-[10px] leading-relaxed text-[var(--text-3)]">
+                        {activePreview.caption} · <span className="font-mono">{activePreview.path}</span>
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                {selected.description && !isKnownWeak(selected.category) && (
+                  <p className="text-[11px] leading-relaxed text-[var(--text-2)]">{selected.description}</p>
+                )}
+
+                <div className="text-[11px] leading-relaxed text-[var(--text-3)]">
+                  <span className="font-medium text-[var(--text-2)]">Provenance:</span> {selected.provenance}
+                </div>
+
+                {selected.caveat && (
+                  <div className="rounded-lg border border-[var(--border)] bg-[var(--surface-2)] p-3 text-[11px] leading-relaxed text-[var(--text-2)]">
+                    <span className="font-semibold text-[var(--heading)]">Caveat: </span>
+                    {selected.caveat}
+                  </div>
+                )}
+
+                {selected.meta && (
+                  <div>
+                    <h3 className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-[var(--text-3)]">
+                      Documented metadata
+                    </h3>
+                    <dl className="space-y-1.5">
+                      {selected.meta.map((field) => (
+                        <div key={field.label} className="flex gap-2 text-[11px]">
+                          <dt className="w-28 shrink-0 text-[var(--text-3)]">{field.label}</dt>
+                          <dd className="min-w-0 break-words text-[var(--text-2)]">{field.value}</dd>
+                        </div>
+                      ))}
+                    </dl>
+                    {selected.metaSource && (
+                      <p className="mt-1.5 text-[10px] text-[var(--text-3)]">{selected.metaSource}</p>
+                    )}
+                  </div>
+                )}
+
+                <div>
+                  <h3 className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-[var(--text-3)]">
+                    Recorded runs
+                  </h3>
+                  {selected.runs.length === 0 ? (
+                    <p className="text-[11px] leading-relaxed text-[var(--text-2)]">
+                      No run recorded in the README for this entry, so no result is shown.
+                    </p>
+                  ) : (
+                    <ul className="space-y-2">
+                      {selected.runs.map((run) => (
+                        <li
+                          key={run.prompt}
+                          className="rounded-lg border border-[var(--border)] bg-[var(--surface-2)] p-2.5"
+                        >
+                          <div className="font-mono text-[11px] text-[var(--cyan)]">{run.prompt}</div>
+                          <div className="mt-1 text-[11px] font-medium text-[var(--text)]">{run.result}</div>
+                          {run.note && (
+                            <div className="mt-0.5 text-[10px] leading-relaxed text-[var(--text-3)]">{run.note}</div>
+                          )}
+                          {run.overlay && (
+                            <button
+                              onClick={() =>
+                                setPreview({
+                                  entryId: selected.id,
+                                  path: run.overlay as string,
+                                  caption: `Backend overlay for “${run.prompt}”`,
+                                })
+                              }
+                              className="mt-1.5 text-[10px] font-medium text-[var(--cyan)] underline decoration-dotted underline-offset-2"
+                            >
+                              Show this overlay
+                            </button>
+                          )}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+
+                <div>
+                  <h3 className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-[var(--text-3)]">
+                    Files ({selected.files.length})
+                  </h3>
+                  <ul>
+                    {selected.files.map((file) => (
+                      <FileRow key={file.path} file={file} />
+                    ))}
+                  </ul>
+                </div>
+              </>
+            )}
+          </aside>
+        </div>
       </div>
     </motion.div>
   );

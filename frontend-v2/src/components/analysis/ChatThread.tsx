@@ -1,5 +1,6 @@
 "use client";
 
+import { PipelineProgress } from "@/components/analysis/PipelineProgress";
 import React, { useEffect, useRef } from "react";
 import { cn } from "@/lib/utils";
 import type { ChatMessage } from "@/stores/useAnalysisStore";
@@ -11,9 +12,9 @@ function formatTime(ts: number) {
 
 function AnalysisProgressCard({ content }: { content: string }) {
   return (
-    <div className="flex items-center gap-2.5 px-3 py-2 rounded-lg bg-cyan-500/5 border border-cyan-500/20">
+    <div className="flex items-center gap-2.5 px-3 py-2 rounded-lg bg-cyan-500/5 border border-[var(--cyan)]/20">
       <div className="relative w-4 h-4 shrink-0">
-        <div className="absolute inset-0 rounded-full border-2 border-cyan-500/30 border-t-cyan-400 animate-spin" />
+        <div className="absolute inset-0 rounded-full border-2 border-[var(--cyan)]/30 border-t-cyan-400 animate-spin" />
       </div>
       <span className="text-xs text-[var(--cyan)] font-medium">{content}</span>
     </div>
@@ -77,10 +78,12 @@ function AnalysisResultCard({ result }: { result: import("@/lib/types").Analysis
 export function ChatThread({
   messages,
   isRunning,
+  progress,
   className,
 }: {
   messages: ChatMessage[];
   isRunning?: boolean;
+  progress?: import("@/hooks/useJobProgress").JobProgress | null;
   className?: string;
 }) {
   const endRef = useRef<HTMLDivElement>(null);
@@ -149,7 +152,7 @@ export function ChatThread({
         </div>
       ))}
 
-      {isRunning && messages[messages.length - 1]?.type !== "progress" && (
+      {isRunning && (
         <div className="flex gap-2.5">
           <div className="w-6 h-6 rounded-lg bg-gradient-to-tr from-cyan-500 to-sky-500 flex items-center justify-center text-white shrink-0 mt-0.5">
             <svg className="w-3.5 h-3.5 -rotate-45" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
@@ -157,7 +160,11 @@ export function ChatThread({
               <circle cx="12" cy="12" fill="currentColor" r="2" />
             </svg>
           </div>
-          <AnalysisProgressCard content="Analyzing your imagery..." />
+          <div className="min-w-0 flex-1 space-y-3">
+            {/* Real checkpoint progress from the backend, replacing an indefinite
+                spinner that said nothing about what the pipeline was doing. */}
+            <PipelineProgress progress={progress ?? null} isPlanning={!progress} />
+          </div>
         </div>
       )}
 

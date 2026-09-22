@@ -365,7 +365,8 @@ class SAM2Adapter(BaseModelAdapter):
         video_input: Union[str, Path],
         prompt_box: List[float],
         prompt_frame_idx: int = 0,
-        max_frame_num_to_track: Optional[int] = None
+        max_frame_num_to_track: Optional[int] = None,
+        bidirectional: bool = False
     ) -> Dict[int, Dict[str, Any]]:
         """
         Executes official SAM 2.1 video prediction & mask propagation using inference-state workflow.
@@ -405,19 +406,22 @@ class SAM2Adapter(BaseModelAdapter):
                     "pixel_count": int(np.sum(mask_np > 0))
                 }
 
-            # Propagate across video frames
-            for out_frame_idx, out_obj_ids, out_mask_logits in self._video_predictor.propagate_in_video(
-                inference_state=inference_state,
-                start_frame_idx=prompt_frame_idx,
-                max_frame_num_to_track=max_frame_num_to_track
-            ):
-                if out_mask_logits is not None and len(out_mask_logits) > 0:
-                    mask_np = (out_mask_logits[0] > 0.0).cpu().numpy().squeeze().astype(np.uint8)
-                    results[out_frame_idx] = {
-                        "mask": mask_np,
-                        "score": 0.88,
-                        "pixel_count": int(np.sum(mask_np > 0))
-                    }
+            # Propagate across video frames. propagate_in_video only moves forward from the prompt frame;
+            # with bidirectional=True a second, reverse pass covers the frames before it (video tracking boxes).
+            for reverse in ((False, True) if bidirectional else (False,)):
+                for out_frame_idx, out_obj_ids, out_mask_logits in self._video_predictor.propagate_in_video(
+                    inference_state=inference_state,
+                    start_frame_idx=prompt_frame_idx,
+                    max_frame_num_to_track=max_frame_num_to_track,
+                    reverse=reverse
+                ):
+                    if out_mask_logits is not None and len(out_mask_logits) > 0:
+                        mask_np = (out_mask_logits[0] > 0.0).cpu().numpy().squeeze().astype(np.uint8)
+                        results[out_frame_idx] = {
+                            "mask": mask_np,
+                            "score": 0.88,
+                            "pixel_count": int(np.sum(mask_np > 0))
+                        }
 
             return results
         except Exception as e:

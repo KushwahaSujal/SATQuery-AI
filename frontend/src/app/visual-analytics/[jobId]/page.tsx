@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useLayers, useHistogram, usePixelInspector } from "@/hooks/useSystem";
 import { api } from "@/lib/api";
+import { useConnection } from "@/lib/connection";
 import type { ExportFormat, Layer } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -17,6 +18,9 @@ const provenanceColor: Record<string, string> = {
 
 export default function VisualAnalyticsPage() {
   const { jobId } = useParams<{ jobId: string }>();
+  // Re-renders once real localStorage connection settings replace the SSR defaults, so
+  // visualizationUrl/exportUrl below pick up the key instead of staying stale after hydration.
+  useConnection();
   const layersQuery = useLayers(jobId);
   const [activeId, setActiveId] = useState("true_color");
   const [opacity, setOpacity] = useState(85);

@@ -146,6 +146,24 @@ async def analyze_query(request: AnalyzeRequest, db: AsyncSession = Depends(get_
     return response
 
 
+@router.get("/jobs/{job_id}/progress")
+async def get_job_progress(job_id: str):
+    """Live pipeline progress for a running job.
+
+    Execution steps reach the database only once a pipeline finishes, so this reads the
+    progress file the controller rewrites at each checkpoint. It is what lets a client
+    show which tool is running and which models it selected, rather than an indefinite
+    spinner.
+
+    Returns 404 only when nothing has been published yet -- a job that has not started
+    planning. Callers should treat that as "not started", not as an error.
+    """
+    progress = artifact_manager.load_progress_json(job_id)
+    if progress is None:
+        raise JobNotFoundError(job_id=job_id, details={"job_id": job_id})
+    return progress
+
+
 @router.get("/jobs")
 async def list_jobs(db: AsyncSession = Depends(get_db)):
     """Retrieves the latest analysis jobs from PostgreSQL (limited to 50)."""
@@ -187,18 +205,48 @@ async def list_jobs(db: AsyncSession = Depends(get_db)):
         ) from e
 
 
+def _remove_job_workspaces(job_ids) -> int:
+    """
+    Deletes the results/<job_id> directory for each id. Best effort: a workspace that
+    cannot be removed is logged and skipped, never raised. The database is the source
+    of truth for what history shows, and failing the request after the rows are already
+    committed is what made "Clear All" look broken while it had in fact wiped the table.
+    """
+    import shutil
+
+    removed = 0
+    for job_id in job_ids:
+        try:
+            job_dir = artifact_manager.get_job_dir(job_id)
+        except Exception as e:  # malformed id: nothing safe to delete
+            logger.warning(f"Skipping workspace cleanup for '{job_id}': {e}")
+            continue
+        if job_dir.is_dir():
+            shutil.rmtree(job_dir, ignore_errors=True)
+            if job_dir.exists():
+                logger.warning(f"Workspace for job '{job_id}' could not be fully removed.")
+            else:
+                removed += 1
+    return removed
+
+
 @router.delete("/jobs")
 async def delete_all_jobs(db: AsyncSession = Depends(get_db)):
-    """Clears all jobs from PostgreSQL database and workspace folders."""
+    """Clears every job from the database and removes its workspace directory."""
+    from sqlalchemy import delete, select
+    from backend.app.db.models.job import AnalysisJob
+    from backend.app.db.models.file import UploadedFile
+    from backend.app.db.models.model_run import ModelRun
+    from backend.app.db.models.step import ExecutionStep
+    from backend.app.db.models.result import AnalysisResult
+    from backend.app.db.models.artifact import Artifact
+
     try:
-        from sqlalchemy import delete
-        from backend.app.db.models.job import AnalysisJob
-        from backend.app.db.models.file import UploadedFile
-        from backend.app.db.models.model_run import ModelRun
-        from backend.app.db.models.step import ExecutionStep
-        from backend.app.db.models.result import AnalysisResult
-        from backend.app.db.models.artifact import Artifact
-        import shutil
+        # Collect the ids BEFORE deleting. Workspaces are named after them, and once the
+        # rows are gone there is no way to tell which of the directories under results/
+        # belonged to a tracked job -- most of them are orphans from earlier runs and
+        # must not be touched.
+        job_ids = list((await db.execute(select(AnalysisJob.id))).scalars().all())
 
         await db.execute(delete(Artifact))
         await db.execute(delete(AnalysisResult))
@@ -207,18 +255,44 @@ async def delete_all_jobs(db: AsyncSession = Depends(get_db)):
         await db.execute(delete(UploadedFile))
         await db.execute(delete(AnalysisJob))
         await db.commit()
-
-        # Clean filesystem artifacts after the database transaction succeeds.
-        results_dir = artifact_manager.base_dir
-        if results_dir.exists():
-            for item in results_dir.iterdir():
-                if item.is_dir():
-                    shutil.rmtree(item, ignore_errors=True)
-
-        return {"status": "ok", "message": "All jobs cleared successfully."}
     except Exception as e:
+        await db.rollback()
         logger.error(f"Failed to clear jobs: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+    removed = _remove_job_workspaces(job_ids)
+    logger.info(f"Cleared {len(job_ids)} job(s); removed {removed} workspace(s).")
+    return {
+        "status": "ok",
+        "deleted_jobs": len(job_ids),
+        "removed_workspaces": removed,
+        "message": f"Cleared {len(job_ids)} job(s).",
+    }
+
+
+@router.delete("/jobs/{job_id}")
+async def delete_job(job_id: str, db: AsyncSession = Depends(get_db)):
+    """
+    Deletes one job and its workspace. The child tables declare
+    ON DELETE CASCADE on job_id, so removing the parent row is sufficient.
+    """
+    from sqlalchemy import delete
+    from backend.app.db.models.job import AnalysisJob
+
+    try:
+        res = await db.execute(delete(AnalysisJob).where(AnalysisJob.id == job_id))
+        await db.commit()
+        deleted_rows = res.rowcount or 0
+    except Exception as e:
+        await db.rollback()
+        logger.error(f"Failed to delete job '{job_id}': {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+    removed = _remove_job_workspaces([job_id])
+    if not deleted_rows and not removed:
+        raise JobNotFoundError(job_id=job_id, details={"job_id": job_id})
+
+    return {"status": "ok", "job_id": job_id, "removed_workspace": bool(removed)}
 
 
 @router.delete("/jobs/{job_id}")
@@ -335,6 +409,47 @@ async def get_job_status(job_id: str, db: AsyncSession = Depends(get_db)):
     raise JobNotFoundError(job_id=job_id, details={"job_id": job_id})
 
 
+@router.post("/jobs/{job_id}/reuse-source")
+async def reuse_job_source(job_id: str):
+    """
+    Seeds a fresh workspace with the input imagery of an existing job so the same
+    scene can be re-analysed with a new query.
+
+    Re-running against the original request_id would resolve to the original job
+    directory and overwrite its masks, overlays and result JSON, destroying the
+    result the user is looking at. Copying into a new request_id keeps both.
+
+    Returns the new request_id and filenames, which the caller passes straight to
+    POST /analyze. No upload round-trip: the bytes never leave the server.
+    """
+    source_dir = artifact_manager.get_job_dir(job_id) / "input"
+    if not source_dir.is_dir():
+        raise JobNotFoundError(job_id=job_id, details={"job_id": job_id})
+
+    sources = sorted(p for p in source_dir.iterdir() if p.is_file())
+    if not sources:
+        raise ArtifactNotFoundError(
+            artifact_name="input",
+            message=f"Job '{job_id}' has no source imagery to reuse.",
+            details={"job_id": job_id},
+        )
+
+    new_request_id = str(uuid.uuid4())
+    dest_dir = artifact_manager.get_job_dir(new_request_id) / "input"
+    dest_dir.mkdir(parents=True, exist_ok=True)
+
+    filenames: List[str] = []
+    for src in sources:
+        shutil.copy2(src, dest_dir / src.name)
+        filenames.append(src.name)
+
+    logger.info(
+        f"Reusing {len(filenames)} source image(s) from job {job_id} "
+        f"in new workspace {new_request_id}"
+    )
+    return {"request_id": new_request_id, "image_filenames": filenames}
+
+
 @router.get("/results/{request_id}", response_model=AnalyzeResponse)
 @router.get("/jobs/{request_id}/results", response_model=AnalyzeResponse)
 async def get_job_results(request_id: str, db: AsyncSession = Depends(get_db)):
@@ -359,8 +474,13 @@ async def get_job_results(request_id: str, db: AsyncSession = Depends(get_db)):
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"No results found for request ID '{request_id}'."
         )
-    if not data.get("request_id"):
-        data["request_id"] = data.get("job_id") or request_id
+    # Video jobs also write result.json (a VideoAnalysisResponse, Q-017). Parsing that as an AnalyzeResponse
+    # raised a 500 without CORS headers, which the home page retried every second as a CORS error.
+    if "request_id" not in data and ("flags" in data or "video_metadata" in data):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"'{request_id}' is a video job; its results are at /api/video/{request_id}."
+        )
     return AnalyzeResponse(**data)
 
 

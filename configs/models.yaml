@@ -24,6 +24,24 @@ models:
     device: "auto"
     precision: "float16"
 
+  scene_vlm:
+    name: "SceneVLM"
+    version: "qwen3-vl-4b-instruct-nf4"
+    task: "vqa"
+    supported_tasks:
+      - "single_image_vqa"
+      - "single_image_caption"
+    supported_modalities:
+      - "optical"
+      - "multispectral"
+    input_count: 1
+    input_relationship: "single"
+    enabled: true
+    checkpoint_path: "checkpoints/scene_vlm_qwen3vl4b_nf4"
+    model_id: "Qwen/Qwen3-VL-4B-Instruct"
+    device: "auto"
+    precision: "float16"
+
   grounding_dino:
     name: "GroundingDINO"
     version: "T-v1.0"
@@ -63,25 +81,6 @@ models:
     config_path: "checkpoints/sam2/sam2_hiera_b+.yaml"
     device: "auto"
 
-  locate_anything:
-    name: "LocateAnything"
-    version: "3B"
-    task: "grounding"
-    supported_tasks:
-      - "single_image_grounding"
-    supported_modalities:
-      - "optical"
-      - "multispectral"
-      - "sar"
-    input_count: 1
-    input_relationship: "single"
-    enabled: true
-    checkpoint_path: "checkpoints/locate_anything_3b"
-    model_id: "nvidia/LocateAnything-3B"
-    device: "auto"
-    box_threshold: 0.35
-    text_threshold: 0.25
-
   changeformer:
     name: "ChangeFormer"
     version: "v6"
@@ -96,7 +95,7 @@ models:
     input_relationship: "temporal"
     enabled: true
     checkpoint_path: "checkpoints/changeformer/changeformer_v6_levir_levircd256_epoch20_best.pt"
-    # Frozen on LEVIR-CD validation, never tuned on test (reports/frozen_validation_threshold.json).
+    # Frozen on LEVIR-CD validation, never tuned on test (docs/models/changeformer/reports/frozen_validation_threshold.json).
     threshold: 0.435
     # Scenes up to this side run in one native pass; larger ones are windowed at this size.
     max_native_side: 1024
@@ -167,6 +166,165 @@ models:
     checkpoint_path: "checkpoints/remoteclip/RemoteCLIP-ViT-B-32.pt"
     device: "auto"
 
+  # ------------------------------------------------------------------ locally trained models
+  # Trained on tiles resampled to 0.5 m (training/segmentation/datasets.py, TARGET_GSD_M).
+  # Registered and enabled, but nothing routes to them yet: see docs/models/trained_segmenters.md
+  # and project/qna.md Q-031.
+  roads_segmenter:
+    name: "RoadSegmenter"
+    version: "roads_all_r50"
+    task: "segmentation"
+    supported_tasks:
+      - "single_image_segmentation"
+    supported_modalities:
+      - "optical"
+    input_count: 1
+    input_relationship: "single"
+    enabled: true
+    checkpoint_path: "checkpoints/roads_all_r50_seg/best.pt"
+    class_name: "road"
+    # Left unset so the threshold frozen on validation inside the checkpoint (0.35) is used.
+    threshold: null
+    # 4-flip averaging: +0.012 test IoU on DeepGlobe, 4x slower (Q-032).
+    tta: false
+    trained_gsd_m: 0.5
+    device: "auto"
+
+  buildings_segmenter:
+    name: "BuildingSegmenter"
+    version: "buildings_whu_ma_r50"
+    task: "segmentation"
+    supported_tasks:
+      - "single_image_segmentation"
+    supported_modalities:
+      - "optical"
+    input_count: 1
+    input_relationship: "single"
+    enabled: true
+    checkpoint_path: "checkpoints/buildings_whu_ma_r50_seg/best.pt"
+    class_name: "building"
+    threshold: null  # checkpoint threshold: 0.45
+    tta: false
+    trained_gsd_m: 0.5
+    device: "auto"
+
+  water_segmenter:
+    name: "WaterSegmenter"
+    version: "water_bodies_r34"
+    task: "segmentation"
+    supported_tasks:
+      - "single_image_segmentation"
+    supported_modalities:
+      - "optical"
+      - "multispectral"
+    input_count: 1
+    input_relationship: "single"
+    enabled: true
+    checkpoint_path: "checkpoints/water_seg/best.pt"
+    class_name: "water"
+    threshold: null  # checkpoint threshold: 0.20, frozen on validation
+    tta: false
+    # Sentinel-2. Pooled test IoU 0.475 is pixel-weighted across tiles spanning ~4000x in area;
+    # per-tile median 0.866 / mean 0.772 (Q-035).
+    trained_gsd_m: 10.0
+    device: "auto"
+
+  cloud_segmenter:
+    name: "CloudSegmenter"
+    version: "cloud95_r34"
+    task: "segmentation"
+    supported_tasks:
+      - "single_image_segmentation"
+    supported_modalities:
+      - "optical"
+      - "multispectral"
+    input_count: 1
+    input_relationship: "single"
+    enabled: true
+    checkpoint_path: "checkpoints/cloud_seg/best.pt"
+    class_name: "cloud"
+    threshold: null  # checkpoint threshold: 0.50, frozen on validation
+    tta: false
+    # Landsat 8, 95-Cloud. Pooled test IoU 0.703, split by scene id (Q-035).
+    trained_gsd_m: 30.0
+    device: "auto"
+
+  landcover_segmenter:
+    name: "LandCoverSegmenter"
+    # Repointed from landcover_dg_lv_oem (ResNet-34, partial rural-only LoveDA mirror, LoveDA mIoU
+    # 0.428) to the ResNet-50 run on the complete 2522-tile LoveDA train set: LoveDA 0.488,
+    # DeepGlobe 0.698, OpenEarthMap 0.603 — better on all three (project/qna.md Q-037).
+    version: "landcover_full_r50"
+    task: "land_cover_segmentation"
+    supported_tasks:
+      - "single_image_segmentation"
+      - "land_cover_mapping"
+    supported_modalities:
+      - "optical"
+    input_count: 1
+    input_relationship: "single"
+    enabled: true
+    checkpoint_path: "checkpoints/landcover_full_r50_seg/best.pt"
+    # The checkpoint stores target_gsd 0.5 and takes precedence; kept here for readability.
+    trained_gsd_m: 0.5
+    device: "auto"
+
+  # ISPRS 2D semantic labelling, 6 classes at 0.1 m (project/qna.md Q-036). Registered so they are
+  # callable, but deliberately NOT auto-routed: picking between these and the 0.5 m road/building
+  # models needs GSD and band metadata that never reaches the grounding pipeline, and the two
+  # cities are not interchangeable (Potsdam RGB vs Vaihingen IRRG).
+  isprs_potsdam_segmenter:
+    name: "IsprsPotsdamSegmenter"
+    version: "isprs_potsdam"
+    task: "land_cover_segmentation"
+    supported_tasks:
+      - "single_image_segmentation"
+      - "urban_semantic_labelling"
+    supported_modalities:
+      - "optical"
+    input_count: 1
+    input_relationship: "single"
+    enabled: true
+    checkpoint_path: "checkpoints/isprs_potsdam_seg/best.pt"
+    # True-colour RGB. Test mIoU 0.700 over 4 held-out tiles.
+    trained_gsd_m: 0.1
+    device: "auto"
+
+  isprs_vaihingen_segmenter:
+    name: "IsprsVaihingenSegmenter"
+    version: "isprs_vaihingen"
+    task: "land_cover_segmentation"
+    supported_tasks:
+      - "single_image_segmentation"
+      - "urban_semantic_labelling"
+    supported_modalities:
+      - "optical"
+      - "multispectral"
+    input_count: 1
+    input_relationship: "single"
+    enabled: true
+    checkpoint_path: "checkpoints/isprs_vaihingen_seg/best.pt"
+    # IRRG (infrared/red/green), NOT RGB. Test mIoU 0.729 over 6 held-out tiles.
+    trained_gsd_m: 0.1
+    device: "auto"
+
+  crater_detector:
+    name: "CraterDetector"
+    version: "yolo11s-craters"
+    task: "detection"
+    supported_tasks:
+      - "single_image_detection"
+    supported_modalities:
+      - "optical"
+    input_count: 1
+    input_relationship: "single"
+    enabled: true
+    checkpoint_path: "checkpoints/craters_yolo/weights/best.pt"
+    # Trained at 832 px; ultralytics confidence threshold for serving.
+    input_size: 832
+    box_threshold: 0.25
+    device: "auto"
+
   bigearthnet:
     name: "BigEarthNet-v2.0"
     version: "resnet50-all-v0.2.0"
@@ -183,4 +341,54 @@ models:
     enabled: true
     checkpoint_path: "checkpoints/bigearthnet/model.safetensors"
     config_path: "checkpoints/bigearthnet/config.json"
+    device: "auto"
+
+  eurosat_classifier:
+    name: "EuroSatLandCover"
+    version: "eurosat_efficientnet_b0"
+    task: "classification"
+    supported_tasks:
+      - "single_image_classification"
+    supported_modalities:
+      - "optical"
+      - "multispectral"
+    input_count: 1
+    input_relationship: "single"
+    enabled: true
+    checkpoint_path: "checkpoints/eurosat_efficientnet_b0/best_model.pt"
+    # EuroSAT RGB, 10 classes. Held-out test accuracy 0.9832 over 4050 samples (Q-041). Scene-level
+    # only: one label for the whole tile, no mask and no box, so it is not routed from grounding.
+    input_size: 224
+    trained_gsd_m: 10.0
+    device: "auto"
+
+  flood_segmenter:
+    name: "FloodSegmenter"
+    version: "sen1floods11_unet16ch"
+    task: "segmentation"
+    supported_tasks:
+      - "single_image_segmentation"
+    supported_modalities:
+      - "multispectral"
+      - "sar"
+    input_count: 1
+    input_relationship: "single"
+    enabled: true
+    checkpoint_path: "checkpoints/flood_seg/best.pt"
+    class_name: "flood"
+    # NOT SERVING. The checkpoint loads strict=True, but the delivery never documented the
+    # training-time normalisation and none of 17 swept preprocessing/threshold combinations
+    # reproduced the delivered global flood IoU 0.6292 over the Sen1Floods11 official test split
+    # (90 scenes) and validation split (89 scenes); closest raw-value scheme 0.5403. The delivered
+    # 0.30 threshold provably does not transfer, so it is NOT set here (Q-041 §5).
+    # Serving gate. null (default) => the adapter loads the real checkpoint but refuses to return a
+    # flood mask, because the delivery never documented the training-time normalisation.
+    # "bn_recovered_p2p98" => serve using the normalisation recovered from the checkpoint's own
+    # BatchNorm statistics: it reproduces the delivered scores (IoU 0.6244 vs 0.6292, F1 0.7684 vs
+    # 0.7724 on the official 90-scene test split) but is an inference about what training did, not a
+    # statement from the author, so every response carries that provenance. project/qna.md Q-044.
+    preprocessing: null
+    threshold: null
+    tta: false
+    trained_gsd_m: 10.0
     device: "auto"

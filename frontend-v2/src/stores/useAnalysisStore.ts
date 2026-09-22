@@ -45,8 +45,18 @@ function isVideoFile(file: File): boolean {
 interface AnalysisState {
   messages: ChatMessage[];
   rasters: UploadedRaster[];
+  /** Last upload failure, surfaced so a failed drop is not silent. */
+  uploadError: string | null;
+  /** Query typed on the home page, handed to the composer on /analysis. */
+  pendingPrompt: string | null;
   video: UploadedVideo | null;
   activeJobId: string | null;
+  /**
+   * The job id an in-flight analysis is using, known before POST /analyze returns.
+   * activeJobId is only set once that call resolves -- i.e. after the run has finished --
+   * so live progress polling needs this instead.
+   */
+  pendingJobId: string | null;
   activeJobIsVideo: boolean;
   liveJob: LiveJob | null;
   liveResult: AnalysisResult | null;
@@ -56,7 +66,10 @@ interface AnalysisState {
 
   addMessage: (msg: Omit<ChatMessage, "id" | "timestamp">) => void;
   updateMessage: (id: string, patch: Partial<ChatMessage>) => void;
-  handleUpload: (files: FileList) => Promise<void>;
+  handleUpload: (files: FileList | File[]) => Promise<boolean>;
+  setPendingPrompt: (prompt: string | null) => void;
+  /** True when work from another page is waiting to be continued here. */
+  hasCarriedOverWork: () => boolean;
   startAnalysis: (prompt: string, taskType?: string) => Promise<void>;
   resetAnalysis: () => void;
 }
@@ -65,7 +78,10 @@ export const useAnalysisStore = create<AnalysisState>((set, get) => ({
   messages: [],
   rasters: [],
   video: null,
+  uploadError: null,
+  pendingPrompt: null,
   activeJobId: null,
+  pendingJobId: null,
   activeJobIsVideo: false,
   liveJob: null,
   liveResult: null,
@@ -93,7 +109,7 @@ export const useAnalysisStore = create<AnalysisState>((set, get) => ({
     const videos = fileList.filter(isVideoFile);
     const images = fileList.filter((f) => !isVideoFile(f));
 
-    set({ uploadProgress: 0 });
+    set({ uploadProgress: 0, uploadError: null });
 
     try {
       if (images.length > 0) {
@@ -112,8 +128,14 @@ export const useAnalysisStore = create<AnalysisState>((set, get) => ({
       }
       set({ uploadProgress: 100 });
       setTimeout(() => set({ uploadProgress: null }), 800);
-    } catch {
-      set({ uploadProgress: null });
+      return true;
+    } catch (err) {
+      // A failed upload used to reset the progress bar and say nothing at all.
+      set({
+        uploadProgress: null,
+        uploadError: err instanceof Error ? err.message : "Upload failed",
+      });
+      return false;
     }
   },
 
@@ -134,7 +156,9 @@ export const useAnalysisStore = create<AnalysisState>((set, get) => ({
       if (r.preview_url) previews.push(r.preview_url);
     });
 
-    set({ analysisError: null, liveResult: null, liveJob: null });
+    // The carried-over prompt has now been consumed; drop it so a later
+    // navigation cannot resurrect it into an unrelated analysis.
+    set({ analysisError: null, liveResult: null, liveJob: null, pendingPrompt: null });
 
     set((s) => ({
       messages: [
@@ -158,6 +182,7 @@ export const useAnalysisStore = create<AnalysisState>((set, get) => ({
       // composer immediately so the next analysis starts with a clean slate.
       rasters: [],
       video: null,
+      uploadError: null,
       uploadProgress: null,
     }));
 
@@ -167,6 +192,7 @@ export const useAnalysisStore = create<AnalysisState>((set, get) => ({
       let response: { job_id: string };
 
       if (hasVideo && video) {
+        if (video.id) set({ pendingJobId: video.id });
         response = await api.analyzeVideo({
           video_id: video.id,
           query: promptText,
@@ -174,6 +200,10 @@ export const useAnalysisStore = create<AnalysisState>((set, get) => ({
       } else {
         const requestId = rasters.find((r) => r.request_id)?.request_id;
         const imageFilenames = rasters.map((r) => r.filename).filter(Boolean);
+
+        // Publish the id now: the analyze call below does not resolve until the whole
+        // pipeline is done, and the progress feed is keyed by this id.
+        if (requestId) set({ pendingJobId: requestId });
 
         let resolvedTask: string | undefined;
         if (taskType && taskType !== "auto") {
@@ -192,6 +222,7 @@ export const useAnalysisStore = create<AnalysisState>((set, get) => ({
       }
 
       set({
+        pendingJobId: null,
         activeJobId: response.job_id,
         activeJobIsVideo: hasVideo,
         liveJob: {
@@ -220,8 +251,16 @@ export const useAnalysisStore = create<AnalysisState>((set, get) => ({
         });
       }
     } finally {
-      set({ isSubmittingAnalysis: false });
+      // Always stop the progress poll, including when the analysis threw.
+      set({ isSubmittingAnalysis: false, pendingJobId: null });
     }
+  },
+
+  setPendingPrompt: (prompt) => set({ pendingPrompt: prompt }),
+
+  hasCarriedOverWork: () => {
+    const s = get();
+    return s.rasters.length > 0 || s.video !== null || Boolean(s.pendingPrompt);
   },
 
   resetAnalysis: () =>
@@ -229,13 +268,16 @@ export const useAnalysisStore = create<AnalysisState>((set, get) => ({
       messages: [],
       rasters: [],
       video: null,
+      uploadError: null,
       activeJobId: null,
+      pendingJobId: null,
       activeJobIsVideo: false,
       liveJob: null,
       liveResult: null,
       analysisError: null,
       isSubmittingAnalysis: false,
       uploadProgress: null,
+      pendingPrompt: null,
     }),
 }));
 

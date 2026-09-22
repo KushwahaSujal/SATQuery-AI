@@ -104,6 +104,7 @@ class AdvancedWorkflowPlanner:
             "optical_sar_analysis": TaskType.OPTICAL_SAR_ANALYSIS,
             "single_image_vqa": TaskType.SINGLE_IMAGE_VQA,
             "single_image_caption": TaskType.SINGLE_IMAGE_CAPTION,
+            "single_image_classification": TaskType.SINGLE_IMAGE_CLASSIFICATION,
             "video_grounding": TaskType.VIDEO_GROUNDING,
             "video_grounding_tracking": TaskType.VIDEO_GROUNDING_TRACKING,
             "unsupported_analysis": TaskType.UNSUPPORTED,

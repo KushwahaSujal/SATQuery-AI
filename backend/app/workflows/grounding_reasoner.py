@@ -176,6 +176,10 @@ def parse_v4_query(query: str) -> Dict[str, Any]:
         # "mask" was absent, so "mask trees" asked the detector for a "mask trees" class (Q-015).
         "mask", "masks", "masking", "every", "each", "delineate", "isolate", "extract",
         "how", "many", "are", "there", "visible", "present",
+        # Question and video phrasing: "when does a red car appear?" became the class
+        # "red when does car appear" and was drawn on the keyframe.
+        "when", "what", "which", "does", "do", "did", "appear", "appears", "appeared", "appearing",
+        "shown", "seen", "time", "moment", "video", "clip", "footage",
         "located", "situated", "positioned", "corner", "side", "part", "area", "portion",
         "image", "scene", "photo", "picture", "satellite", "colored", "colour", "color"
     }

@@ -1,0 +1,16 @@
+{
+  "evaluation_type": "held_out_test",
+  "test_scenes": 264,
+  "threshold": 0.4,
+  "valid_pixels": 68627952,
+  "true_negative": 60889458,
+  "true_positive": 5081920,
+  "false_positive": 1385904,
+  "false_negative": 1270670,
+  "precision": 0.785723297356267,
+  "recall": 0.7999760727514289,
+  "f1_score": 0.7927856307916421,
+  "burn_scar_iou": 0.6567065891632144,
+  "pixel_accuracy": 0.9612902043179141,
+  "roc_auc": 0.9774894441090206
+}

@@ -1,0 +1,23 @@
+{
+  "model_name": "UNetFromScratch",
+  "training_type": "from_scratch",
+  "input_channels": 16,
+  "modalities": [
+    "S1",
+    "S2",
+    "DEM"
+  ],
+  "num_classes": 2,
+  "image_size": [
+    512,
+    512
+  ],
+  "base_channels": 16,
+  "ignore_index": 255,
+  "checkpoint_epoch": 9,
+  "checkpoint_validation_loss": 0.37406443758652763,
+  "selected_threshold": 0.30000000000000004,
+  "created_at": "2026-09-19T22:42:00.307533",
+  "best_checkpoint": "C:\\Users\\user\\Desktop\\Satq_Prithvi\\checkpoints\\flood_segmentation\\best_model.pt",
+  "last_checkpoint": "C:\\Users\\user\\Desktop\\Satq_Prithvi\\checkpoints\\flood_segmentation\\last_model.pt"
+}

@@ -16,6 +16,9 @@ individual tests do not have to declare it:
 """
 import os
 
+# The answer writer calls external LLM APIs; tests that need it switch it on with monkeypatch.
+os.environ["SATQUERY_ANSWER_WRITER"] = "off"
+
 import pytest
 
 from backend.app.db.session import ensure_db_tables, get_async_engine

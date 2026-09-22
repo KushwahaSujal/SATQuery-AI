@@ -3,36 +3,25 @@
 import { useState } from "react";
 import Link from "next/link";
 import { motion } from "framer-motion";
+import { rowVariant, stagger } from "@/lib/motion";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
+import {
+  describeJobStatus,
+  isJobComplete,
+  jobStatusDotClasses,
+  jobStatusLabel,
+  jobStatusPillClasses,
+} from "@/lib/statusMap";
+import { describeTask, taskLabel } from "@/lib/taskLabels";
 import { useJobs } from "@/hooks/useJobs";
 import type { AnalysisResult } from "@/lib/types";
 import Sidebar from "@/components/layout/Sidebar";
 import TopBar from "@/components/layout/TopBar";
 import { BorderBeam } from "@/components/ui/border-beam";
 
-const stagger = { hidden: {}, show: { transition: { staggerChildren: 0.06, delayChildren: 0.05 } } };
-const rowVariant = { hidden: { opacity: 0, x: -8 }, show: { opacity: 1, x: 0, transition: { duration: 0.35, ease: [0.22, 1, 0.36, 1] as [number, number, number, number] } } };
 
-const TASK_LABELS: Record<string, { label: string; type: string }> = {
-  bi_temporal_change: { label: "Change Detection", type: "Change Analysis" },
-  bi_temporal_change_vqa: { label: "Change VQA", type: "Change Analysis" },
-  single_image_vqa: { label: "VQA Analysis", type: "Optical" },
-  single_image_grounding: { label: "Grounding", type: "Optical" },
-  single_image_caption: { label: "Captioning", type: "Optical" },
-  video_grounding_tracking: { label: "Video Tracking", type: "Video" },
-  video_vqa: { label: "Video VQA", type: "Video" },
-  video_change: { label: "Video Change", type: "Video" },
-  optical_sar_analysis: { label: "Optical + SAR", type: "Optical + SAR" },
-};
 
-const STATUS_MAP: Record<string, { label: string; color: string }> = {
-  COMPLETED: { label: "Completed", color: "emerald" },
-  RUNNING: { label: "In Progress", color: "amber" },
-  PENDING: { label: "In Progress", color: "amber" },
-  QUEUED: { label: "In Progress", color: "amber" },
-  FAILED: { label: "Failed", color: "rose" },
-};
 
 function formatDate(iso: string): { date: string; time: string } {
   try {
@@ -95,13 +84,15 @@ export default function ReportsPage() {
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.35 }} className="bg-[var(--canvas)] text-[var(--text)] antialiased font-sans h-screen overflow-hidden flex flex-col selection:bg-cyan-500 selection:text-[var(--canvas)]">
       <TopBar showBrand={true} searchPlaceholder="Search reports, locations, or keywords..." onSearch={(q) => setSearchQuery(q)} />
 
-      <div className="flex flex-1 overflow-hidden">
+      {/* Stacks below lg: the detail panel is a hard w-96 shrink-0 flex sibling, so on a
+          390px viewport it claimed the entire row and collapsed <main> to its padding. */}
+      <div className="flex flex-col lg:flex-row flex-1 min-h-0 overflow-hidden">
         <Sidebar hideBrand={true} activeItem="reports" className="h-full" />
 
-        <main className="flex-1 overflow-y-auto p-6 space-y-5 bg-[var(--canvas)]">
+        <main className="flex-1 min-h-0 min-w-0 overflow-y-auto p-6 space-y-5 bg-[var(--canvas)]">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div className="flex items-start gap-3.5">
-              <div className="relative w-10 h-10 rounded-xl bg-cyan-950/60 border border-[var(--cyan)]/30 flex items-center justify-center text-[var(--cyan)] mt-0.5 shadow-[0_0_15px_rgba(6,182,212,0.15)] overflow-hidden">
+              <div className="relative w-10 h-10 rounded-xl bg-[var(--cyan-glow)] border border-[var(--cyan)]/30 flex items-center justify-center text-[var(--cyan)] mt-0.5 shadow-[0_0_15px_rgba(6,182,212,0.15)] overflow-hidden">
                 <BorderBeam duration={5} size={60} colorFrom="#00d5be" colorTo="#00f2fe" />
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
                   <path d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" strokeLinecap="round" strokeLinejoin="round" />
@@ -135,7 +126,7 @@ export default function ReportsPage() {
                   onClick={() => setSelectedTab(tab)}
                   className={`px-3 py-1.5 rounded-lg flex items-center gap-2 transition cursor-pointer ${
                     active
-                      ? "bg-cyan-950/70 border border-[var(--cyan)]/40 text-[var(--cyan)] shadow-sm"
+                      ? "bg-[var(--cyan-glow)] border border-[var(--cyan)]/40 text-[var(--cyan)] shadow-sm"
                       : "text-[var(--text-3)] hover:text-[var(--text)] hover:bg-[var(--surface-hover)]"
                   }`}
                 >
@@ -186,15 +177,15 @@ export default function ReportsPage() {
                   ) : (
                     filteredReports.map((report) => {
                       const isSelected = activeId === report.id;
-                      const taskInfo = TASK_LABELS[report.task] || { label: report.task, type: "Analysis" };
-                      const status = STATUS_MAP[report.status] || STATUS_MAP.COMPLETED;
+                      const taskInfo = describeTask(report.task);
+                      const status = describeJobStatus(report.status);
                       const { date, time } = formatDate(report.created_at);
                       return (
                         <motion.tr
                           key={report.id}
                           variants={rowVariant}
                           onClick={() => setSelectedId(report.id)}
-                          className={`hover:bg-[var(--surface-hover)]/50 transition-colors cursor-pointer ${isSelected ? "bg-cyan-950/20 border-l-2 border-[var(--cyan)]" : ""}`}
+                          className={`hover:bg-[var(--surface-hover)]/50 transition-colors cursor-pointer ${isSelected ? "bg-[var(--cyan-glow)] border-l-2 border-[var(--cyan)]" : ""}`}
                         >
                           <td className="py-3 px-4">
                             <div className="flex items-center gap-3">
@@ -233,8 +224,8 @@ export default function ReportsPage() {
                             </div>
                           </td>
                           <td className="py-3 px-3 whitespace-nowrap">
-                            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-medium bg-blue-950/70 text-blue-300 border border-blue-800/40">
-                              {taskInfo.type}
+                            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-medium bg-[var(--primary-glow)] text-[var(--primary)] border border-[var(--primary)]/40">
+                              {taskInfo.category}
                             </span>
                           </td>
                           <td className="py-3 px-3 text-[var(--text-3)] whitespace-nowrap">
@@ -242,21 +233,14 @@ export default function ReportsPage() {
                             <div className="text-[10px] text-[var(--text-3)]">{time}</div>
                           </td>
                           <td className="py-3 px-3 whitespace-nowrap">
-                            {status.color === "emerald" && (
-                              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-medium bg-[var(--green-bg)]/60 text-emerald-400 border border-emerald-800/40">
-                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" /> {status.label}
-                              </span>
-                            )}
-                            {status.color === "amber" && (
-                              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-medium bg-amber-950/60 text-amber-400 border border-amber-800/40">
-                                <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-ping" /> {status.label}
-                              </span>
-                            )}
-                            {status.color === "rose" && (
-                              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-medium bg-rose-950/60 text-rose-400 border border-rose-800/40">
-                                <span className="w-1.5 h-1.5 rounded-full bg-[var(--error)]" /> {status.label}
-                              </span>
-                            )}
+                            <span
+                              className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-medium border ${jobStatusPillClasses(report.status)}`}
+                            >
+                              <span
+                                className={`w-1.5 h-1.5 rounded-full ${jobStatusDotClasses(report.status)} ${status.active ? "animate-ping" : ""}`}
+                              />
+                              {status.label}
+                            </span>
                           </td>
                           <td className="py-3 px-4 text-right whitespace-nowrap">
                             <div className="flex items-center justify-end gap-1 text-[var(--text-3)]">
@@ -299,7 +283,7 @@ export default function ReportsPage() {
         </main>
 
         {/* Right Details Drawer */}
-        <aside className="w-96 shrink-0 border-l border-[var(--border)] bg-[var(--surface)] overflow-y-auto p-5 flex flex-col space-y-5 select-none">
+        <aside className="w-full lg:w-96 shrink-0 max-h-[60vh] lg:max-h-none border-t lg:border-t-0 lg:border-l border-[var(--border)] bg-[var(--surface)] overflow-y-auto p-5 flex flex-col space-y-5 select-none">
           <div className="flex items-center justify-between">
             <span className="flex items-center gap-1.5 text-xs text-[var(--text-3)] font-medium">
               <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
@@ -308,11 +292,17 @@ export default function ReportsPage() {
               <span>Report Details</span>
             </span>
             {result && (
-              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-medium bg-[var(--green-bg)]/70 text-emerald-400 border border-emerald-800/40">
-                <svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
-                  <polyline points="20 6 9 17 4 12" />
-                </svg>
-                {STATUS_MAP[result.status]?.label || "Completed"}
+              <span
+                className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-medium border ${jobStatusPillClasses(result.status)}`}
+              >
+                {isJobComplete(result.status) ? (
+                  <svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
+                    <polyline points="20 6 9 17 4 12" />
+                  </svg>
+                ) : (
+                  <span className={`w-1.5 h-1.5 rounded-full ${jobStatusDotClasses(result.status)}`} />
+                )}
+                {jobStatusLabel(result.status)}
               </span>
             )}
           </div>
@@ -328,8 +318,8 @@ export default function ReportsPage() {
           {result && (
             <div className="flex flex-wrap items-center gap-2 text-[11px] text-[var(--text-2)]">
               {result.task && (
-                <span className="px-2.5 py-1 rounded-lg bg-purple-950/60 text-purple-300 border border-purple-800/40 font-medium">
-                  {TASK_LABELS[result.task]?.label || result.task}
+                <span className="px-2.5 py-1 rounded-lg bg-[var(--surface-3)] text-[var(--text-2)] border border-[var(--border)] font-medium">
+                  {taskLabel(result.task)}
                 </span>
               )}
               {result.models_used?.map((m) => (
@@ -414,7 +404,7 @@ export default function ReportsPage() {
                   <p className="text-[10px] text-[var(--text-3)] leading-tight">Change regions</p>
                 </div>
                 <div className="p-2.5 rounded-xl bg-[var(--surface-2)] border border-[var(--border)]">
-                  <div className="flex items-center gap-1.5 text-emerald-400 mb-1">
+                  <div className="flex items-center gap-1.5 text-[var(--green)] mb-1">
                     <span className="text-sm font-bold text-[var(--heading)]">
                       {result.evidence.spatial.statistics.estimated_area_sq_km
                         ? `${result.evidence.spatial.statistics.estimated_area_sq_km.toFixed(2)} km²`
@@ -483,33 +473,6 @@ export default function ReportsPage() {
               </div>
             </div>
           )}
-
-          {/* Export Formats */}
-          {/*{result && activeId && (*/}
-          {/*  <div>*/}
-          {/*    <h3 className="text-[11px] font-semibold text-[var(--text-2)] uppercase tracking-wider mb-2">Export Formats</h3>*/}
-          {/*    <div className="space-y-1.5">*/}
-          {/*      {(["png", "geotiff", "geojson"] as const).map((fmt) => (*/}
-          {/*        <a*/}
-          {/*          key={fmt}*/}
-          {/*          href={result.visualizations?.[0] ? api.exportUrl(activeId, (result.visualizations[0] as Record<string, unknown>).layer_id as string || "true_color", fmt) : "#"}*/}
-          {/*          className="flex items-center justify-between p-2 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] hover:border-[var(--border-strong)] transition-colors"*/}
-          {/*        >*/}
-          {/*          <div className="flex items-center gap-2">*/}
-          {/*            <svg className="w-4 h-4 text-[var(--cyan)] shrink-0" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">*/}
-          {/*              <rect height="18" rx="2" ry="2" width="18" x="3" y="3" />*/}
-          {/*              <circle cx="8.5" cy="8.5" r="1.5" /><polyline points="21 15 16 10 5 21" />*/}
-          {/*            </svg>*/}
-          {/*            <span className="text-xs text-[var(--text-2)] font-mono">.{fmt}</span>*/}
-          {/*          </div>*/}
-          {/*          <svg className="w-3.5 h-3.5 text-[var(--text-4)]" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">*/}
-          {/*            <path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" strokeLinecap="round" strokeLinejoin="round" />*/}
-          {/*          </svg>*/}
-          {/*        </a>*/}
-          {/*      ))}*/}
-          {/*    </div>*/}
-          {/*  </div>*/}
-          {/*)}*/}
         </aside>
       </div>
     </motion.div>

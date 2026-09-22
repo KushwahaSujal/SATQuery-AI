@@ -1,0 +1,12 @@
+# Training-only dependencies (on top of backend/requirements.txt). Not needed to serve the API.
+segmentation-models-pytorch
+albumentations
+rasterio
+shapely
+kaggle
+awscli
+
+# ultralytics (crater detector) is AGPL-3.0. It requires opencv-python, which clashes with the
+# backend's opencv-python-headless (both install cv2). Install it without dependencies:
+#   pip install --no-deps ultralytics==8.4.154 ultralytics-thop==2.1.6 ultralytics-platform
+#   pip install cloudpickle nvidia-ml-py polars

@@ -27,6 +27,11 @@ class AppSettings(BaseModel):
     host: str = "0.0.0.0"
     port: int = 8000
     cors_origins: List[str] = ["http://localhost:3000", "http://127.0.0.1:3000"]
+    # Vercel gives every deployment its own preview host
+    # (<project>-<hash>-<org>.vercel.app), so a fixed list only ever covers the
+    # production alias and every preview build hits a CORS wall. A regex is the
+    # only way to admit them without listing hosts that do not exist yet.
+    cors_origin_regex: Optional[str] = None
 
 
 class StorageSettings(BaseModel):
@@ -150,6 +155,14 @@ class AgentVerificationSettings(BaseModel):
     video_frames_to_verify: int = 3
 
 
+class TrainedSegmenterRoutingSettings(BaseModel):
+    """Direct dispatch of plain "mark all roads" / "segment buildings" queries to the trained U-Net
+    segmenters instead of Grounding DINO + SAM 2 (project/qna.md Q-025t, Q-026t, Q-038). Default
+    enabled; set to false to fall back to the detector + SAM 2 path everywhere without a code change
+    if the trained-segmenter path misbehaves in the real app."""
+    enabled: bool = True
+
+
 class ModelSpec(BaseModel):
     name: str
     version: Optional[str] = None
@@ -170,6 +183,21 @@ class ModelSpec(BaseModel):
     input_size: Optional[int] = None
     max_native_side: Optional[int] = None
     model_id: Optional[str] = None
+    # Binary segmenters: the foreground class the checkpoint was trained for, and whether to
+    # average the four flips at inference (4x slower, +0.005 to +0.012 IoU — project/qna.md Q-032).
+    class_name: Optional[str] = None
+    tta: Optional[bool] = None
+    # Ground sampling distance the checkpoint was trained at, in metres/pixel. The binary trainer
+    # does not write its --target-gsd into the checkpoint dict (only into report.json's args), so
+    # for those models this config field is the only machine-readable source: roads/buildings 0.5,
+    # water 10 (Sentinel-2), cloud 30 (Landsat 8) — project/qna.md Q-032, Q-035. The multi-class
+    # checkpoints do store `target_gsd` and it takes precedence over this value.
+    trained_gsd_m: Optional[float] = None
+    # Flood segmenter only. `None` (the default) means the model loads but refuses to serve, because
+    # its training-time normalisation was never documented. Set to "bn_recovered_p2p98" to serve using
+    # the preprocessing recovered from the checkpoint's own BatchNorm statistics — an inference about
+    # what training did, not a statement from the author (project/qna.md Q-044).
+    preprocessing: Optional[str] = None
 
 
 class Config:
@@ -185,6 +213,7 @@ class Config:
         self.database = self._load_database_config()
         self.video = self._load_video_config()
         self.agent_verification = self._load_agent_verification_config()
+        self.trained_segmenter_routing = self._load_trained_segmenter_routing_config()
         self.change_adjudication = self._load_change_adjudication_config()
         self.visualization = self._load_visualization_config()
         self.models: Dict[str, ModelSpec] = self._load_models_config()
@@ -235,6 +264,10 @@ class Config:
         raw = self._load_yaml("app.yaml").get("agent_verification", {})
         return AgentVerificationSettings(**raw) if raw else AgentVerificationSettings()
 
+    def _load_trained_segmenter_routing_config(self) -> TrainedSegmenterRoutingSettings:
+        raw = self._load_yaml("app.yaml").get("trained_segmenter_routing", {})
+        return TrainedSegmenterRoutingSettings(**raw) if raw else TrainedSegmenterRoutingSettings()
+
     def _load_video_config(self) -> VideoSettings:
         raw = self._load_yaml("app.yaml").get("video", {})
         cfg = VideoSettings(**raw) if raw else VideoSettings()
@@ -260,8 +293,14 @@ class Config:
             self.device.preferred = os.getenv("SATQUERY_DEVICE")
         if os.getenv("SATQUERY_RESULTS_DIR"):
             self.storage.results_dir = os.getenv("SATQUERY_RESULTS_DIR")
+        if os.getenv("SATQUERY_CORS_ORIGINS"):
+            self.app.cors_origins = [o.strip() for o in os.getenv("SATQUERY_CORS_ORIGINS").split(",") if o.strip()]
+        if os.getenv("SATQUERY_CORS_ORIGIN_REGEX"):
+            self.app.cors_origin_regex = os.getenv("SATQUERY_CORS_ORIGIN_REGEX").strip()
         if os.getenv("SATQUERY_MAX_UPLOAD_MB"):
             self.storage.max_upload_size_mb = int(os.getenv("SATQUERY_MAX_UPLOAD_MB"))
+        if os.getenv("SATQUERY_TRAINED_SEGMENTERS_ENABLED"):
+            self.trained_segmenter_routing.enabled = os.getenv("SATQUERY_TRAINED_SEGMENTERS_ENABLED").lower() in ("true", "1")
 
         # Database overrides
         if os.getenv("DATABASE_URL"):

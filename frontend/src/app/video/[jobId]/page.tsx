@@ -1,10 +1,14 @@
 "use client";
 
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
+import { mediaUrl, useConnection } from "@/lib/connection";
 import { cn } from "@/lib/utils";
+import { useSegmentPlayer } from "@/hooks/useSegmentPlayer";
+import TrackOverlay, { type ObjectTrack } from "@/components/video/TrackOverlay";
 
 const fmt = (s: number) => {
   const m = Math.floor(s / 60);
@@ -14,6 +18,9 @@ const fmt = (s: number) => {
 
 export default function VideoIntelligencePage() {
   const { jobId } = useParams<{ jobId: string }>();
+  // Re-renders once real localStorage connection settings replace the SSR defaults, so
+  // videoStreamUrl/keyframe_url/downloadUrl below pick up the key instead of staying stale.
+  useConnection();
 
   const { data: videoJob, isLoading } = useQuery({
     queryKey: ["video-job", jobId],
@@ -37,12 +44,43 @@ export default function VideoIntelligencePage() {
       end_sec: f.end_timestamp,
       label: f.label,
       score: f.event_score,
-      keyframe_url: f.keyframe_url,
+      keyframe_url: f.keyframe_url ? mediaUrl(f.keyframe_url) : undefined,
       track_id: undefined as string | undefined,
     })) ?? results.events ?? [];
 
-  const totalSec = videoJob?.video_metadata?.duration_sec ?? 45.2;
   const videoStreamUrl = api.videoStreamUrl(jobId);
+  const { videoRef, currentTime, duration, activeSegment, status, playSegment, seek } = useSegmentPlayer();
+  const [videoError, setVideoError] = useState(false);
+  const tracks: ObjectTrack[] = (videoJob?.flags ?? [])
+    .filter((f) => (f.metadata?.track?.length ?? 0) > 0)
+    .map((f) => ({ id: f.flag_id, label: f.label, score: f.event_score, points: f.metadata!.track! }));
+  // The old fallback was a hard-coded 45.2 s, which misplaced every marker on any other clip.
+  const totalSec = duration ?? videoJob?.video_metadata?.duration_sec ?? 0;
+  const pctOf = (sec: number) => (totalSec > 0 ? Math.min(Math.max((sec / totalSec) * 100, 0), 100) : 0);
+  const segmentOf = (ev: (typeof events)[number]) => ({
+    id: ev.id,
+    start: ev.timestamp_sec,
+    end: "end_sec" in ev && typeof ev.end_sec === "number" ? ev.end_sec : ev.timestamp_sec,
+  });
+
+  // Auto-play the first detected event once, as soon as results arrive.
+  const autoPlayed = useRef(false);
+  const firstEvent = events[0];
+  useEffect(() => {
+    if (autoPlayed.current || !firstEvent) return;
+    autoPlayed.current = true;
+    playSegment(segmentOf(firstEvent));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [firstEvent?.id, playSegment]);
+
+  const inActiveSegment =
+    activeSegment !== null && currentTime >= activeSegment.start - 0.05 && currentTime <= activeSegment.end + 0.05;
+  const statusText =
+    status === "playing" ? "Playing event"
+    : status === "paused" ? "Paused in event"
+    : status === "ended" ? "Stopped at event end"
+    : status === "blocked" ? "Click an event to play"
+    : "";
 
   return (
     <div className="flex flex-col border border-[var(--b1)] rounded-lg overflow-hidden animate-fade-in" style={{ height: "calc(100vh - 80px)" }}>
@@ -94,46 +132,96 @@ export default function VideoIntelligencePage() {
           {/* Player */}
           <div className="flex-1 bg-[var(--s0)] flex items-center justify-center relative overflow-hidden">
             <video
+              ref={videoRef}
               src={videoStreamUrl}
               controls
-              className="w-full h-full object-contain max-h-[500px]"
-              onError={(e) => {
-                (e.currentTarget as HTMLElement).style.display = "none";
-              }}
+              playsInline
+              preload="metadata"
+              className={cn("w-full h-full object-contain max-h-[500px]", videoError && "hidden")}
+              onError={() => setVideoError(true)}
             />
 
-            <div className="text-center space-y-1 p-4 bg-[var(--s1)]/80 rounded border border-[var(--b1)]">
-              <p className="font-mono-data text-[11px] text-[var(--t2)]">
-                Stream: /api/video/{jobId}/stream
-              </p>
-              <p className="font-mono-data text-[10px] text-[var(--t4)]">
-                Object detection & keyframe extraction
-              </p>
-            </div>
+            {!videoError && <TrackOverlay videoRef={videoRef} tracks={tracks} activeId={activeSegment?.id} />}
+
+            {activeSegment && statusText && (
+              <div
+                data-testid="segment-status"
+                className={cn(
+                  "absolute top-3 left-3 font-mono-data text-[11px] px-2.5 py-1 rounded border",
+                  status === "playing"
+                    ? "text-[var(--accent-text)] bg-[var(--accent-dim)] border-[var(--accent)]"
+                    : "text-[var(--amber)] bg-[var(--amber-dim)] border-[var(--amber)]"
+                )}
+              >
+                {statusText} · {fmt(activeSegment.start)} → {fmt(activeSegment.end)}
+              </div>
+            )}
+
+            {videoError && (
+              <div className="text-center space-y-1 p-4 bg-[var(--s1)]/80 rounded border border-[var(--b1)]">
+                <p className="font-mono-data text-[11px] text-[var(--t2)]">
+                  Video stream unavailable: /api/video/{jobId}/stream
+                </p>
+              </div>
+            )}
           </div>
 
           {/* Timeline */}
           <div className="px-4 py-3 border-t border-[var(--b1)] shrink-0 bg-[var(--s1)]">
             <div className="flex items-center gap-2 mb-2">
               <span className="panel-label">Event Timeline</span>
-              <span className="font-mono-data text-[10px] text-[var(--t3)]">0:00 → {fmt(totalSec)}</span>
+              <span className="font-mono-data text-[10px] text-[var(--t3)]">
+                {fmt(currentTime)} / {fmt(totalSec)}
+              </span>
             </div>
-            <div className="relative h-1.5 bg-[var(--s2)] rounded-full">
+            <div
+              data-testid="event-timeline"
+              className="relative h-2 bg-[var(--s2)] rounded-full cursor-pointer"
+              onClick={(e) => {
+                if (totalSec <= 0) return;
+                const rect = e.currentTarget.getBoundingClientRect();
+                seek(((e.clientX - rect.left) / rect.width) * totalSec);
+              }}
+            >
               {events.map((ev) => {
-                const pct = Math.min((ev.timestamp_sec / totalSec) * 100, 98);
+                const seg = segmentOf(ev);
+                const active = activeSegment?.id === ev.id;
                 return (
-                  <div
+                  <button
                     key={ev.id}
-                    className="absolute -translate-x-1/2 w-2.5 h-2.5 rounded-full bg-[var(--accent-text)] -top-0.5 cursor-pointer hover:scale-125 transition-transform"
-                    style={{ left: `${pct}%` }}
-                    title={
-                      "end_sec" in ev && typeof ev.end_sec === "number" && ev.end_sec > ev.timestamp_sec
-                        ? `${fmt(ev.timestamp_sec)} → ${fmt(ev.end_sec)} — ${ev.label}`
-                        : `${fmt(ev.timestamp_sec)} — ${ev.label}`
-                    }
+                    type="button"
+                    aria-label={`Play event ${fmt(seg.start)} to ${fmt(seg.end)}`}
+                    className={cn(
+                      "absolute top-0 h-full rounded-full transition-colors min-w-[6px]",
+                      active ? "bg-[var(--accent)]" : "bg-[var(--accent-text)]/50 hover:bg-[var(--accent-text)]"
+                    )}
+                    style={{ left: `${pctOf(seg.start)}%`, width: `${Math.max(pctOf(seg.end) - pctOf(seg.start), 0)}%` }}
+                    title={`${fmt(seg.start)} → ${fmt(seg.end)} — ${ev.label}`}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      playSegment(seg);
+                    }}
                   />
                 );
               })}
+              {totalSec > 0 && (
+                <div
+                  data-testid="playhead"
+                  data-highlighted={inActiveSegment ? "true" : "false"}
+                  className="absolute top-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none"
+                  style={{ left: `${pctOf(currentTime)}%` }}
+                >
+                  <div
+                    className={cn(
+                      "w-1 h-5 rounded-full transition-[background-color,box-shadow]",
+                      inActiveSegment
+                        ? "bg-[var(--amber)] shadow-[0_0_0_3px_var(--amber-dim),0_0_12px_var(--amber)]"
+                        : "bg-[var(--t2)]",
+                      inActiveSegment && status === "ended" && "animate-pulse"
+                    )}
+                  />
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -148,7 +236,15 @@ export default function VideoIntelligencePage() {
           <div className="flex-1 overflow-y-auto divide-y divide-[var(--b1)]">
             {events.length > 0 ? (
               events.map((ev) => (
-                <div key={ev.id} className="p-4 hover:bg-[var(--s2)] transition-colors">
+                <button
+                  key={ev.id}
+                  type="button"
+                  onClick={() => playSegment(segmentOf(ev))}
+                  className={cn(
+                    "block w-full text-left p-4 hover:bg-[var(--s2)] transition-colors border-l-2",
+                    activeSegment?.id === ev.id ? "bg-[var(--accent-dim)] border-[var(--accent)]" : "border-transparent"
+                  )}
+                >
                   <div className="flex items-center justify-between mb-1.5">
                     <span className="font-mono-data text-[11px] text-[var(--accent-text)]">
                       {fmt(ev.timestamp_sec)}
@@ -176,7 +272,10 @@ export default function VideoIntelligencePage() {
                       {ev.score.toFixed(2)}
                     </span>
                   </div>
-                </div>
+                  <span className="block mt-2 font-mono-data text-[10px] text-[var(--accent-text)]">
+                    {activeSegment?.id === ev.id && status === "playing" ? "▶ playing…" : "▶ play this event"}
+                  </span>
+                </button>
               ))
             ) : (
               (() => {

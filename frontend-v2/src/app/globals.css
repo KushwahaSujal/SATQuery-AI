@@ -154,6 +154,13 @@
    ============================================================ */
 
 .light {
+  /* Contrast note: the accent and semantic colours here are deliberately darker than
+     their dark-theme counterparts. The original light values measured 3.11:1 (accent),
+     3.01:1 (completed), 2.60:1 (processing) and 3.79:1 (failed) against their own
+     backgrounds -- all below the 4.5:1 WCAG AA floor for the 10px labels they are used
+     on. The current values measure 5.11, 5.89, 5.48 and 5.87. --text-3 moved for the
+     same reason: 4.17:1 -> 4.89:1. Do not "restore" the
+     brighter hues without re-measuring. */
   /* ── Surface hierarchy ── */
   --canvas:        #f7f9fc;
   --workspace:     #f2f5f9;
@@ -174,22 +181,22 @@
   --primary-glow:  rgba(74, 158, 255, 0.10);
 
   /* ── Accent ── */
-  --accent:        #00a08c;
-  --accent-glow:   rgba(0, 160, 140, 0.10);
+  --accent:        #00786b;
+  --accent-glow:   rgba(0, 120, 107, 0.10);
 
   /* ── Semantic ── */
-  --green:         #22a06b;
+  --green:         #156b46;
   --green-bg:      rgba(34, 160, 107, 0.08);
-  --amber:         #d4880f;
+  --amber:         #8a5807;
   --amber-bg:      rgba(212, 136, 15, 0.08);
-  --error:         #d04a4a;
+  --error:         #a33333;
   --error-bg:      rgba(208, 74, 74, 0.08);
 
   /* ── Text ── */
   --heading:       #0a1628;
   --text:          #1a2c42;
   --text-2:        #4a5c72;
-  --text-3:        #6a7a8c;
+  --text-3:        #5f6f80;
   --text-4:        #9aabbc;
 
   /* ── Shadows ── */
@@ -200,13 +207,13 @@
 
   /* ── Status badges ── */
   --status-completed-bg:   #e8f7f0;
-  --status-completed-text: #22a06b;
+  --status-completed-text: #156b46;
   --status-completed-dot:  #22a06b;
   --status-processing-bg:  #fdf3e0;
-  --status-processing-text:#d4880f;
+  --status-processing-text:#8a5807;
   --status-processing-dot: #d4880f;
   --status-failed-bg:      #fbeaea;
-  --status-failed-text:    #d04a4a;
+  --status-failed-text:    #a33333;
   --status-failed-dot:     #d04a4a;
 
   /* ── Sidebar ── */

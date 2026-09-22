@@ -3,8 +3,11 @@
 import { useState } from "react";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
+import { fadeUp, rowVariant, stagger } from "@/lib/motion";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
+import { describeTask, taskCategory, taskLabel, TASK_CATEGORIES } from "@/lib/taskLabels";
+import { describeJobStatus, jobStatusDotClasses, jobStatusPillClasses } from "@/lib/statusMap";
 import { useJobs } from "@/hooks/useJobs";
 import { clearLocalJobs } from "@/lib/localJobs";
 import type { AnalysisResult } from "@/lib/types";
@@ -12,32 +15,8 @@ import Sidebar from "@/components/layout/Sidebar";
 import TopBar from "@/components/layout/TopBar";
 import { SpotlightCard } from "@/components/ui/spotlight-card";
 
-const stagger = { hidden: {}, show: { transition: { staggerChildren: 0.07, delayChildren: 0.1 } } };
-const rowVariant = { hidden: { opacity: 0, x: -12 }, show: { opacity: 1, x: 0, transition: { duration: 0.4, ease: [0.22, 1, 0.36, 1] as [number, number, number, number] } } };
-const fadeUp = { hidden: { opacity: 0, y: 16 }, show: { opacity: 1, y: 0, transition: { duration: 0.45, ease: [0.22, 1, 0.36, 1] as [number, number, number, number] } } };
 
-const TASK_LABELS: Record<string, { label: string; category: string }> = {
-  bi_temporal_change: { label: "Change Detection", category: "Change Analysis" },
-  bi_temporal_change_vqa: { label: "Change VQA", category: "Change Analysis" },
-  single_image_vqa: { label: "VQA", category: "Single Image" },
-  single_image_grounding: { label: "Grounding", category: "Single Image" },
-  single_image_caption: { label: "Captioning", category: "Single Image" },
-  video_grounding_tracking: { label: "Video Tracking", category: "Video" },
-  video_vqa: { label: "Video VQA", category: "Video" },
-  video_change: { label: "Video Change", category: "Video" },
-  optical_sar_analysis: { label: "Optical + SAR", category: "Optical + SAR" },
-};
 
-const STATUS_MAP: Record<string, { label: string; color: string }> = {
-  COMPLETED: { label: "Completed", color: "emerald" },
-  RUNNING: { label: "Processing", color: "amber" },
-  PENDING: { label: "Processing", color: "amber" },
-  QUEUED: { label: "Processing", color: "amber" },
-  VALIDATING: { label: "Processing", color: "amber" },
-  PLANNING: { label: "Processing", color: "amber" },
-  GENERATING_EVIDENCE: { label: "Processing", color: "amber" },
-  FAILED: { label: "Failed", color: "rose" },
-};
 
 function formatTimestamp(iso: string): string {
   try {
@@ -116,15 +95,15 @@ export default function HistoryPage() {
     retry: 1,
   });
 
-  const categories = ["All", "Single Image", "Change Analysis", "Optical + SAR", "Video"];
+  const categories = ["All", ...TASK_CATEGORIES];
   const tabCounts: Record<string, number> = { All: jobs.length };
   for (const j of jobs) {
-    const cat = TASK_LABELS[j.task]?.category || "Single Image";
+    const cat = taskCategory(j.task);
     tabCounts[cat] = (tabCounts[cat] || 0) + 1;
   }
 
   const filteredItems = jobs.filter((item) => {
-    const cat = TASK_LABELS[item.task]?.category || "Single Image";
+    const cat = taskCategory(item.task);
     const matchesTab = selectedTab === "All" || cat === selectedTab;
     const matchesSearch = item.query.toLowerCase().includes(searchQuery.toLowerCase());
     return matchesTab && matchesSearch;
@@ -138,8 +117,9 @@ export default function HistoryPage() {
   };
 
   const displayConfidence = result?.confidence != null ? Math.round(result.confidence * 100) : null;
-  const displayStatus = result?.status || jobs.find((j) => j.id === activeId)?.status || "COMPLETED";
-  const statusInfo = STATUS_MAP[displayStatus] || STATUS_MAP.COMPLETED;
+  // No default status: an unknown state must not be reported as a finished one.
+  const displayStatus = result?.status || jobs.find((j) => j.id === activeId)?.status;
+  const statusInfo = describeJobStatus(displayStatus);
 
   return (
     <motion.div
@@ -150,10 +130,12 @@ export default function HistoryPage() {
     >
       <TopBar showBrand={true} searchPlaceholder="Search your analyses, locations, or queries..." onSearch={(q) => setSearchQuery(q)} />
 
-      <div className="flex-1 flex overflow-hidden">
+      {/* See reports/page.tsx: stacks below lg so the 380px detail panel does not
+          swallow a phone-width row. */}
+      <div className="flex-1 flex flex-col lg:flex-row min-h-0 overflow-hidden">
         <Sidebar hideBrand={true} activeItem="history" className="h-full" />
 
-        <main className="flex-1 flex flex-col min-w-0 bg-[var(--canvas)] overflow-hidden">
+        <main className="flex-1 flex flex-col min-h-0 min-w-0 bg-[var(--canvas)] overflow-hidden">
           <div className="p-6 pb-3 border-b border-[var(--border)] shrink-0">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
               <div>
@@ -351,8 +333,8 @@ export default function HistoryPage() {
               filteredItems.map((item) => {
                 const isSelected = activeId === item.id;
                 const isChecked = !!selectedChecks[item.id];
-                const taskInfo = TASK_LABELS[item.task] || { label: item.task, category: "Single Image" };
-                const status = STATUS_MAP[item.status] || STATUS_MAP.COMPLETED;
+                const taskInfo = describeTask(item.task);
+                const status = describeJobStatus(item.status);
                 return (
                   <motion.div key={item.id} variants={rowVariant}>
                     <SpotlightCard
@@ -404,7 +386,7 @@ export default function HistoryPage() {
 
                         <div className="min-w-0">
                           <div className="flex items-center gap-2 mb-1">
-                            <span className="px-2 py-0.5 text-[10px] font-medium rounded bg-cyan-950/70 border border-[var(--cyan)]/30 text-[var(--cyan)]">
+                            <span className="px-2 py-0.5 text-[10px] font-medium rounded bg-[var(--cyan-glow)] border border-[var(--cyan)]/30 text-[var(--cyan)]">
                               {taskInfo.label}
                             </span>
                             <h3 className="text-sm font-semibold text-[var(--heading)] truncate">{item.query}</h3>
@@ -427,14 +409,12 @@ export default function HistoryPage() {
                       <div className="flex items-center gap-5 shrink-0 pl-4">
                         <div className="flex items-center gap-3">
                           <div className="flex flex-col items-end">
-                            <span className={`inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-full ${
-                              status.color === "emerald" ? "text-emerald-400 bg-[var(--green-bg)]/40 border border-emerald-500/30" :
-                              status.color === "amber" ? "text-amber-400 bg-amber-950/40 border border-amber-500/30" :
-                              "text-rose-400 bg-rose-950/40 border border-rose-500/30"
-                            }`}>
-                              {status.color === "amber" && <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-ping" />}
-                              {status.color === "emerald" && <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />}
-                              {status.color === "rose" && <span className="w-1.5 h-1.5 rounded-full bg-rose-400" />}
+                            <span
+                              className={`inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-full border ${jobStatusPillClasses(item.status)}`}
+                            >
+                              <span
+                                className={`w-1.5 h-1.5 rounded-full ${jobStatusDotClasses(item.status)} ${status.active ? "animate-ping" : ""}`}
+                              />
                               {status.label}
                             </span>
                           </div>
@@ -462,7 +442,7 @@ export default function HistoryPage() {
         </main>
 
         {/* Right Details Drawer */}
-        <aside className="w-[380px] border-l border-[var(--border)] bg-[var(--surface)] flex flex-col justify-between overflow-y-auto shrink-0 select-none">
+        <aside className="w-full lg:w-[380px] max-h-[60vh] lg:max-h-none border-t lg:border-t-0 lg:border-l border-[var(--border)] bg-[var(--surface)] flex flex-col justify-between overflow-y-auto shrink-0 select-none">
           <div className="p-4 space-y-4">
             <div className="flex items-center justify-between pb-2 border-b border-[var(--border)]">
               <span className="flex items-center gap-1.5 text-xs text-[var(--text-2)] font-medium">
@@ -471,12 +451,12 @@ export default function HistoryPage() {
                 </svg>
                 <span>Analysis Details</span>
               </span>
-              <span className={`inline-flex items-center gap-1 text-[10px] font-medium px-2.5 py-0.5 rounded-full ${
-                statusInfo.color === "emerald" ? "text-emerald-400 bg-[var(--green-bg)]/50 border border-emerald-500/30" :
-                statusInfo.color === "amber" ? "text-amber-400 bg-amber-950/50 border border-amber-500/30" :
-                "text-rose-400 bg-rose-950/50 border border-rose-500/30"
-              }`}>
-                {statusInfo.color === "emerald" && <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />}
+              <span
+                className={`inline-flex items-center gap-1 text-[10px] font-medium px-2.5 py-0.5 rounded-full border ${jobStatusPillClasses(displayStatus)}`}
+              >
+                <span
+                  className={`w-1.5 h-1.5 rounded-full ${jobStatusDotClasses(displayStatus)} ${statusInfo.active ? "animate-ping" : ""}`}
+                />
                 {statusInfo.label}
               </span>
             </div>
@@ -535,8 +515,8 @@ export default function HistoryPage() {
                   />
                 )}
                 <div className="absolute inset-0 bg-gradient-to-t from-[var(--surface)]/80 to-transparent pointer-events-none" />
-                <div className="absolute top-2.5 right-2.5 px-2 py-0.5 rounded text-[10px] font-semibold bg-blue-900/80 text-blue-200 border border-blue-400/40 backdrop-blur-md z-10">
-                  {TASK_LABELS[result.task]?.label || result.task}
+                <div className="absolute top-2.5 right-2.5 px-2 py-0.5 rounded text-[10px] font-semibold bg-[var(--primary-glow)] text-[var(--primary)] border border-[var(--primary)]/40 backdrop-blur-md z-10">
+                  {taskLabel(result.task)}
                 </div>
               </div>
             )}
@@ -596,7 +576,7 @@ export default function HistoryPage() {
                         <div className="flex items-center justify-center gap-1 text-[10px] text-[var(--text-3)]">
                           <span className="w-1.5 h-1.5 rounded-full bg-blue-400" /> Regions
                         </div>
-                        <div className="text-xs font-bold text-blue-400 mt-1">
+                        <div className="text-xs font-bold text-[var(--primary)] mt-1">
                           {result.evidence.spatial.statistics.region_count || "—"}
                         </div>
                       </div>
@@ -604,7 +584,7 @@ export default function HistoryPage() {
                         <div className="flex items-center justify-center gap-1 text-[10px] text-[var(--text-3)]">
                           <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" /> Area
                         </div>
-                        <div className="text-xs font-bold text-emerald-400 mt-1">
+                        <div className="text-xs font-bold text-[var(--green)] mt-1">
                           {result.evidence.spatial.statistics.estimated_area_sq_km
                             ? `${result.evidence.spatial.statistics.estimated_area_sq_km.toFixed(2)} km²`
                             : result.evidence.spatial.statistics.estimated_area_sq_m

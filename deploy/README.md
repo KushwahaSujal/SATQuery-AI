@@ -1,0 +1,227 @@
+# SatQuery AI — Cloud GPU Setup Manual
+
+How to run the SatQuery AI backend on a free Modal cloud GPU so the app works from any laptop, even one
+with only an integrated GPU. Written for branch `prototype`. Plan:
+`docs/superpowers/plans/2026-09-15-cloud-gpu-and-answers.md`.
+
+```
+ Laptop (browser + Next.js frontend)  ──HTTPS + API key──►  Modal: FastAPI backend on a T4 GPU
+                                                                ├─ Volume satquery-models  (weights, HF cache)
+                                                                ├─ Volume satquery-results (masks, overlays, zips)
+                                                                ├─ Supabase Postgres       (jobs, video flags)
+                                                                └─ Gemini → NVIDIA NIM     (answer wording)
+```
+
+## What it costs
+
+| Item | Free allowance | Our use |
+|---|---|---|
+| Modal compute (Starter plan) | $30 of credit per month, no card | T4 ≈ $0.59/h. Free while idle (shuts down after 5 min). |
+| Modal volumes | 1 TiB per month | ~5.2 GB (see below) |
+| Supabase | existing project | unchanged |
+| Gemini API (Google AI Studio) | free tier, no card | one short request per answer |
+| NVIDIA NIM (build.nvidia.com) | 1,000 credits on signup | only when Gemini fails |
+
+### What goes on the cloud volume
+
+| Item | Size |
+|---|---|
+| ChangeFormer v6 (LEVIR) | 470 MB |
+| CDVQA | 54 MB |
+| RemoteCLIP | 578 MB |
+| DOFA + optical-SAR fusion + BigEarthNet (optional) | 647 MB |
+| Hugging Face cache: Grounding DINO base + SAM 2.1 small | 1.07 GB |
+| Qwen3-VL-4B scene model, 4-bit | ~3 GB (measured at step 2) |
+| **Total** | **~5.2 GB (5.8 GB with the optional models)** |
+
+Not uploaded: BLIP (1.5 GB, replaced by Qwen3-VL) and `satquery_changeformer_best.pt` (470 MB, unused copy).
+Of the local 3.6 GB `checkpoints/`, 1.1 GB is required and 0.65 GB optional.
+
+### Results retention
+
+Job results older than 7 days are deleted from the `satquery-results` volume automatically, at each
+container start (`SATQUERY_RESULTS_RETENTION_DAYS=7`, set in `deploy/modal_app.py`'s image). Locally
+this variable is unset, so results are kept forever.
+
+---
+
+## 1. Accounts and keys (once)
+
+1. **Modal** — sign up at <https://modal.com> (GitHub login works). Then, in the repo:
+   ```bash
+   .venv/bin/pip install modal
+   .venv/bin/modal token new        # opens the browser, saves ~/.modal.toml
+   ```
+2. **Google AI Studio** — <https://aistudio.google.com> → *Get API key* → create key.
+3. **NVIDIA** — <https://build.nvidia.com> → sign in → any model page → *Get API Key*.
+4. **Pick an API key for SatQuery** — any long random string, one per teammate:
+   ```bash
+   python3 -c "import secrets; print(secrets.token_urlsafe(32))"
+   ```
+
+## 2. Prepare the scene model (once, on the RTX 3070 machine)
+
+Stop the local backend first (it needs the GPU).
+
+```bash
+.venv/bin/pip install "bitsandbytes>=0.45.0" "accelerate>=1.0.0"
+PYTHONPATH=. .venv/bin/python scripts/prepare_scene_vlm.py
+```
+
+Downloads Qwen3-VL-4B-Instruct (~9 GB, once), saves the 4-bit copy to `checkpoints/scene_vlm_qwen3vl4b_nf4`
+and prints its size.
+
+## 3. Cloud secrets file
+
+```bash
+cp deploy/.env.modal.example deploy/.env.modal     # gitignored — never commit it
+```
+
+Fill in:
+
+| Variable | Value |
+|---|---|
+| `SATQUERY_API_KEYS` | the key(s) from step 1.4, comma-separated |
+| `DATABASE_URL` | same as in the repo's `.env` (Supabase pooler URL) |
+| `GEMINI_API_KEY` | from step 1.2 |
+| `NVIDIA_API_KEY` | from step 1.3 |
+| `SATQUERY_CORS_ORIGINS` | where the frontend runs, e.g. `http://localhost:3000,http://127.0.0.1:3000` |
+
+## 4. Upload weights (once, and after retraining)
+
+```bash
+.venv/bin/modal volume put satquery-models checkpoints/changeformer/changeformer_v6_levir_levircd256_epoch20_best.pt /checkpoints/changeformer/
+.venv/bin/modal volume put satquery-models checkpoints/cdvqa /checkpoints/cdvqa
+.venv/bin/modal volume put satquery-models checkpoints/remoteclip /checkpoints/remoteclip
+.venv/bin/modal volume put satquery-models checkpoints/dofa /checkpoints/dofa
+.venv/bin/modal volume put satquery-models checkpoints/optical_sar /checkpoints/optical_sar
+.venv/bin/modal volume put satquery-models checkpoints/bigearthnet /checkpoints/bigearthnet
+.venv/bin/modal volume put satquery-models checkpoints/scene_vlm_qwen3vl4b_nf4 /checkpoints/scene_vlm_qwen3vl4b_nf4
+.venv/bin/modal run deploy/modal_app.py::warm_hf_cache
+.venv/bin/modal volume ls satquery-models /checkpoints
+```
+
+After retraining a model, re-run only its `volume put` line with `--force`, then redeploy (step 5).
+
+If the Qwen3-VL measurement (step 2) does not beat BLIP, `scene_vlm` is disabled and VQA/captions fall
+back to BLIP — in that case BLIP must ALSO be uploaded:
+
+```bash
+.venv/bin/modal volume put satquery-models checkpoints/general_rs_vlm /checkpoints/general_rs_vlm
+```
+
+## 5. Deploy
+
+```bash
+.venv/bin/modal deploy deploy/modal_app.py
+```
+
+It prints a URL like `https://<workspace>--satquery-ai-api.modal.run`. Check it:
+
+```bash
+URL=https://<workspace>--satquery-ai-api.modal.run
+KEY=<your SatQuery key>
+curl -s "$URL/api/health"                                                       # first call wakes the GPU
+curl -s -o /dev/null -w "%{http_code}\n" "$URL/api/results/none"                 # 401 (no key)
+curl -s -o /dev/null -w "%{http_code}\n" -H "Authorization: Bearer $KEY" "$URL/api/results/none"   # 404 (key OK)
+```
+
+If a model fails on the T4 with a bfloat16 error, use an L4 instead:
+`SATQUERY_MODAL_GPU=L4 .venv/bin/modal deploy deploy/modal_app.py`
+
+## 6. Use it from any laptop
+
+1. Only the frontend runs locally (no GPU needed):
+   ```bash
+   cd frontend && npm ci && npm run build && npx next start -p 3000
+   ```
+2. Open <http://localhost:3000/system> → **Backend connection** → paste the Modal URL and your SatQuery key →
+   **Save & test**. "Waking GPU (~60 s)" is normal after 5 minutes idle.
+3. Use the app as usual. Answers show "Written by gemini:… from measured evidence" or "Measured answer".
+
+Switch back to a local GPU backend by entering `http://localhost:8000` with an empty key.
+
+## 7. Demo day
+
+- **Keep it warm** for the demo (uses credit only while running):
+  ```bash
+  SATQUERY_MIN_CONTAINERS=1 .venv/bin/modal deploy deploy/modal_app.py
+  ```
+  Afterwards scale back to zero: `.venv/bin/modal deploy deploy/modal_app.py`
+- Run one "mask airplanes" request 5 minutes before starting.
+- Watch credit at <https://modal.com/settings/usage>.
+- Stop everything: `.venv/bin/modal app stop satquery-ai`
+
+## 8. Troubleshooting
+
+| Symptom | Check |
+|---|---|
+| "API key rejected" | key in `deploy/.env.modal` `SATQUERY_API_KEYS` matches the one entered; redeploy after editing |
+| "Backend unreachable" | `curl $URL/api/health`; `modal app logs satquery-ai` |
+| First request very slow | cold start; see measured times below |
+| Answers always "Measured answer" | `GEMINI_API_KEY`/`NVIDIA_API_KEY` set? Trace step "Answer written from measured evidence" shows each provider's status |
+| Video/images don't load, zip gives 401 | frontend must be the version with the connection panel (adds `?key=` to media) |
+| Out of credit | Modal stops serving; use the local backend (`http://localhost:8000`) until the monthly reset |
+
+## 9. Hosting the frontend (Vercel) and installing it as an app
+
+The frontend is a Next.js app and hosts fine on Vercel's free tier. **The backend cannot go
+there**: it needs a CUDA GPU, PyTorch and ~5.2 GB of weights, and runs jobs for tens of seconds.
+Vercel is for `frontend-v2/` only; the backend stays on Modal (sections 1-5).
+
+### Build-time environment (Vercel → Project → Settings → Environment Variables)
+
+| Variable | Value |
+|---|---|
+| `NEXT_PUBLIC_API_BASE_URL` | the Modal URL, e.g. `https://<org>--satquery-ai-fastapi-app.modal.run` |
+| `NEXT_PUBLIC_API_KEY` | one of the keys in `SATQUERY_API_KEYS` |
+
+Both are `NEXT_PUBLIC_*`, so they are **baked in at build time** — changing either needs a
+redeploy, not just a restart. `frontend-v2` has no runtime connection panel; that was the old
+`frontend/` (section 6). The key is sent as `X-API-Key`, and appended as `?key=` on image, video
+and download URLs, which cannot carry headers.
+
+### Allow the Vercel origin through CORS
+
+The backend defaults to `http://localhost:3000` only (`backend/app/config.py:29`), so a hosted
+frontend is blocked until its origin is listed. Add to `deploy/.env.modal` and redeploy:
+
+```
+SATQUERY_CORS_ORIGINS=https://<your-project>.vercel.app,http://localhost:3000
+```
+
+This is the most common "deployed site shows AI Ready but nothing works" cause — `/api/health` is
+an open path, so the status pill goes green while every real request fails on CORS or 401.
+
+### Installing it as an app (PWA)
+
+`frontend-v2/src/app/manifest.ts` and `frontend-v2/public/sw.js` make the site installable: open it
+in Chrome/Edge on the lab PC and use the install icon in the address bar (or ⋮ → Cast, save and
+share → Install page as app). It then opens in its own window with the SatQuery icon, no browser
+chrome, which is what you want in front of a mentor.
+
+What the PWA does **not** do: it does not remove the need for a backend. Every analysis is GPU work
+on Modal. The service worker only caches the shell (HTML, JS, CSS, icons) and deliberately never
+caches `/api/*`, so results are never stale. With the backend down, the app opens and then reports
+errors on every query. The worker is registered in production builds only, so `npm run dev` is
+unaffected.
+
+### Does the lab PC need your machine running?
+
+No, provided the backend is deployed to Modal. Your PC is only required if
+`NEXT_PUBLIC_API_BASE_URL` points at `http://localhost:8000` — that resolves to *the lab PC*, not
+to yours, so a Vercel build pointed at localhost will never work. See section 7 for keeping the
+Modal container warm on demo day.
+
+## Measured
+
+| Measurement | Value |
+|---|---|
+| Scene model folder size | 2.7 GB (`model.safetensors` 2,874,045,174 bytes), 2026-09-17 |
+| Volume contents (`modal volume ls`) | 29 files under `/checkpoints` (Qwen 2.7 GiB, RemoteCLIP 577 MiB, ChangeFormer 470 MiB, DOFA 527 MiB, CDVQA 54 MiB, BigEarthNet 90 MiB, optical-SAR 29 MiB) + HF cache (Grounding DINO base, SAM 2.1 small); sizes checked against local copies |
+| Cold start (first `/api/health` after deploy) | 23.6 s, `device: cuda` (T4) |
+| First use of each model (container up, models not loaded) | mask airplanes 47.1 s · mask white houses 32.4 s · scene question 49.2 s · change question 115.0 s · find red car 105.4 s |
+| Warm: mask airplanes / mask white houses / scene question / change question / find red car | 22.8 s / 24.3 s / 20.9 s / 91.7 s / 110.4 s (includes upload from India and the result zip download: 1.3 / 1.6 / 1.0 / 15.6 / 2.4 MB) |
+| Warm `/api/health` | 2.2–2.4 s |
+
+Measured 2026-09-17 from the RTX 3070 machine with `CUDA_VISIBLE_DEVICES=""`, `scripts/cloud_smoke.py`; all written answers came from `gemini:gemini-3.5-flash-lite`.

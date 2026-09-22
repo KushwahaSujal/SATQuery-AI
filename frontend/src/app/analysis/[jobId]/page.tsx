@@ -5,10 +5,14 @@ import { useParams } from "next/navigation";
 import { useJob, useAnalysisResult } from "@/hooks/useSystem";
 import ExecutionTrace from "@/components/trace/ExecutionTrace";
 import { api } from "@/lib/api";
+import { useConnection } from "@/lib/connection";
 import type { TraceStep } from "@/lib/types";
 
 export default function AnalysisWorkspacePage() {
   const { jobId } = useParams<{ jobId: string }>();
+  // Re-renders once real localStorage connection settings replace the SSR defaults, so
+  // overlayUrl/downloadUrl below pick up the key instead of staying stale after hydration.
+  useConnection();
 
   const job = useJob(jobId);
   const status = job.data?.status ?? "UNKNOWN";

@@ -1,0 +1,36 @@
+{
+  "model": "UNetFromScratch",
+  "training_type": "from_scratch",
+  "input_channels": 16,
+  "modalities": [
+    "S1",
+    "S2",
+    "DEM"
+  ],
+  "training_epochs": 10,
+  "best_checkpoint_epoch": 9,
+  "test_scenes": 67,
+  "default_argmax": {
+    "threshold_behavior": "argmax",
+    "loss": 0.396382,
+    "pixel_accuracy": 0.955744,
+    "precision": 0.787254,
+    "recall": 0.758041,
+    "f1_score": 0.772371,
+    "flood_iou": 0.629157
+  },
+  "validation_selected_threshold": {
+    "threshold": 0.30000000000000004,
+    "selection_dataset": "validation",
+    "selection_metric": "global_validation_flood_iou"
+  },
+  "calibrated_test": {
+    "threshold": 0.30000000000000004,
+    "pixel_accuracy": 0.9506767295208978,
+    "precision": 0.7219667371157437,
+    "recall": 0.8164432430199405,
+    "f1_score": 0.7663040045428137,
+    "flood_iou": 0.621144923355964
+  },
+  "evaluation_timestamp": "2026-09-19T22:38:49.903886"
+}

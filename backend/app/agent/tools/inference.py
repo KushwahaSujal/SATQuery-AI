@@ -29,54 +29,71 @@ from backend.app.logging import logger
 from backend.app.agent.tools.base import register_tool
 
 
-@register_tool("run_vqa")
-def run_vqa(state: AgentState) -> None:
-    if not model_registry.is_model_available("general_rs_vlm"):
-        msg = (
-            "General Remote-Sensing VLM capability is currently NOT_CONFIGURED on this deployment. "
-            "For single-image analysis, Grounding DINO + V4 Reasoner + SAM 2 are active for open-vocabulary spatial detection and segmentation. "
-            "For bi-temporal analysis, ChangeFormer and CDVQA are active."
-        )
-        state.warnings.append("GENERAL_RS_VLM is not configured on this deployment.")
-        state.answer = msg
+def _scene_adapter():
+    for key in ("scene_vlm", "general_rs_vlm"):
+        if model_registry.is_model_available(key):
+            return key, model_registry.get_adapter(key)
+    return None, None
+
+
+def _run_scene_model(state: AgentState, question: str, unavailable_msg: str) -> None:
+    key, adapter = _scene_adapter()
+    if adapter is None:
+        state.warnings.append("No scene model (Qwen3-VL or BLIP) is configured on this deployment.")
+        state.answer = unavailable_msg
         state.confidence = None
         return
-
-    adapter = model_registry.get_adapter("general_rs_vlm")
     arr, _ = RasterInspector.read_as_array(state.image_paths[0])
-    img_pil = to_pil_rgb(arr)
-    res = adapter.predict({"image_pil": img_pil, "query": state.query})
+    res = adapter.predict({"image_pil": to_pil_rgb(arr), "query": question})
     state.model_results.append(res)
     state.answer = res.answer
     state.confidence = res.confidence
-    if "general_rs_vlm" not in state.selected_models:
-        state.selected_models.append("general_rs_vlm")
+    if key not in state.selected_models:
+        state.selected_models.append(key)
     if res.warnings:
         state.warnings.extend(res.warnings)
 
 
+@register_tool("run_vqa")
+def run_vqa(state: AgentState) -> None:
+    _run_scene_model(state, state.query, (
+        "Scene question answering is currently NOT_CONFIGURED on this deployment. "
+        "Grounding DINO + SAM 2 remain active for detection and segmentation; ChangeFormer and CDVQA for change."
+    ))
+
+
 @register_tool("run_caption")
 def run_caption(state: AgentState) -> None:
-    if not model_registry.is_model_available("general_rs_vlm"):
-        msg = (
-            "General Remote-Sensing VLM scene captioning is currently NOT_CONFIGURED on this deployment. "
-            "Active single-image models: Grounding DINO (open-vocabulary detection) and SAM 2 (high-precision segmentation). "
-            "Active bi-temporal models: ChangeFormer and CDVQA."
-        )
-        state.warnings.append("GENERAL_RS_VLM is not configured on this deployment.")
-        state.answer = msg
-        state.confidence = None
-        return
+    _run_scene_model(state, "Describe this image: land cover, main objects and how they are laid out.", (
+        "Scene captioning is currently NOT_CONFIGURED on this deployment. "
+        "Grounding DINO + SAM 2 remain active for detection and segmentation; ChangeFormer and CDVQA for change."
+    ))
 
-    adapter = model_registry.get_adapter("general_rs_vlm")
-    arr, _ = RasterInspector.read_as_array(state.image_paths[0])
-    img_pil = to_pil_rgb(arr)
-    res = adapter.predict({"image_pil": img_pil, "query": "Provide a concise land-cover and scene caption."})
-    state.model_results.append(res)
-    state.answer = res.answer
-    state.confidence = res.confidence
-    if "general_rs_vlm" not in state.selected_models:
-        state.selected_models.append("general_rs_vlm")
+
+@register_tool("run_scene_classification")
+def run_scene_classification(state: AgentState) -> None:
+    """Scene-level land-cover classification via EuroSAT (project/qna.md Q-041, Q-046).
+
+    Delegates to `backend.app.workflows.scene_classification`, which owns the answer text and its
+    caveats -- scene-level only, Sentinel-2 at 10 m/px, sub-metre accuracy NOT MEASURED. A missing
+    checkpoint degrades to a structured unavailable result rather than raising, matching
+    `run_trained_segmenter_path`.
+    """
+    from backend.app.workflows.scene_classification import run_scene_classification as _run
+
+    result = _run(state.image_paths[0], query=state.query)
+    state.answer = result["answer"]
+    state.confidence = result.get("confidence")
+    for w in result.get("warnings", []):
+        if w not in state.warnings:
+            state.warnings.append(w)
+    if "eurosat_classifier" not in state.selected_models:
+        state.selected_models.append("eurosat_classifier")
+    # Evidence rides on the EvidencePackage's metadata dict, the same channel `aoi` and
+    # `change_adjudication` use -- not an ad-hoc attribute on AgentState, which is a plain dataclass
+    # and would have accepted one silently while nothing ever read it.
+    if result.get("evidence"):
+        state.evidence.metadata["scene_classification"] = result["evidence"]
 
 
 @register_tool("run_grounding")
@@ -89,14 +106,9 @@ def run_grounding(state: AgentState) -> None:
     from backend.app.schemas.models import ModelResult
 
     meta = state.metadata[0] if state.metadata else None
-    # Use "auto" mode: GroundingDINO first, LocateAnything fallback when empty.
-    grounding_model = "auto"
-    if "locate_anything" in state.selected_models:
-        grounding_model = "locate_anything"
     pipeline_res = run_grounding_pipeline(
         image=state.image_paths[0],
         query=state.query,
-        grounding_model=grounding_model,
         aoi_mask=state.aoi.mask if state.aoi is not None else None
     )
 

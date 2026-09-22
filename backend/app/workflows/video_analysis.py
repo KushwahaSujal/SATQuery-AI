@@ -32,6 +32,34 @@ from backend.app.exceptions import InvalidInputError, InferenceError
 from backend.app.logging import logger
 
 
+
+def _mask_fits_box(mask: Any, box_2d: List[float], min_inside: float = 0.5, min_iou: float = 0.3) -> bool:
+    """True when a binary mask belongs to the object in ``box_2d`` ([ymin, xmin, ymax, xmax], normalised).
+
+    SAM 2 video propagation follows one object. A frame's propagated mask can therefore sit on a
+    different object than that frame's own detection box.
+    """
+    if mask is None:
+        return False
+    m = np.asarray(mask).squeeze() > 0
+    if m.ndim != 2 or not m.any():
+        return False
+    h, w = m.shape
+    ymin, xmin, ymax, xmax = box_2d
+    x1, y1 = max(0, int(xmin * w)), max(0, int(ymin * h))
+    x2, y2 = min(w, int(round(xmax * w))), min(h, int(round(ymax * h)))
+    if x2 <= x1 or y2 <= y1:
+        return False
+    inside = m[y1:y2, x1:x2].sum() / m.sum()
+    ys, xs = np.nonzero(m)
+    mx1, my1, mx2, my2 = xs.min(), ys.min(), xs.max() + 1, ys.max() + 1
+    ix = max(0, min(x2, mx2) - max(x1, mx1))
+    iy = max(0, min(y2, my2) - max(y1, my1))
+    inter = ix * iy
+    union = (x2 - x1) * (y2 - y1) + (mx2 - mx1) * (my2 - my1) - inter
+    return inside >= min_inside and union > 0 and inter / union >= min_iou
+
+
 class VideoAnalysisWorkflow:
     """
     Production workflow for video analysis and important-moment flagging.
@@ -75,6 +103,55 @@ class VideoAnalysisWorkflow:
         sampling_cfg = sampling_config or VideoSamplingConfig()
         flagging_cfg = flagging_config or VideoFlagConfig()
 
+        # The stages this workflow moves through, in order. Named here so a client can
+        # render the whole checkpoint list before any of it has run, the same way the
+        # agent pipeline publishes plan.steps.
+        planned_stages = [
+            "inspect_video",
+            "sample_frames",
+            "detect_objects",
+            "propagate_masks",
+            "flag_events",
+            "generate_artifacts",
+        ]
+        # Which stage each trace line belongs to, matched on the text the calls already
+        # use. Anything unmatched leaves the current stage unchanged rather than guessing.
+        stage_markers = [
+            ("inspect_video", ("Inspecting video stream", "Video metadata verified", "Task routed")),
+            ("sample_frames", ("Sampling video frames", "Sampled ")),
+            ("detect_objects", ("Candidate detections", "detections found", "Running detection", "Grounding")),
+            ("propagate_masks", ("propagat", "Tracked event", "SAM")),
+            ("flag_events", ("Aggregating detections", "event flags", "flags")),
+            ("generate_artifacts", ("Analysis complete", "Analysis incomplete", "artifact")),
+        ]
+        progress_state = {"current": planned_stages[0], "completed": []}
+
+        def _publish_video_progress(status_value: str = "RUNNING") -> None:
+            """Mirror the trace into the live progress feed.
+
+            Video analysis does not go through the agent controller, so without this a
+            video job publishes no progress at all and the UI can only spin. Best-effort:
+            a progress write must never fail an analysis.
+            """
+            try:
+                artifact_manager.save_progress_json(job_id, {
+                    "job_id": job_id,
+                    "status": status_value,
+                    "task": "video",
+                    "query": query,
+                    "planned_steps": planned_stages,
+                    "completed_steps": list(progress_state["completed"]),
+                    "current_step": progress_state["current"],
+                    "selected_models": list(dict.fromkeys(models_used)),
+                    "trace": [
+                        t.model_dump() if hasattr(t, "model_dump") else dict(t)
+                        for t in trace
+                    ],
+                    "updated_at": datetime.now(timezone.utc).isoformat(),
+                })
+            except Exception:  # noqa: BLE001 - diagnostic only
+                pass
+
         def add_trace(step: str, status: str = "success", model: Optional[str] = None, details: Optional[str] = None):
             ts = datetime.now(timezone.utc).isoformat()
             trace.append(ExecutionStep(
@@ -84,6 +161,16 @@ class VideoAnalysisWorkflow:
                 model=model,
                 details=details
             ))
+            # Advance the stage pointer when this line marks a new stage, completing
+            # every stage before it.
+            for stage, markers in stage_markers:
+                if any(m.lower() in step.lower() for m in markers):
+                    if stage != progress_state["current"]:
+                        idx = planned_stages.index(stage)
+                        progress_state["completed"] = planned_stages[:idx]
+                        progress_state["current"] = stage
+                    break
+            _publish_video_progress("FAILED" if status == "error" else "RUNNING")
 
         # Setup job artifacts directory
         dirs = artifact_manager.init_job_workspace(job_id)
@@ -322,19 +409,32 @@ class VideoAnalysisWorkflow:
                                     if pos in frame_by_pos
                                 }
                                 for det in detections:
-                                    if det.frame_index in by_frame:
-                                        res_dict = by_frame[det.frame_index]
+                                    res_dict = by_frame.get(det.frame_index)
+                                    # Attach the tracked object's mask only where it is this
+                                    # detection's object; otherwise the keyframe showed the box on
+                                    # one car and the outline on another (and the event score used
+                                    # the other object's SAM score).
+                                    if res_dict is not None and _mask_fits_box(res_dict.get("mask"), det.box_2d):
                                         det.mask = res_dict.get("mask")
                                         det.segmentation_score = float(res_dict.get("score", 0.90))
-                            else:
-                                # Documented fallback: apply SAM 2 image segmentation on peak anchor
+
+                            # Detections without a matching propagated mask (a different object, or
+                            # propagation failed): SAM 2 image segmentation on their own box.
+                            unmatched = [d for d in detections if d.mask is None and d.image is not None]
+                            for det in unmatched:
                                 img_res = sam2_adapter.predict({
-                                    "image_pil": anchor_det.image,
-                                    "boxes": [anchor_det.box_2d]
+                                    "image_pil": det.image,
+                                    "boxes": [det.box_2d]
                                 })
                                 if img_res.masks:
-                                    anchor_det.mask = img_res.masks[0].get("binary_mask")
-                                    anchor_det.segmentation_score = float(img_res.masks[0].get("score", 0.85))
+                                    det.mask = img_res.masks[0].get("binary_mask")
+                                    det.segmentation_score = float(img_res.masks[0].get("score", 0.85))
+                            if unmatched:
+                                add_trace(
+                                    "Segmented detections not covered by the tracked object",
+                                    model="sam2",
+                                    details=f"{len(unmatched)} of {len(detections)} detections segmented on their own box.",
+                                )
 
                         finally:
                             shutil.rmtree(temp_frames_dir, ignore_errors=True)
@@ -371,6 +471,35 @@ class VideoAnalysisWorkflow:
                             f"detector score {rj['detector_score']}, but the verification agent confirmed "
                             f"{rj['frames_verified']}/{rj['frames_checked']} frames (best matches: {', '.join(sorted(set(rj['top_matches'])))})."
                         )
+
+                # 6b. Per-event object track for the player: a box that follows the object between the
+                # coarse detection samples (Q-019).
+                if flags and model_registry.is_model_available("sam2"):
+                    from backend.app.video.tracker import track_event
+                    sam2_tracker = model_registry.get_adapter("sam2")
+                    tracked = 0
+                    for f in flags:
+                        if not f.box_2d:
+                            continue
+                        try:
+                            f.metadata["track"] = track_event(
+                                decoder=decoder,
+                                sam2_adapter=sam2_tracker,
+                                start_frame=f.start_frame,
+                                end_frame=f.end_frame,
+                                anchor_frame=f.peak_frame,
+                                anchor_box_2d=f.box_2d,
+                                work_dir=video_artifacts_dir,
+                            )
+                            tracked += 1 if f.metadata["track"] else 0
+                        except Exception as e:
+                            logger.warning(f"Object tracking failed for event {f.flag_id}: {e}")
+                            warnings.append(f"Object tracking unavailable for event {f.start_timestamp:.2f}-{f.end_timestamp:.2f}s: {e}")
+                    add_trace(
+                        f"Tracked the object through {tracked}/{len(flags)} event(s)",
+                        model="sam2",
+                        details="SAM 2.1 propagation forwards and backwards from each event's confirmed box, ~10 fps.",
+                    )
 
                 if not flags and rejected_by_colour and not detections:
                     # Everything the detector proposed failed the colour check, so the
@@ -455,6 +584,11 @@ class VideoAnalysisWorkflow:
                 # Build response
                 artifacts = artifact_manager.list_artifacts(job_id)
 
+                # Terminal progress, so pollers stop cleanly instead of waiting forever.
+                progress_state["completed"] = list(planned_stages)
+                progress_state["current"] = None
+                _publish_video_progress("COMPLETED")
+
                 return VideoAnalysisResponse(
                     job_id=job_id,
                     status=JobStatus.COMPLETED,
@@ -483,6 +617,9 @@ class VideoAnalysisWorkflow:
                 height=0,
                 frame_count=0
             )
+
+            progress_state["current"] = None
+            _publish_video_progress("FAILED")
 
             return VideoAnalysisResponse(
                 job_id=job_id,

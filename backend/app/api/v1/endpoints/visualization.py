@@ -174,6 +174,36 @@ async def get_visualization_image(job_id: str, layer_id: str, db: AsyncSession =
             img, _ = CompositeRenderer.render_true_color(arr2, meta2)
         else:
             img, _ = CompositeRenderer.render_true_color(arr, meta)
+    elif layer_id == "comparison_split":
+        # VisualizationRegistry advertises this layer for every job with >= 2 rasters
+        # (visualization/registry.py), but no renderer existed for it, so the layers
+        # endpoint listed a layer the visualizations endpoint answered 404 for on every
+        # bi-temporal job. Compose the two inputs side by side, which is what the layer
+        # title promises.
+        if len(input_files) < 2:
+            raise VisualizationNotAvailableError(
+                layer_id=layer_id,
+                message="A split comparison needs two input rasters; this job has one.",
+                details={"job_id": job_id, "input_count": len(input_files)},
+            )
+        left, _ = CompositeRenderer.render_true_color(arr, meta)
+        arr2, meta2 = RasterInspector.read_as_array(input_files[1])
+        right, _ = CompositeRenderer.render_true_color(arr2, meta2)
+
+        # Match heights before stacking so differently sized acquisitions still align.
+        target_h = max(left.height, right.height)
+        def _fit(im: Image.Image) -> Image.Image:
+            if im.height == target_h:
+                return im
+            w = max(1, round(im.width * target_h / im.height))
+            return im.resize((w, target_h), Image.LANCZOS)
+
+        left, right = _fit(left), _fit(right)
+        divider = 2
+        canvas = Image.new("RGB", (left.width + divider + right.width, target_h), (10, 15, 20))
+        canvas.paste(left, (0, 0))
+        canvas.paste(right, (left.width + divider, 0))
+        img = canvas
     elif layer_id == "grayscale":
         norm, _, _, _ = _apply_percentile_stretch(arr[0] if arr.ndim == 3 else arr)
         img = Image.fromarray(norm, "L")
@@ -456,10 +486,25 @@ async def export_layer(job_id: str, layer_id: str, format: str = "png"):
         legend_png = vis_dir / f"{layer_id}_legend.png"
         export_out = vis_dir / f"{job_id}_{layer_id}_export.png"
 
+        source_png = layer_png
         if not layer_png.exists():
-            await get_visualization_image(job_id, layer_id)
+            # get_visualization_image serves each layer from wherever it actually lives
+            # (masks/, overlays/, ...) and does not write into visualizations/. Assuming a
+            # file had appeared at layer_png made export 500 with FileNotFoundError for
+            # every derived layer -- the SAM mask and the grounding overlays included.
+            resolved = await get_visualization_image(job_id, layer_id)
+            candidate = getattr(resolved, "path", None)
+            if candidate:
+                source_png = Path(candidate)
 
-        layer_img = Image.open(layer_png)
+        if not source_png.exists():
+            raise ArtifactNotFoundError(
+                layer_id,
+                message=f"Layer '{layer_id}' has no image to export for job '{job_id}'.",
+                details={"job_id": job_id, "layer_id": layer_id},
+            )
+
+        layer_img = Image.open(source_png)
         legend_img = Image.open(legend_png) if legend_png.exists() else None
 
         layer_meta = LayerMetadata(

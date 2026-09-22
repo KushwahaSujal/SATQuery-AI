@@ -1,0 +1,173 @@
+# Training-data sources fetched by scripts/download_training_data.py.
+# Each entry lands in datasets/raw/<name>/ (gitignored). Order = download order.
+# license: as stated by the source; "unstated" means the mirror gives none — check the original
+# project page before any non-research use.
+
+datasets:
+  # ---- roads (Q-020 gap) ------------------------------------------------------------------
+  - name: deepglobe_roads
+    task: road_segmentation
+    source: kaggle
+    ref: balraj98/deepglobe-road-extraction-dataset
+    approx_gb: 4.1
+    license: "DeepGlobe challenge terms (research)"
+  - name: massachusetts_roads
+    task: road_segmentation
+    source: kaggle
+    ref: balraj98/massachusetts-roads-dataset
+    approx_gb: 6.2
+    license: "unstated (Mnih 2013, research use)"
+  # Official SpaceNet 3 (the HF mirror micahter/spacenet-road-dataset has only vector road graphs, no
+  # masks). Only the 8-bit-able PS-RGB tiles + speed geojson are synced (~28 GB for all four cities;
+  # the full tarballs also carry MS/PAN/PS-MS). Masks are rasterised by prepare_spacenet3.py.
+  - name: spacenet3_roads
+    task: road_segmentation
+    source: s3
+    ref: s3://spacenet-dataset/spacenet/SN3_roads/train/
+    sync:
+      - AOI_2_Vegas/PS-RGB
+      - AOI_2_Vegas/geojson_roads_speed
+      - AOI_3_Paris/PS-RGB
+      - AOI_3_Paris/geojson_roads_speed
+      - AOI_4_Shanghai/PS-RGB
+      - AOI_4_Shanghai/geojson_roads_speed
+      - AOI_5_Khartoum/PS-RGB
+      - AOI_5_Khartoum/geojson_roads_speed
+    approx_gb: 28
+    license: CC-BY-SA-4.0
+
+  # ---- buildings --------------------------------------------------------------------------
+  - name: whu_building
+    task: building_segmentation
+    source: hf
+    ref: giswqs/WHU-Building-Dataset
+    approx_gb: 5.3
+    license: cc-by-4.0
+  - name: massachusetts_buildings
+    task: building_segmentation
+    source: kaggle
+    ref: balraj98/massachusetts-buildings-dataset
+    approx_gb: 1.6
+    license: "unstated (Mnih 2013, research use)"
+  - name: inria_aerial
+    task: building_segmentation
+    source: hf
+    ref: blanchon/INRIA-Aerial-Image-Labeling
+    approx_gb: 27.2
+    license: "Inria terms (research)"
+
+  # ---- land cover / water -----------------------------------------------------------------
+  - name: loveda
+    task: landcover_segmentation
+    source: hf
+    ref: chloechia/loveda
+    approx_gb: 4.7
+    license: "CC-BY-NC-SA-4.0 (original)"
+  # Official LoveDA, full set (2522 train + 1669 val tiles). The HF mirror `chloechia/loveda` above has
+  # only the 1366 Rural train tiles (Q-029). Zenodo throttles to ~17 kB/s per connection, and the HF
+  # re-upload of Zenodo's Train.zip is NOT byte-identical to it (md5 e4cf61a1... vs de2b1960...; same
+  # size, re-archived), so a checksum against the official zip can never pass. This mirror stores the
+  # official folder layout as individual PNGs, so completeness is checked by file count instead.
+  - name: loveda_full
+    task: landcover_segmentation
+    source: hf
+    ref: ahsennazir/loveDA
+    approx_gb: 6.5
+    license: cc-by-4.0
+    expect_files: 8382   # (2522 train + 1669 val tiles) x images_png + masks_png
+  - name: deepglobe_landcover
+    task: landcover_segmentation
+    source: kaggle
+    ref: balraj98/deepglobe-land-cover-classification-dataset
+    approx_gb: 2.9
+    license: "DeepGlobe challenge terms (research)"
+  - name: openearthmap
+    task: landcover_segmentation
+    source: hf
+    ref: EVER-Z/open_earth_map
+    approx_gb: 6.3
+    license: "CC-BY-NC-SA-4.0 (original)"
+  - name: sen1floods11
+    task: water_segmentation_sar
+    source: hf
+    ref: blumenstiel/Sen1Floods11
+    approx_gb: 1.8
+    license: "unstated mirror; original CC-BY-4.0"
+
+  # ---- planetary ("space") ----------------------------------------------------------------
+  - name: craters_mars_moon
+    task: crater_detection
+    source: kaggle
+    ref: lincolnzh/martianlunar-crater-detection-dataset
+    approx_gb: 0.08
+    license: "see Kaggle page"
+  - name: craters_lu3m6tgt
+    task: crater_detection
+    source: kaggle
+    ref: riccardolagrassa/lu3m6tgt
+    approx_gb: 1.2
+    license: "see Kaggle page"
+
+  # ---- open-vocabulary detection / grounding ----------------------------------------------
+  - name: dior_rsvg
+    task: visual_grounding
+    source: hf
+    ref: LittleCollections/DIOR-RSVG
+    approx_gb: 5.4
+    license: "unstated mirror (research)"
+  # LAE-1M bundles DIOR, DOTAv2, FAIR1M, xView, HRSC2016, NWPU VHR-10, RSOD, Power-Plant with a
+  # unified text-label format for Grounding-DINO-style training. Largest item — fetched last.
+  - name: lae_1m
+    task: open_vocab_detection
+    source: hf
+    ref: jaychempan/LAE-1M
+    approx_gb: 88.8
+    license: mit
+
+  # ---- phase 2: queued 2026-09-17; "hold: true" entries are skipped until the hold is lifted --------
+  # ISPRS Potsdam (5 cm), Vaihingen (9 cm) and Toronto, downloaded by the user through the ISPRS access
+  # request, which was approved for SIH development use (2026-09-17). Papers using the data should cite
+  # Cramer (2010) and carry the DGPF acknowledgement (ISPRS WG III/4 test description). Toronto's
+  # reference labels may not be in its package; check before training on it.
+  - name: isprs_potsdam_vaihingen
+    task: landcover_segmentation
+    source: manual
+    ref: https://www.isprs.org/resources/datasets/benchmarks/UrbanSemLab/default.aspx
+    approx_gb: 27.3
+    license: "ISPRS; access approved for SIH development; cite Cramer 2010 + DGPF acknowledgement"
+  - name: water_bodies_s2
+    task: water_segmentation
+    source: kaggle
+    ref: franciscoescobar/satellite-images-of-water-bodies
+    approx_gb: 0.26
+    license: CC-BY-NC-SA-4.0
+  - name: dubai_aerial_seg
+    task: landcover_segmentation
+    source: kaggle
+    ref: humansintheloop/semantic-segmentation-of-aerial-imagery
+    approx_gb: 0.03
+    license: CC0
+  - name: isaid_kaggle
+    task: instance_segmentation
+    source: kaggle
+    ref: usharengaraju/isaid-dataset
+    approx_gb: 6.9
+    license: CC-BY-NC-4.0
+  - name: spacenet7_multitemporal
+    task: building_change
+    source: kaggle
+    ref: amerii/spacenet-7-multitemporal-urban-development
+    approx_gb: 11.1
+    license: CC-BY-NC-SA-4.0
+  - name: cloud95_landsat8
+    task: cloud_segmentation
+    source: kaggle
+    ref: sorour/95cloud-cloud-segmentation-on-satellite-images
+    approx_gb: 15.2
+    license: CC0
+  - name: masati_v2_ships
+    task: ship_detection
+    source: kaggle
+    ref: louisaberdeen/masati-v2
+    approx_gb: 3.5
+    license: "see Kaggle description (MASATI-v2 terms)"

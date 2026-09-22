@@ -1,0 +1,227 @@
+{
+  "image": "/home/natsu/dev/isro/tests/data/grounding/05945_0000.png",
+  "modes": {
+    "inset": {
+      "segment the largest building": {
+        "decision": "accepted_unconfirmed",
+        "mode": "attribute_query_label_only",
+        "verifier_status": "unverified",
+        "verifier_confidence": 0.0094,
+        "verifier_rank": 5,
+        "verifier_top_matches": [
+          {
+            "label": "grass field",
+            "probability": 0.8449
+          },
+          {
+            "label": "soccer ball field",
+            "probability": 0.0742
+          },
+          {
+            "label": "ground track field",
+            "probability": 0.0367
+          }
+        ],
+        "selected_box": [
+          239.0,
+          0.0,
+          512.0,
+          64.0
+        ],
+        "crop_box": [
+          0,
+          0,
+          512,
+          512
+        ],
+        "crop_out_of_frame": false,
+        "detector_confidence": 0.358,
+        "answer": "UNCONFIRMED building at [239.0, 0.0, 512.0, 64.0]: detector confidence 0.358, SAM 2 mask score 0.965, area 15,009 px; the verification agent could not confirm the category (best match: grass field)."
+      },
+      "find the white car at the bottom left": {
+        "decision": "accepted_unconfirmed",
+        "mode": "attribute_query_label_only",
+        "verifier_status": "unverified",
+        "verifier_confidence": 0.0023,
+        "verifier_rank": 12,
+        "verifier_top_matches": [
+          {
+            "label": "grass field",
+            "probability": 0.4374
+          },
+          {
+            "label": "trees",
+            "probability": 0.3664
+          },
+          {
+            "label": "soccer ball field",
+            "probability": 0.078
+          }
+        ],
+        "selected_box": [
+          0.0,
+          312.2,
+          29.1,
+          379.9
+        ],
+        "crop_box": [
+          0,
+          279,
+          135,
+          414
+        ],
+        "crop_out_of_frame": false,
+        "detector_confidence": 0.264,
+        "answer": "UNCONFIRMED car at [0.0, 312.2, 29.1, 379.9]: detector confidence 0.264, SAM 2 mask score 0.905, area 1,186 px; the verification agent could not confirm the category (best match: grass field)."
+      }
+    },
+    "clamp": {
+      "segment the largest building": {
+        "decision": "accepted_disputed",
+        "mode": "attribute_query_label_only",
+        "verifier_status": "contradicted",
+        "verifier_confidence": 0.0017,
+        "verifier_rank": 6,
+        "verifier_top_matches": [
+          {
+            "label": "soccer ball field",
+            "probability": 0.581
+          },
+          {
+            "label": "grass field",
+            "probability": 0.3681
+          },
+          {
+            "label": "ground track field",
+            "probability": 0.036
+          }
+        ],
+        "selected_box": [
+          239.0,
+          0.0,
+          512.0,
+          64.0
+        ],
+        "crop_box": [
+          102,
+          0,
+          512,
+          304
+        ],
+        "crop_out_of_frame": false,
+        "detector_confidence": 0.358,
+        "answer": "DISPUTED building at [239.0, 0.0, 512.0, 64.0]: the detector and reasoner selected it for the query's attributes (detector confidence 0.358, SAM 2 mask score 0.965, area 15,009 px), but the verification agent reads this region as 'soccer ball field' (rank 6 for building)."
+      },
+      "find the white car at the bottom left": {
+        "decision": "accepted_unconfirmed",
+        "mode": "attribute_query_label_only",
+        "verifier_status": "unverified",
+        "verifier_confidence": 0.0023,
+        "verifier_rank": 11,
+        "verifier_top_matches": [
+          {
+            "label": "trees",
+            "probability": 0.7836
+          },
+          {
+            "label": "swimming pool",
+            "probability": 0.0675
+          },
+          {
+            "label": "building",
+            "probability": 0.0391
+          }
+        ],
+        "selected_box": [
+          0.0,
+          312.2,
+          29.1,
+          379.9
+        ],
+        "crop_box": [
+          0,
+          278,
+          82,
+          413
+        ],
+        "crop_out_of_frame": false,
+        "detector_confidence": 0.264,
+        "answer": "UNCONFIRMED car at [0.0, 312.2, 29.1, 379.9]: detector confidence 0.264, SAM 2 mask score 0.905, area 1,186 px; the verification agent could not confirm the category (best match: trees)."
+      }
+    },
+    "pad": {
+      "segment the largest building": {
+        "decision": "accepted_disputed",
+        "mode": "attribute_query_label_only",
+        "verifier_status": "contradicted",
+        "verifier_confidence": 0.0127,
+        "verifier_rank": 5,
+        "verifier_top_matches": [
+          {
+            "label": "ground track field",
+            "probability": 0.8388
+          },
+          {
+            "label": "grass field",
+            "probability": 0.0564
+          },
+          {
+            "label": "soccer ball field",
+            "probability": 0.0453
+          }
+        ],
+        "selected_box": [
+          239.0,
+          0.0,
+          512.0,
+          64.0
+        ],
+        "crop_box": [
+          102,
+          -241,
+          648,
+          304
+        ],
+        "crop_out_of_frame": true,
+        "detector_confidence": 0.358,
+        "answer": "DISPUTED building at [239.0, 0.0, 512.0, 64.0]: the detector and reasoner selected it for the query's attributes (detector confidence 0.358, SAM 2 mask score 0.965, area 15,009 px), but the verification agent reads this region as 'ground track field' (rank 5 for building)."
+      },
+      "find the white car at the bottom left": {
+        "decision": "accepted_disputed",
+        "mode": "attribute_query_label_only",
+        "verifier_status": "contradicted",
+        "verifier_confidence": 0.0063,
+        "verifier_rank": 14,
+        "verifier_top_matches": [
+          {
+            "label": "roundabout",
+            "probability": 0.3211
+          },
+          {
+            "label": "ground track field",
+            "probability": 0.2007
+          },
+          {
+            "label": "grass field",
+            "probability": 0.1331
+          }
+        ],
+        "selected_box": [
+          0.0,
+          312.2,
+          29.1,
+          379.9
+        ],
+        "crop_box": [
+          -53,
+          278,
+          82,
+          413
+        ],
+        "crop_out_of_frame": true,
+        "detector_confidence": 0.264,
+        "answer": "DISPUTED car at [0.0, 312.2, 29.1, 379.9]: the detector and reasoner selected it for the query's attributes (detector confidence 0.264, SAM 2 mask score 0.905, area 1,186 px), but the verification agent reads this region as 'roundabout' (rank 14 for car)."
+      }
+    }
+  }
+}

@@ -4,8 +4,10 @@ import { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { motion, useInView } from "framer-motion";
+import { fadeUp, stagger } from "@/lib/motion";
 import { api } from "@/lib/api";
 import { useJobs } from "@/hooks/useJobs";
+import { useAnalysisStore } from "@/stores/useAnalysisStore";
 import Sidebar from "@/components/layout/Sidebar";
 import TopBar from "@/components/layout/TopBar";
 import { ShimmerButton } from "@/components/ui/shimmer-button";
@@ -13,14 +15,6 @@ import { SpotlightCard } from "@/components/ui/spotlight-card";
 import { NumberTicker } from "@/components/ui/number-ticker";
 
 // ─── Animation Variants ──────────────────────────────────────────────────────
-const fadeUp = {
-  hidden: { opacity: 0, y: 24 },
-  show: { opacity: 1, y: 0, transition: { duration: 0.55, ease: [0.22, 1, 0.36, 1] as [number, number, number, number] } },
-};
-const stagger = {
-  hidden: {},
-  show: { transition: { staggerChildren: 0.1 } },
-};
 const scaleIn = {
   hidden: { opacity: 0, scale: 0.92 },
   show: { opacity: 1, scale: 1, transition: { duration: 0.5, ease: [0.22, 1, 0.36, 1] as [number, number, number, number] } },
@@ -82,7 +76,7 @@ const features = [
     desc: "Detect, measure, and interpret land surface changes over time with AI-powered difference analysis.",
     tags: ["Change Detection", "Change VQA", "Temporal"],
     accent: "from-amber-500/20 to-orange-500/10",
-    border: "hover:border-amber-500/50",
+    border: "hover:border-[var(--amber)]/50",
     glow: "rgba(245, 166, 35, 0.08)",
     imgClass: "sat-crop-river",
   },
@@ -99,7 +93,7 @@ const features = [
     desc: "Let the AI automatically select the right models, validate inputs, chain steps, and return structured evidence.",
     tags: ["Smart Routing", "Multi-Step", "Evidence"],
     accent: "from-emerald-500/20 to-teal-500/10",
-    border: "hover:border-emerald-500/50",
+    border: "hover:border-[var(--green)]/50",
     glow: "rgba(40, 201, 138, 0.08)",
     imgClass: "sat-crop-urban",
   },
@@ -130,6 +124,9 @@ export default function HomePage() {
   const router = useRouter();
   const [query, setQuery] = useState("");
   const [dragActive, setDragActive] = useState(false);
+  const handleUpload = useAnalysisStore((s) => s.handleUpload);
+  const setPendingPrompt = useAnalysisStore((s) => s.setPendingPrompt);
+  const uploadProgress = useAnalysisStore((s) => s.uploadProgress);
   const [isUploading, setIsUploading] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
@@ -151,20 +148,30 @@ export default function HomePage() {
   async function handleUploadFiles(files: FileList | File[]) {
     setIsUploading(true);
     setUploadError(null);
-    try {
-      await api.uploadRasters(Array.from(files));
-      router.push("/analysis");
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : "Upload failed";
-      setUploadError(msg);
-    } finally {
-      setIsUploading(false);
+    // Upload through the shared store rather than calling api.uploadRasters directly.
+    // The old code uploaded the files and then threw the response away, so /analysis
+    // opened with an empty workspace and the same file had to be picked a second time.
+    // The store is a module singleton, so what it holds survives the client-side
+    // navigation below. It also accepts video, which api.uploadRasters does not.
+    const ok = await handleUpload(Array.from(files));
+    setIsUploading(false);
+    if (ok) {
+      // `query` is local state and is empty whenever this page remounts (a back
+      // navigation, a fresh visit). The prompt a sample-query click chose lives in
+      // the store, which survives that, so fall back to it -- otherwise the upload
+      // carried over on its own and landed in an empty composer.
+      const carried = query.trim() || useAnalysisStore.getState().pendingPrompt?.trim() || "";
+      setPendingPrompt(carried || null);
+      router.push(carried ? `/analysis?q=${encodeURIComponent(carried)}` : "/analysis");
+    } else {
+      setUploadError(useAnalysisStore.getState().uploadError ?? "Upload failed");
     }
   }
 
   const handleQuerySubmit = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     setIsSubmitting(true);
+    setPendingPrompt(query.trim() || null);
     if (query.trim()) {
       router.push(`/analysis?q=${encodeURIComponent(query.trim())}`);
     } else {
@@ -175,6 +182,8 @@ export default function HomePage() {
   const handleQuickPrompt = (promptText: string) => {
     setQuery(promptText);
     setIsSubmitting(true);
+    // Persist alongside any uploaded imagery so the pair survives a remount.
+    setPendingPrompt(promptText);
     router.push(`/analysis?q=${encodeURIComponent(promptText)}`);
   };
 
@@ -203,10 +212,10 @@ return (
         />
       </div>
 
-      <div className="bg-[var(--canvas)] text-[var(--text)] font-sans min-h-screen flex antialiased">
-        <Sidebar activeItem="home" hideBrand={false} className="sticky top-0 h-screen flex-shrink-0" />
+      <div className="bg-[var(--canvas)] text-[var(--text)] font-sans h-screen overflow-hidden flex antialiased">
+        <Sidebar activeItem="home" hideBrand={false} className="h-full flex-shrink-0" />
 
-        <main className="flex-1 flex flex-col min-w-0 bg-[var(--canvas)] relative">
+        <main className="flex-1 min-w-0 min-h-0 overflow-y-auto bg-[var(--canvas)] relative">
           <TopBar
             showBrand={false}
             searchPlaceholder='Search anything… e.g. "urban expansion in Delhi"'

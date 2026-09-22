@@ -77,6 +77,29 @@ class IntentClassifier:
         r"\b(locate|find|highlight|point\s+out|where\s+is|where\s+are|identify\s+the|show\s+me|detect|segment|outline|isolate|box|search\s+for|mask|masks|masking|mark|delineate)\b"
     ]
 
+    # Scene-level land-cover classification, routed to the trained EuroSAT EfficientNet-B0
+    # (`eurosat_classifier`, project/qna.md Q-041). Deliberately narrow: the phrase must name land
+    # cover / land use / terrain, or aim a classification verb at the *scene* rather than at an
+    # object. "classify the vehicles in this image" and "how many airplanes are there" must stay on
+    # the VQA fallback, because EuroSAT has no vehicle or airplane class and the classifier answers
+    # with one label for the whole tile.
+    # Checked strictly after grounding, spectral, SAR, change and captioning (see classify_intent),
+    # so the only queries this can capture are the ones that today reach the generic VQA fallback.
+    SCENE_CLASSIFICATION_PATTERNS = [
+        # The model's own vocabulary, in any spelling: "land cover", "land-cover", "landuse".
+        r"\b(land\s*-?\s*cover|land\s*-?\s*use|landcover|landuse)\b",
+        # A classification verb or noun aimed at the whole scene. The scene noun must follow
+        # immediately (after an optional determiner) so an object noun cannot slip in between.
+        r"\b(classify|classification|categorise|categorize)\s+(?:the\s+|this\s+|these\s+|a\s+|an\s+)?"
+        r"(scene|image|tile|photo|picture|terrain|area)\b",
+        r"\b(scene|image|tile|terrain)\s+(class|classification|category|type)\b",
+        r"\bwhat\s+(type|kind|class|category)\s+of\s+(terrain|surface|scene|ground\s*cover)\b",
+        r"\b(terrain|surface)\s+type\b",
+        # Bare "classify this" / "categorise it" — only at the end of the query, so
+        # "classify this warehouse" is not swallowed.
+        r"\b(classify|categorise|categorize)\s+(?:this|it)\s*[?.!]*$",
+    ]
+
     @classmethod
     def extract_entities(cls, query: str) -> ExtractedQueryEntities:
         """
@@ -302,6 +325,31 @@ class IntentClassifier:
             return IntentClassificationResult(
                 task="single_image_caption",
                 routing_confidence=0.89,
+                input_requirements=["single_image"],
+                entities=[],
+                attributes=entities.model_dump(exclude_none=True),
+                extracted_entities=entities
+            )
+
+        # Scene-level land-cover classification request (Q-041). Placed here on purpose: last check
+        # before the generic VQA fallback, so it cannot take a query away from grounding
+        # ("mask all roads"), spectral analysis ("compute NDVI"), SAR, change detection or
+        # captioning ("describe this image") — every one of those returns above. The only traffic it
+        # can win is traffic that currently lands on `single_image_vqa`, whose model (Qwen3-VL/BLIP)
+        # is frequently NOT_CONFIGURED and which has no measured land-cover score at all.
+        # A whole-tile label cannot answer a query scoped to a sub-region ("what land cover is in the
+        # north"), to an ordinal, or to a change between epochs ("what land cover changed here" on a
+        # single image). Those keep whatever route they have today rather than receiving a
+        # confidently-wrong scene label — the same reason trained_segmenter.py refuses relational and
+        # colour-qualified requests.
+        scene_scoped = not (entities.position or entities.relation or entities.ordering or has_change)
+        if scene_scoped and any(bool(re.search(p, q)) for p in cls.SCENE_CLASSIFICATION_PATTERNS):
+            return IntentClassificationResult(
+                task="single_image_classification",
+                # Router confidence, not ML accuracy (see IntentClassificationResult). Below
+                # captioning's 0.89 and grounding's 0.90, matching this check's position in the
+                # chain: the lexical trigger is explicit, but anything more specific already won.
+                routing_confidence=0.87,
                 input_requirements=["single_image"],
                 entities=[],
                 attributes=entities.model_dump(exclude_none=True),

@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo } from "react";
 import type { UploadedRaster, UploadedVideo } from "@/lib/types";
 import { useLayers } from "@/hooks/useSystem";
 import { api } from "@/lib/api";
+import { useConnection } from "@/lib/connection";
 import { Badge } from "@/components/ui/badge";
 
 interface MapViewerProps {
@@ -34,6 +35,9 @@ export default function MapViewer({ rasters, video, jobId }: MapViewerProps) {
   const active = rasters[rasters.length - 1];
   const [activeLayer, setActiveLayer] = useState("RGB");
   const [selectedBackendLayer, setSelectedBackendLayer] = useState<string | null>(null);
+  // Re-renders once real localStorage connection settings replace the SSR defaults, and again
+  // on any later change, so imageUrl/legend src below pick up the key instead of staying stale.
+  const connection = useConnection();
 
   // Fetch available layers from backend when we have a jobId
   const layersQuery = useLayers(jobId || undefined);
@@ -77,11 +81,16 @@ export default function MapViewer({ rasters, video, jobId }: MapViewerProps) {
 
   // Build image URL
   const imageUrl = useMemo(() => {
+    // Referenced only to force a recompute once useConnection() reports the real stored
+    // base/key (post-hydration) — api.visualizationUrl()/mediaUrl() read them directly,
+    // not via this closure, so exhaustive-deps can't see the dependency on its own.
+    void connection.base;
+    void connection.key;
     if (jobId && selectedBackendLayer) {
       return api.visualizationUrl(jobId, selectedBackendLayer);
     }
     return active?.preview_url || null;
-  }, [jobId, selectedBackendLayer, active?.preview_url]);
+  }, [jobId, selectedBackendLayer, active?.preview_url, connection.base, connection.key]);
 
   // Check if selected layer has a legend
   const activeLayerInfo = backendLayers.find(l => l.id === selectedBackendLayer);
@@ -233,7 +242,7 @@ export default function MapViewer({ rasters, video, jobId }: MapViewerProps) {
         {hasLegend && jobId && selectedBackendLayer && (
           <div className="absolute bottom-12 right-2 w-20 bg-[var(--s2)] border border-[var(--b1)] rounded p-1 opacity-80 hover:opacity-100 transition-opacity">
             <img
-              src={`${api.visualizationUrl(jobId, selectedBackendLayer)}/legend`}
+              src={api.legendUrl(jobId, selectedBackendLayer)}
               alt="Layer legend"
               className="w-full h-auto"
               onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}

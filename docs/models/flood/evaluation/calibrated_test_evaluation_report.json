@@ -1,0 +1,13 @@
+{
+  "evaluation_type": "test_set",
+  "threshold": 0.30000000000000004,
+  "true_positive": 1225327,
+  "false_positive": 471880,
+  "true_negative": 13179670,
+  "false_negative": 275484,
+  "precision": 0.7219667371157437,
+  "recall": 0.8164432430199405,
+  "f1_score": 0.7663040045428137,
+  "flood_iou": 0.621144923355964,
+  "pixel_accuracy": 0.9506767295208978
+}

@@ -1,3 +1,4 @@
+import asyncio
 import time
 import torch
 from datetime import datetime
@@ -30,6 +31,15 @@ class SafeToolExecutor:
 
     @staticmethod
     async def execute_tool(tool_name: str, state: AgentState) -> None:
+        """Run one tool.
+
+        The tool functions are synchronous and CPU/GPU bound. Calling them directly from
+        this coroutine blocked the event loop for the whole analysis, so every other
+        request -- health, job polling, artifact images -- queued behind it and the UI
+        looked frozen or broken mid-run. They are dispatched to a worker thread instead.
+        GPU concurrency is unchanged: heavy tools still serialize on `gpu_lock`, so
+        exactly one runs at a time, as before.
+        """
         if tool_name not in TOOL_REGISTRY:
             raise KeyError(f"Tool '{tool_name}' not found in registered tools.")
 
@@ -42,24 +52,34 @@ class SafeToolExecutor:
         try:
             if tool_name in SafeToolExecutor.HEAVY_INFERENCE_TOOLS:
                 async with gpu_lock.acquire(tool_name):
+                    first_error: Optional[str] = None
                     try:
-                        tool_func(state)
-                    except Exception as first_error:
-                        if not SafeToolExecutor._is_cuda_oom(first_error):
+                        await asyncio.to_thread(tool_func, state)
+                    except Exception as e:
+                        if not SafeToolExecutor._is_cuda_oom(e):
                             raise
+                        first_error = str(e)
+                    if first_error is not None:
                         # Resident models from earlier queries can exhaust an 8 GB GPU. Release them
                         # all (they reload lazily) and retry once; recorded in the trace, never silent.
+                        # This runs outside the except block on purpose: the live exception's
+                        # traceback keeps the failed call's frames (model, activations) alive, so
+                        # releasing inside it frees nothing.
+                        import gc
                         from backend.app.ml.registry import model_registry
                         released = model_registry.release_gpu_memory()
+                        gc.collect()
+                        if torch.cuda.is_available():
+                            torch.cuda.empty_cache()
                         state.add_trace(
                             step_name=f"GPU memory released after out-of-memory in {tool_name}; retrying once",
                             status="warning",
                             tool=tool_name,
-                            details=f"Released: {released}. First error: {str(first_error)[:200]}",
+                            details=f"Released: {released}. First error: {first_error[:200]}",
                         )
-                        tool_func(state)
+                        await asyncio.to_thread(tool_func, state)
             else:
-                tool_func(state)
+                await asyncio.to_thread(tool_func, state)
 
             end_time = time.perf_counter()
             end_iso = datetime.utcnow().isoformat() + "Z"

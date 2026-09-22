@@ -1,6 +1,8 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import { AnimatePresence, motion } from "framer-motion";
+import { modalVariant, overlayVariant } from "@/lib/motion";
 import { useCommandPalette } from "./CommandPaletteContext";
 import { useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
@@ -27,33 +29,64 @@ export default function CommandPalette() {
     setQuery("");
   };
 
+  // Routes this app actually has. The original list was written against the old
+  // frontend and pointed at /jobs, which does not exist in this app -- v2 splits that
+  // into /history and /reports.
   const allItems: CommandItem[] = [
     {
-      id: "cmd-center",
+      id: "home",
       group: "Navigation",
-      label: "Command Center",
-      description: "Upload data and run queries",
+      label: "Home",
+      description: "Overview and recent analyses",
       action: () => navigate("/"),
     },
     {
-      id: "jobs",
+      id: "analysis",
       group: "Navigation",
-      label: "Jobs",
-      description: "Analysis execution history",
-      action: () => navigate("/jobs"),
+      label: "New Analysis",
+      description: "Upload imagery or video and run a query",
+      action: () => navigate("/analysis"),
+    },
+    {
+      id: "history",
+      group: "Navigation",
+      label: "History",
+      description: "Every analysis run, with execution traces",
+      action: () => navigate("/history"),
+    },
+    {
+      id: "reports",
+      group: "Navigation",
+      label: "Reports",
+      description: "Completed analyses and downloads",
+      action: () => navigate("/reports"),
+    },
+    {
+      id: "datasets",
+      group: "Navigation",
+      label: "Sample Data",
+      description: "Demo imagery and video bundled with the repo",
+      action: () => navigate("/datasets"),
+    },
+    {
+      id: "documentation",
+      group: "Navigation",
+      label: "Documentation",
+      description: "Repository docs, rendered live",
+      action: () => navigate("/documentation"),
     },
     {
       id: "models",
-      group: "Navigation",
-      label: "Model Observatory",
-      description: "Model registry and lifecycle",
+      group: "Diagnostics",
+      label: "Model Registry",
+      description: "Model lifecycle, checkpoints and refusal reasons",
       action: () => navigate("/models"),
     },
     {
       id: "system",
-      group: "Navigation",
+      group: "Diagnostics",
       label: "System Diagnostics",
-      description: "API, database, storage health",
+      description: "API reachability, database and device",
       action: () => navigate("/system"),
     },
   ];
@@ -66,13 +99,21 @@ export default function CommandPalette() {
       )
     : allItems;
 
+  // Reset on open/close by comparing against the previous value during render. React
+  // supports adjusting state while rendering; doing it in an effect meant a synchronous
+  // setState that triggers a second render pass.
+  const [wasOpen, setWasOpen] = useState(isOpen);
+  if (wasOpen !== isOpen) {
+    setWasOpen(isOpen);
+    setActiveIdx(0);
+    setQuery("");
+  }
+
+  // Focusing a DOM node is a real side effect, so it stays in an effect.
   useEffect(() => {
-    if (isOpen) {
-      setActiveIdx(0);
-      setTimeout(() => inputRef.current?.focus(), 50);
-    } else {
-      setQuery("");
-    }
+    if (!isOpen) return;
+    const t = setTimeout(() => inputRef.current?.focus(), 50);
+    return () => clearTimeout(t);
   }, [isOpen]);
 
   useEffect(() => {
@@ -95,8 +136,6 @@ export default function CommandPalette() {
     return () => window.removeEventListener("keydown", handleKey);
   }, [isOpen, filtered, activeIdx]);
 
-  if (!isOpen) return null;
-
   const groups: Record<string, CommandItem[]> = {};
   for (const item of filtered) {
     if (!groups[item.group]) groups[item.group] = [];
@@ -104,17 +143,30 @@ export default function CommandPalette() {
   }
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-start justify-center pt-[18vh]"
-      onClick={() => setIsOpen(false)}
-    >
-      <div className="absolute inset-0" style={{ background: "var(--scrim)" }} />
+    <AnimatePresence>
+      {isOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-start justify-center pt-[18vh]"
+          onClick={() => setIsOpen(false)}
+        >
+          <motion.div
+            className="absolute inset-0"
+            style={{ background: "var(--scrim)" }}
+            variants={overlayVariant}
+            initial="hidden"
+            animate="show"
+            exit="exit"
+          />
 
-      <div
-        className="relative w-full max-w-120 rounded-xl animate-slide-down overflow-hidden"
-        style={{ border: "1px solid var(--border-strong)", background: "var(--surface-2)", boxShadow: "var(--shadow-lg)" }}
-        onClick={(e) => e.stopPropagation()}
-      >
+          <motion.div
+            className="relative w-full max-w-120 rounded-xl overflow-hidden"
+            style={{ border: "1px solid var(--border-strong)", background: "var(--surface-2)", boxShadow: "var(--shadow-lg)" }}
+            onClick={(e) => e.stopPropagation()}
+            variants={modalVariant}
+            initial="hidden"
+            animate="show"
+            exit="exit"
+          >
         <div className="flex items-center gap-2.5 px-4" style={{ borderBottom: "1px solid var(--border)" }}>
           <svg
             className="w-3.5 h-3.5 shrink-0"
@@ -199,7 +251,9 @@ export default function CommandPalette() {
           <span><kbd style={{ color: "var(--text-2)" }}>&#8629;</kbd> open</span>
           <span><kbd style={{ color: "var(--text-2)" }}>ESC</kbd> close</span>
         </div>
-      </div>
-    </div>
+          </motion.div>
+        </div>
+      )}
+    </AnimatePresence>
   );
 }

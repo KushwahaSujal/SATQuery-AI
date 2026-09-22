@@ -88,6 +88,14 @@ class CapabilityMatcher:
             reason = "Single image provided with scene captioning/summarization query."
             return cap, reason
 
+        # Scene-level land-cover classification (project/qna.md Q-046). Sits after captioning and
+        # before the VQA default for the same reason the intent classifier does: the only traffic it
+        # can win is traffic that would otherwise fall through to VQA.
+        if intent.task == "single_image_classification":
+            cap = capability_registry.get("single_image_classification")
+            reason = "Single image provided with a scene-level land-cover classification query."
+            return cap, reason
+
         # Default Single Image VQA
         cap = capability_registry.get("single_image_vqa")
         reason = "Single image provided with general natural-language visual inquiry."

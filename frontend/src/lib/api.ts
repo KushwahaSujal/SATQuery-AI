@@ -1,4 +1,5 @@
-import { endpoints, API_BASE } from "./endpoints";
+import { endpoints } from "./endpoints";
+import { authHeaders, getApiBase, mediaUrl } from "./connection";
 import type {
   AnalyzeRequest,
   AnalysisResult,
@@ -15,10 +16,11 @@ import type {
 } from "./types";
 
 async function http<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${API_BASE}${path}`, {
+  const response = await fetch(`${getApiBase()}${path}`, {
     ...init,
     headers: {
       Accept: "application/json",
+      ...authHeaders(),
       ...init?.headers,
     },
   });
@@ -97,11 +99,7 @@ export const api = {
 
     const rasters: UploadedRaster[] = files.map((file, i) => {
       const meta = metadataList[i] || {};
-      const preview = meta.preview_url
-        ? (meta.preview_url as string).startsWith("http")
-          ? meta.preview_url as string
-          : `${API_BASE}${meta.preview_url}`
-        : undefined;
+      const preview = meta.preview_url ? mediaUrl(meta.preview_url as string) : undefined;
 
       return {
         id: `${requestId}-${i}`,
@@ -146,7 +144,7 @@ export const api = {
       height: meta.height as number,
       frames: meta.frame_count as number,
       codec: meta.codec as string,
-      preview_url: `${API_BASE}${res.video_url || endpoints.videoStream(res.job_id as string)}`,
+      preview_url: mediaUrl((res.video_url as string) || endpoints.videoStream(res.job_id as string)),
     };
 
     return { video };
@@ -207,8 +205,8 @@ export const api = {
       description: `${l.units || ""} ${l.layer_type ? "(" + l.layer_type + ")" : ""}`.trim(),
       available: true,
       legend_available: Boolean(l.legend_url),
-      artifact_url: l.artifact_url ? `${API_BASE}${l.artifact_url}` : `${API_BASE}${endpoints.visualization(jobId, l.layer_id as string)}`,
-      legend_url: l.legend_url ? `${API_BASE}${l.legend_url}` : undefined,
+      artifact_url: mediaUrl((l.artifact_url as string) || endpoints.visualization(jobId, l.layer_id as string)),
+      legend_url: l.legend_url ? mediaUrl(l.legend_url as string) : undefined,
     }));
     return { layers };
   },
@@ -226,26 +224,29 @@ export const api = {
     http<HistogramResponse>(endpoints.histogram(jobId, layerId)),
 
   visualizationUrl: (jobId: string, layerId: string) =>
-    `${API_BASE}${endpoints.visualization(jobId, layerId)}`,
+    mediaUrl(endpoints.visualization(jobId, layerId)),
+
+  legendUrl: (jobId: string, layerId: string) =>
+    mediaUrl(endpoints.legend(jobId, layerId)),
 
   exportUrl: (
     jobId: string,
     layerId: string,
     format: "png" | "geotiff" | "geojson",
   ) =>
-    `${API_BASE}${endpoints.exportLayer(jobId, layerId)}?format=${format}`,
+    mediaUrl(`${endpoints.exportLayer(jobId, layerId)}?format=${format}`),
 
   reportUrl: (requestId: string) =>
-    `${API_BASE}${endpoints.report(requestId)}`,
+    mediaUrl(endpoints.report(requestId)),
 
   downloadUrl: (requestId: string) =>
-    `${API_BASE}${endpoints.downloadResult(requestId)}`,
+    mediaUrl(endpoints.downloadResult(requestId)),
 
   videoJob: (jobId: string) =>
     http<VideoJobResult>(endpoints.videoJob(jobId)),
 
   videoStreamUrl: (jobId: string) =>
-    `${API_BASE}${endpoints.videoStream(jobId)}`,
+    mediaUrl(endpoints.videoStream(jobId)),
 
   listJobs: async (): Promise<Record<string, unknown>[]> => {
     try {

@@ -1,0 +1,23 @@
+{
+  "experiment": "BurnScars Prithvi EO v2 300M from scratch",
+  "seed": 42,
+  "training_scenes": 432,
+  "internal_validation_scenes": 108,
+  "held_out_test_scenes": 264,
+  "valid_pixels": 68627952,
+  "precision_burn_scar": 0.824592170131026,
+  "recall_burn_scar": 0.7600844694841001,
+  "f1_burn_scar": 0.7910253568538832,
+  "roc_auc": 0.9774894441090206,
+  "confusion_matrix": [
+    [
+      61248239,
+      1027123
+    ],
+    [
+      1524085,
+      4828505
+    ]
+  ],
+  "best_checkpoint": "C:\\Users\\user\\Desktop\\Satq_Prithvi\\results\\burnscars_rigorous_checkpoints\\burnscars-rigorous-epoch=08.ckpt"
+}

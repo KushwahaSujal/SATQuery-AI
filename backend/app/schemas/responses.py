@@ -56,6 +56,8 @@ class AnalyzeResponse(BaseModel):
     workflow_reason: str
     query: Optional[str] = None
     answer: Optional[str] = None
+    answer_source: str = "template"  # "<provider>:<model>" when written by the answer writer (Q-021)
+    answer_facts: Optional[str] = None  # the measured template answer the written answer was based on
     confidence: Optional[float] = None  # None if model did not produce genuine score
     models_used: List[str] = Field(default_factory=list)
     parameters: Dict[str, Any] = Field(default_factory=dict)
@@ -65,6 +67,12 @@ class AnalyzeResponse(BaseModel):
     trace: List[ExecutionStep] = Field(default_factory=list)
     warnings: List[str] = Field(default_factory=list)
     errors: List[str] = Field(default_factory=list)
+    # Every ModelResult in this run whose status was a refusal (Q-045). One entry per refusing
+    # model: model, task, status, code, reason. A refusal is a legitimate informative answer, not an
+    # HTTP error, so it is reported here rather than raised — but it is a top-level field a consumer
+    # cannot miss, and `answer` for such a run is the adapter's own refusal text, never an LLM
+    # rewrite of it. Empty means no model refused.
+    model_refusals: List[Dict[str, Any]] = Field(default_factory=list)
     artifacts: Dict[str, List[str]] = Field(default_factory=dict)
     visualizations: List[Dict[str, Any]] = Field(default_factory=list)
     orchestration: Optional[Dict[str, Any]] = None
