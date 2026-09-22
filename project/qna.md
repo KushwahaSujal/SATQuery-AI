@@ -5008,3 +5008,458 @@ computes no geometry of its own beyond mapping normalised coordinates onto the d
 "Why did this take a type change to fix?" Because that was the whole defect. The pipeline computed
 the tracks, the API returned them, and the interface in front of them described a narrower object,
 so every consumer was blind to them.
+
+---
+
+## Q-052 · The home page could not scroll, and the sample-query prompt was never persisted
+
+**Date:** 2026-09-22 · **Branch:** prototype · uncommitted at time of writing
+
+**Files:** `frontend-v2/src/app/page.tsx`, `frontend-v2/src/app/analysis/page.tsx`,
+`frontend-v2/src/components/layout/Sidebar.tsx`, `frontend-v2/src/stores/useAnalysisStore.ts`
+
+**What did the page actually do wrong, step by step?**
+`globals.css:292` sets `body { height: 100%; overflow: hidden }`. Every page in the app works
+around that by owning an internal `overflow-y-auto` container — nine of eleven `page.tsx` files
+have one. The home page did not: it used `min-h-screen` with no scroller, so everything below the
+first viewport (Capabilities, CTA banner, Recent Analyses) rendered but was clipped and
+unreachable. Measured after the fix at 1440x820: `main.scrollHeight` 1873 vs `clientHeight` 820.
+
+**Why fix it at the page and not by deleting `overflow: hidden` from `body`?**
+Because the other nine pages depend on that rule to keep their own headers and panes pinned while
+an inner pane scrolls. Removing it globally would have put a second scrollbar on all of them. The
+page-level fix matches the pattern already used at `models/page.tsx:162`.
+
+**What was the intermediate mistake, and what did it teach?**
+The first attempt made `main` both `flex flex-col` and a fixed-height scroller. Flex items default
+to `flex-shrink: 1`, so the sections compressed instead of overflowing: the hero collapsed from
+791px to ~110px and the headline was sliced mid-glyph with the stats band overlapping it. Dropping
+`flex flex-col` so the sections are ordinary block children fixed it. Recorded because the
+intermediate state was shipped to the dev server and seen.
+
+**What was the prompt bug's mechanism?**
+`page.tsx` built the handoff URL from `query`, a local React state. Clicking a sample query called
+`setQuery()` and navigated away in the same tick, so on any remount (a back navigation, a fresh
+visit) `query` was `""` and the upload pushed a bare `/analysis`. The imagery survived because it
+lives in the `useAnalysisStore` module singleton; the prompt did not, because nothing wrote it
+there. `pendingPrompt` and `setPendingPrompt` already existed in the store and were already
+counted by `hasCarriedOverWork()` — `setPendingPrompt` had zero call sites. Half-finished plumbing.
+
+**Blast radius if the prompt fix is wrong?**
+A stale prompt could leak into an unrelated later analysis. Guarded at both ends: `startAnalysis`
+clears `pendingPrompt` when it consumes it, and `resetAnalysis` now clears it too (it previously
+wiped every other carried field and left this one behind).
+
+**Verification (measured, in a real browser):**
+- Before: click sample query -> back -> upload from home landed on `/analysis`, textarea `""`,
+  `1 attached`. Image alone, prompt gone. Reproduced.
+- After: same flow lands on `/analysis?q=Highlight%20the%20water%20body`, textarea
+  `"Highlight the water body"`, `1 attached`.
+- No-leak case: fresh load, upload with no prompt chosen -> bare `/analysis`, empty composer.
+- Hero restored: headline, Earth viewport, tasking console and sample queries all render unclipped.
+- `tsc --noEmit` exit 0; `eslint` exit 0 (4 pre-existing warnings, none in the changed lines).
+
+**How to answer a reviewer who asks why the sidebar gained 40px of bottom padding?**
+The Next.js 16 dev-tools badge (`nextjs-portal`) is fixed to the viewport's bottom-left and was
+covering the "Connect with Us" label. `py-4` became `pt-4 pb-14` on the aside. This is a dev-only
+overlay, so in a production build the padding is a 40px gap with nothing in it — a deliberate
+trade the user asked for after hitting the clipped label repeatedly in dev.
+
+---
+
+## Q-053 · Result page: layers moved right, caption under the image, and re-prompting the same scene
+
+**Date:** 2026-09-22 · **Branch:** prototype · uncommitted at time of writing
+
+**Files:** `backend/app/api/v1/endpoints/analysis.py`,
+`frontend-v2/src/app/analysis/[jobId]/page.tsx`, `frontend-v2/src/lib/api.ts`,
+`frontend-v2/src/lib/endpoints.ts`
+
+**What moved, mechanically?**
+Three changes to `/analysis/[jobId]`. (1) The layer picker was a horizontal strip above the
+canvas whose buttons clamped long names to three lines ("SAM 2.1 — High-Resolution Segmentation
+Mask"); it is now a vertical list at the top of the right panel, with a slim header over the canvas
+naming the layer on screen plus the fullscreen control. (2) The assistant's answer, confidence bar
+and Key Findings moved out of the right panel's Chat tab into a bounded `max-h-[42%]` scroller
+directly under the image, so it reads as a reply to the picture above it; the Chat tab is gone and
+the panel defaults to Analysis. (3) A composer sits below the Job ID footer.
+
+**Why does the re-prompt need a backend change at all?**
+`AnalyzeRequest.image_filenames` is required (`schemas/requests.py:7`, `min_length=1`) and
+`analyze_query` resolves each name inside `results/{request_id}/input/`
+(`analysis.py:104-116`). Nothing in `GET /jobs/{id}`, `GET /results/{id}` or the layers payload
+reports the source filename, so the client could not name the image it was looking at.
+
+**Why not just re-run against the same request_id?**
+Because `req_id = request.request_id or uuid4()` resolves to the *existing* job directory, and the
+pipeline would overwrite that job's `masks/`, `overlays/` and `result.json` — destroying the result
+the user is currently reading. `POST /jobs/{job_id}/reuse-source` instead copies the input files
+into a fresh `request_id` and returns it with the filenames. The bytes never leave the server; no
+re-upload round-trip.
+
+**Blast radius if this is wrong?**
+A stray workspace per re-prompt (same cost as any new analysis) and, if the copy silently picked up
+the wrong directory, an analysis run against the wrong scene. Guarded by resolving strictly from
+`artifact_manager.get_job_dir(job_id) / "input"` and raising `JobNotFoundError` when absent.
+
+**Why is `api.analyze` deliberately not awaited in the composer?**
+`POST /analyze` does not resolve until the whole pipeline finishes (~25 s measured). Awaiting it
+would freeze the composer for the duration. The new `request_id` is known before the call, so the
+client navigates immediately and the job page polls progress by that id — the same trick
+`useAnalysisStore.startAnalysis` already uses with `pendingJobId`.
+
+**Verification (measured, against the running stack):**
+- `POST /api/jobs/936f0e5f.../reuse-source` -> 200,
+  `{"request_id":"1cd9b44c...","image_filenames":["satquery_change_after.png"]}`.
+- End to end in the browser: typed "describe this scene" into the composer on job `936f0e5f`
+  ("mask houses", grounding) -> navigated to `347fab8b...` -> reached COMPLETED with
+  `results/347fab8b.../input/satquery_change_after.png`, workflow `workflow_caption`, answer
+  rendered under the image.
+- Original job re-checked afterwards: status COMPLETED, query still `mask houses`,
+  `results/936f0e5f.../masks/grounding_mask.png` still present. Not overwritten.
+- `tsc --noEmit` exit 0; `eslint` exit 0 (4 pre-existing warnings, none in the changed lines).
+
+**What a reviewer should push on:** the caption pane is capped at 42% of the column height, so on a
+short viewport a long answer scrolls within it rather than pushing the image off screen. That cap
+is a judgement call, not a measured optimum.
+
+---
+
+## Q-054 · Mask layers were missing from the picker, and "Detected Regions" contradicted the answer
+
+**Date:** 2026-09-22 · **Branch:** prototype · uncommitted at time of writing
+**Supersedes nothing; follows on from [Q-053](#q-053).**
+
+**Files:** `frontend-v2/src/app/analysis/[jobId]/page.tsx`
+
+**Symptom 1: only 4 layers listed where the API returns 7.**
+`GET /api/analysis/b6f8717f.../layers` returned 7 — `true_color`, `band_1..3`,
+`grounding_bboxes`, `sam2_segmentation_overlay`, `grounding_overlay` — all `available: true`,
+while the picker showed 4. Not a display filter: the client had cached a 4-layer response.
+
+**Why did it cache four?**
+Layers are discovered from the job workspace, so while the pipeline is still running only the
+source bands exist. `useLayers` (`hooks/useSystem.ts:98`) sets no `refetchInterval` and nothing
+invalidated it, so the first response won. This was latent before Q-053 and became the *normal*
+path because of it: the re-prompt composer navigates to the new job immediately rather than
+awaiting the pipeline, so the page now always opens mid-run. A regression introduced by Q-053's
+deliberate no-await, not by the layer picker move.
+
+**Fix.** `useJob` already polls every 2 s and stops at COMPLETED (`useSystem.ts:49-66`). An effect
+watches that transition and invalidates `["layers", jobId]` and `["result", jobId]` once, guarded
+by a ref so it fires a single time per mount.
+
+**Symptom 2: "No regions detected" beside "Regions detected: 217".**
+Both were reading real data, from different fields. The card rendered `spatial.boxes`, which is
+genuinely empty for this job; the 217 comes from `spatial.statistics.region_count`. Confirmed
+against the API: `boxes: 0`, `strategy: trained_segmenter_buildings`, `candidate_boxes: 0`. The
+trained building segmenter emits a mask, not DINO detection boxes, so there are no boxes to show.
+
+**Fix.** The card now falls back to the mask's own statistics (regions, masked pixels, estimated
+area) when `boxes` is empty but `region_count` is set, labelled "Segmentation mask — no bounding
+boxes for this workflow". "No regions detected" is now reserved for the case where there is
+genuinely nothing.
+
+**Blast radius.** Both changes are display-only; no pipeline or API behaviour is touched. The
+invalidation costs two extra GETs per completed job.
+
+**Verification (measured):**
+- Picker on `b6f8717f` now lists all 7 layers; selecting "SAM 2.1 — High-Resolution Segmentation
+  Mask" loads `/visualizations/sam2_segmentation_overlay` (naturalWidth 1024) and renders the
+  roof mask over the scene.
+- Detected Regions now reads Regions 217 / Masked pixels 95,791 — matching Key Findings.
+- `tsc --noEmit` exit 0; `eslint` exit 0.
+
+**What a reviewer should push on:** the invalidation is a one-shot on the COMPLETED transition. A
+job that publishes further artifacts *after* reporting COMPLETED would still show a stale picker.
+No such workflow exists today; if one is added, this needs to become a poll.
+
+---
+
+## Q-055 · History delete was broken in both directions: clear-all 500'd after committing, single delete did not exist
+
+**Date:** 2026-09-22 · **Branch:** prototype · uncommitted at time of writing
+
+**Files:** `backend/app/api/v1/endpoints/analysis.py`
+
+**What was actually wrong, step by step?**
+Two separate CRUD defects behind one symptom.
+
+1. `DELETE /api/jobs` raised `'ArtifactManager' object has no attribute 'workspace_root'`. The
+   attribute is `base_dir` (`artifacts/manager.py:29`). Worse, the path it built was
+   `workspace_root / "jobs"`, but workspaces live at `results/<request_id>` directly — there is no
+   `jobs/` level. The cleanup had therefore never worked, under any name.
+2. `DELETE /api/jobs/{job_id}` was never registered. The client's `api.deleteJob` (used by
+   "delete selected") got 405 on every call. Confirmed against the live OpenAPI document: the only
+   delete route was `DELETE /api/jobs`.
+
+**Why did it look like nothing happened, rather than like an error?**
+Because the handler committed the database deletes at line 213 and crashed at line 216. The rows
+were genuinely gone; the request then returned 500, so the client's `onSuccess` never ran and the
+list was never invalidated. Measured during diagnosis: `GET /api/jobs` returned 0 while the UI
+still listed 6. The destructive half succeeded and the user-visible half did not.
+
+**Why not just fix the attribute name?**
+Because `results/` holds 883 directories and only a handful are tracked jobs — the rest are
+orphans from earlier runs. Wiping the directory wholesale would have destroyed evidence that
+Q-052..Q-054 cite by job id. The fix collects the job ids with `SELECT id FROM analysis_jobs`
+*before* the delete and removes exactly those workspaces; once the rows are gone there is no way
+to tell which directories were tracked.
+
+**Why is the filesystem cleanup outside the try/except that returns 500?**
+That ordering is the bug from symptom 1. Cleanup is now best effort in `_remove_job_workspaces`:
+a directory that cannot be removed is logged and skipped. The database is the source of truth for
+what history displays, so a cleanup failure must not fail a request whose rows are already
+committed. The DB block itself now rolls back on error instead of leaving a partial commit.
+
+**Blast radius.** Both routes are destructive and irreversible. Guarded by resolving every path
+through `artifact_manager.get_job_dir`, which validates the id against `_JOB_ID` and rejects
+traversal (the Q-017 guard), and by never deriving the delete set from a directory listing.
+
+**Verification (measured against the running stack):**
+- Empty DB: `DELETE /api/jobs` -> 200 `{"deleted_jobs":0,"removed_workspaces":0}`; disk unchanged
+  at 883 directories. This is the safety case — no tracked jobs means nothing on disk is touched.
+- Single delete: created job `de8c53fc...`, disk 884 -> `DELETE /api/jobs/de8c53fc...` -> 200
+  `{"removed_workspace":true}`, DB 1 -> 0, disk 884 -> 883. Exactly one directory removed.
+- Unknown id -> 404 (was 405).
+- Clear-all through the UI: 2 jobs created, History showed "All 2", clicked Clear All -> Delete
+  All -> list emptied to 0, DB 2 -> 0, disk 885 -> 883, log line
+  "Cleared 2 job(s); removed 2 workspace(s)."
+- Untracked workspace `results/936f0e5f...` (cited by Q-053/Q-054) still present afterwards.
+
+**What a reviewer should push on:** the 883 orphaned workspaces are not reachable by either route,
+since both derive their target set from the database. Reclaiming that disk needs a separate,
+deliberate sweep — deliberately not folded into a button labelled "Clear All".
+
+---
+
+## Q-056 · PWA manifest and service worker, and the client could not authenticate to a hosted backend
+
+**Date:** 2026-09-22 · **Branch:** prototype · uncommitted at time of writing
+
+**Files:** `frontend-v2/src/app/manifest.ts`, `frontend-v2/public/sw.js`,
+`frontend-v2/src/components/ServiceWorkerRegistrar.tsx`, `frontend-v2/src/app/layout.tsx`,
+`frontend-v2/src/lib/api.ts`, `frontend-v2/public/icon-*.png`, `deploy/README.md`
+
+**What was added, mechanically?**
+`app/manifest.ts` (the Next 16 metadata-route convention, per
+`node_modules/next/dist/docs/01-app/03-api-reference/03-file-conventions/01-metadata/manifest.md`)
+emits `/manifest.webmanifest`; icons at 192, 512 and a padded 512 maskable were rasterised from
+`public/satquery.svg` through headless Chromium, since no rsvg/inkscape/ImageMagick is installed.
+`layout.tsx` gained `appleWebApp`, `icons` and a `viewport` export carrying `themeColor`.
+
+**Why a service worker at all, when nothing works offline?**
+Chrome's install criteria still want a worker with a fetch handler, and that is the whole reason
+this one exists. It is scoped down hard: same-origin GET only, never `/api/*`, never cross-origin
+(which is where the backend lives), never `.mp4`. Navigations are network-first so a redeploy is
+picked up immediately. Registration is gated on `NODE_ENV === "production"` because a shell cache
+fights Turbopack HMR and produces stale pages that read as real bugs.
+
+**The defect found while checking deployability.**
+`http()` in `lib/api.ts` sent no credential. `backend/app/api/auth.py` rejects everything except
+`OPEN_PATHS` (`/api/health`, `/docs`, `/redoc`, `/openapi.json`) once `SATQUERY_API_KEYS` is set.
+A hosted deploy would therefore show "AI Ready · 20/20" from the open health check and 401 on every
+real request. Fixed by sending `X-API-Key` from `NEXT_PUBLIC_API_KEY`, and by appending `?key=` to
+artifact, legend, video-stream, report and download URLs — `<img>`, `<video>` and download anchors
+cannot set headers, which is why the backend accepts the query form.
+
+**Blast radius.** All additive. With `NEXT_PUBLIC_API_KEY` unset (the local case) `withKey()` is
+the identity function and no header is sent, so local runs against an unauthenticated backend are
+byte-identical to before.
+
+**Verification (measured):**
+- `next build` exit 0; `/manifest.webmanifest` listed as a static route.
+- Served from a production build on :3002 — `manifest.webmanifest` 200 with the expected JSON,
+  `sw.js` 200 `application/javascript`, `icon-192.png` 200.
+- In Chromium: `serviceWorker.getRegistration()` active, scope `/`, cache `satquery-shell-v1`
+  created, `<link rel="manifest">` = `/manifest.webmanifest`, `theme-color` `#080E17`,
+  `apple-touch-icon` `/apple-icon.png`.
+- The production origin `:3002` was blocked by CORS on every backend call — reproducing, locally
+  and on purpose, the exact failure a Vercel deploy hits. `cors_origins` defaults to
+  `localhost:3000` only (`config.py:29`); `SATQUERY_CORS_ORIGINS` is the override. Documented as
+  deploy/README §9.
+
+**What a reviewer should push on:** `NEXT_PUBLIC_*` values are compiled into the client bundle, so
+`NEXT_PUBLIC_API_KEY` is readable by anyone who opens the deployed site. That is acceptable only
+because the key guards a demo backend with a spend cap, not because it is secret. A public
+deployment needs the browser to talk to a server-side proxy holding the key instead.
+
+---
+
+## Q-057 · Deployed the backend to Modal; nine models were silently unavailable in the cloud
+
+**Date:** 2026-09-22 · **Branch:** prototype · uncommitted at time of writing
+
+**Files:** `backend/app/config.py`, `backend/app/main.py`, `deploy/modal_app.py`,
+`deploy/.env.modal`, `deploy/.env.modal.example`
+
+**What was deployed?**
+`modal deploy deploy/modal_app.py` → `https://ushnik1p2h3d--satquery-ai-api.modal.run`. The app
+already existed (v2, 17 Sep, commit 541b0f2) and both volumes were populated, so no image rebuild
+or weight re-upload was needed for the code itself. The live backend now carries Q-053's
+`reuse-source` and Q-055's delete routes, confirmed against its OpenAPI document.
+
+**Why a CORS regex instead of a list?**
+Vercel names every deployment `<project>-<hash>-<org>.vercel.app`. A fixed `SATQUERY_CORS_ORIGINS`
+list can only ever name the production alias, so every preview build would be blocked. Added
+`cors_origin_regex` (config) and passed it to `CORSMiddleware` only when set, so local runs are
+unchanged. Scoped to `https://satquery-ai[a-z0-9-]*\.vercel\.app` rather than `.*\.vercel\.app`
+deliberately: `allow_credentials=True` is on, and the loose form would let any Vercel-hosted site
+call this backend.
+
+**The real find: 11 of 20 models reported unavailable in the cloud, against 20/20 locally.**
+Two separate causes.
+1. The segmenter checkpoints were never uploaded. The 17 Sep upload (README §4) predates the
+   trained segmenters. Uploaded only the files `configs/models.yaml` actually names — 840 MB, not
+   the 4.6 GB the directories occupy, because each holds a `last.pt` and training artifacts too.
+   That alone fixed 2 of 11 (flood, eurosat).
+2. The other nine needed `training.segmentation`, which the Modal image does not ship.
+   `binary_segmenter.trainer_importable()` (line 32) checks for it and reports unavailable rather
+   than failing at the first request — the docstring states this outright. The adapters import
+   `build_model`, `infer_prob`, `MEAN/STD` and `TARGET_GSD_M` from the trainer at load time, so the
+   image now carries `training/` (284 KB) plus `segmentation-models-pytorch`, `albumentations` and
+   `rasterio`, which those modules import. Kept out of `backend/requirements.txt`, which stays
+   serve-only.
+
+**Why this mattered more than it looked.** `buildings_segmenter` was among the nine. The flagship
+demo — "mask all houses", the one in Q-054 — runs on it. The deployed backend would have refused
+the exact query planned for the mentor while it worked perfectly on localhost.
+
+**Verification (measured against the live URL):**
+- Availability 9/20 → 11/20 (after weights) → **18/20** (after the trainer package).
+- Still unavailable, both understood: `general_rs_vlm` (BLIP, deliberately not uploaded — Qwen3-VL
+  `scene_vlm` replaces it, README §"What goes on the cloud volume") and `crater_detector`
+  (ultralytics is AGPL and pulls `opencv-python`, which clashes with the backend's
+  `opencv-python-headless` — see `training/requirements.txt`).
+- Auth enforced: `GET /api/jobs` without a key → 401, with `X-API-Key` → 200.
+- Full pipeline on the cloud GPU: uploaded `houses_with_trees__P0331_0004.png`, ran
+  "mask all houses" → COMPLETED, `single_image_grounding`, models `grounding_dino, sam2`,
+  confidence 0.8185, answer from the trained building segmenter.
+- CORS on the live backend: ALLOW `localhost:3000`, `satquery-ai.vercel.app`,
+  `satquery-ai-k3j9x2-ushni.vercel.app`; BLOCK `localhost:3003`, `evil.example.com`.
+- Frontend production build against the Modal URL, served on :3000: "AI Ready · 18/20", history
+  loaded from the cloud database, zero console errors.
+
+**Not done, and why:** the Vercel deployment itself. The CLI is not installed and `vercel login`
+is an interactive browser OAuth flow, which this session cannot complete. Everything it depends on
+— build, env contract, CORS, auth — is verified.
+
+**What a reviewer should push on:** the CORS regex hard-codes the project name `satquery-ai`. If
+the Vercel project is created under any other name, every request from it is blocked and the
+symptom is identical to the failure this was meant to prevent.
+
+---
+
+## Q-058 · Frontend deployed to Vercel; three call sites were bypassing the API key
+
+**Date:** 2026-09-22 · **Branch:** prototype · uncommitted at time of writing
+
+**Files:** `frontend-v2/src/lib/endpoints.ts`, `frontend-v2/src/lib/api.ts`,
+`frontend-v2/src/hooks/useJobProgress.ts`, `frontend-v2/next.config.ts`,
+`frontend-v2/vercel.json`, `frontend-v2/.vercelignore`, `deploy/.env.modal(.example)`
+
+**Deployed:** https://satquery-ai-smoky.vercel.app → Modal backend. Vercel CLI 59.25.0 installed
+globally, telemetry disabled, project `satquery-ai` under scope `dragnatsu66s-projects`, four env
+vars set (`NEXT_PUBLIC_API_BASE_URL`, `NEXT_PUBLIC_API_KEY` × production and preview).
+
+**The CORS regex from Q-057 was wrong, and only deploying revealed it.**
+It anchored on `satquery-ai`, reasoning from the project name. Measured: the production alias is
+`satquery-ai-smoky.vercel.app` (matches) but each deployment is
+`satquery-<hash>-<scope>.vercel.app` — Vercel truncates the project name in that form, so
+`satquery-8u9vywykn-dragnatsu66s-projects.vercel.app` did **not** match and every preview build
+would have been blocked. Widened to `https://satquery[a-z0-9-]*\.vercel\.app` and redeployed.
+Still scoped: `random-other-app.vercel.app` and `evil.example.com` are refused, verified live.
+
+**Three call sites never sent the API key.** Q-056 fixed `http()` and believed that covered it.
+It did not, because three other paths reach the backend directly:
+1. `uploadWithProgress` uses `XMLHttpRequest` rather than `fetch`, because the progress bar needs
+   `xhr.upload.onprogress`. It set only `Accept`. Every upload returned **401**.
+2. `useJobProgress` builds its own `fetch(`${API_BASE}/api/jobs/${id}/progress`)`. 31 consecutive
+   401s in one run — the live pipeline progress was dead on the hosted backend.
+3. `visualizationUrl`, `exportUrl` and both `preview_url` builders returned bare URLs, so layer
+   images and exports would 401 once opened.
+
+Fixed by moving `API_KEY`, `authHeaders()` and `withKey()` into `endpoints.ts` beside `API_BASE`
+and having all three consumers use them, rather than a fourth private copy. The sweep for
+`API_BASE` outside those helpers now returns only the two occurrences nested inside `withKey(...)`.
+
+**Why local testing could never have caught this.** No key is configured locally, so
+`authHeaders()` returns `{}` and every one of these paths behaves identically to before. The bug
+only exists against a backend with `SATQUERY_API_KEYS` set. Q-056 verified against localhost and
+recorded a false clean.
+
+**Security headers** moved to `next.config.ts` rather than `vercel.json` so they survive the
+planned move to AWS. `Cache-Control: no-cache` on `/sw.js` matters most: without it a redeploy
+leaves viewers pinned to the previous shell.
+
+**Verification (measured against the public URL):**
+- CORS live: ALLOW production alias, deployment host, `localhost:3000`; BLOCK
+  `random-other-app.vercel.app`, `evil.example.com`.
+- Headers live: `/sw.js` no-store + `application/javascript`; all routes nosniff, DENY,
+  strict-origin-when-cross-origin.
+- PWA on HTTPS: service worker `activated`, manifest linked, installable.
+- Full run from the public site: upload → "mask all houses" → job `9f1448b9…` COMPLETED, 82%
+  confidence, 7 regions / 1,437 px from the trained building segmenter, 7 layers including the SAM
+  mask, Detected Regions consistent with Key Findings.
+- Backend responses ≥400 during that run: one `404 /progress`, which `useJobProgress` handles
+  explicitly (`if (res.status === 404) return null`). Zero 401s.
+
+**What a reviewer should push on:** `NEXT_PUBLIC_API_KEY` is compiled into the client bundle and
+readable by anyone who opens the site. The Vercel CLI refused to set it until forced with
+`--type config --yes`, which is the tool telling us the same thing. Acceptable only because this
+key guards a credit-capped demo backend. The AWS move should put a server-side proxy in front.
+
+**Not done:** `vercel git connect` failed — this Vercel account does not have access to
+`KushwahaSujal/SATQuery-AI`, so there is no auto-deploy on push. Deploys are manual
+(`vercel deploy --prod`) until the repo is connected.
+
+---
+
+## Q-059 · Layer export 500'd for every derived layer
+
+**Date:** 2026-09-22 · **Branch:** prototype · uncommitted at time of writing
+
+**Files:** `backend/app/api/v1/endpoints/visualization.py`
+
+**How it was found.** Closing a verification gap left by Q-058: the auth fixes were proven for
+uploads, progress and layer images, but the Export path had never been exercised. Probing the URL
+forms the client builds returned `500` for `/api/analysis/{job}/export/{layer}?format=png` even
+with a valid key, while `visualizations`, `download` and `reports` all returned 200. Not an auth
+defect — auth was correct (401 without key, 200 with).
+
+**Mechanism.** `export_layer` assumed the layer image sits at `visualizations/<layer_id>.png`:
+
+    if not layer_png.exists():
+        await get_visualization_image(job_id, layer_id)
+    layer_img = Image.open(layer_png)     # line 488
+
+`get_visualization_image` returns `FileResponse(path=...)` pointing at wherever the artifact
+actually lives — `masks/grounding_mask.png`, `overlays/grounding_overlay.png` and so on — and
+never writes into `visualizations/`. The call was treated as a side effect that would materialise
+the file. It does not, so the next line raised
+`FileNotFoundError: /results/<job>/visualizations/sam2_segmentation_overlay.png`, surfacing as a
+bare 500.
+
+**Scope.** Every derived layer: the SAM 2.1 segmentation mask, both grounding overlays. Source
+layers (`true_color`, `band_*`) happened to work because the visualization pipeline does write
+those into `visualizations/`, which is why this survived unnoticed — the layers anyone tests first
+are exactly the ones that work.
+
+**Fix.** Use the path `get_visualization_image` resolved rather than assuming one appeared, and
+raise `ArtifactNotFoundError` instead of letting `Image.open` throw when nothing resolves. A
+missing artifact is now a 404 naming the layer, not an unhandled 500.
+
+**Blast radius.** Read-only endpoint; no pipeline or storage behaviour changes. A layer that
+genuinely has no image now reports 404 rather than 500 — a status change any client treating 5xx
+as retryable would notice.
+
+**Verification (measured against the deployed backend, job 9f1448b9…):**
+- Before: `sam2_segmentation_overlay` → 500, traceback in the Modal logs at `visualization.py:488`.
+- After, all five layers of a real grounding job → 200:
+  `true_color`, `band_1`, `grounding_bboxes`, `sam2_segmentation_overlay`, `grounding_overlay`.
+
+**What a reviewer should push on:** `export_layer` calls `get_visualization_image` directly, so its
+`db: AsyncSession = Depends(get_db)` parameter receives the `Depends` object rather than a session.
+It works only because the code paths reached here do not touch `db`. That is latent and unrelated
+to this fix; it should become an explicit shared helper rather than one route handler calling
+another through FastAPI's dependency signature.
