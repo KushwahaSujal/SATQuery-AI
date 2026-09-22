@@ -10,7 +10,11 @@ import { useAnalysisStore } from "@/stores/useAnalysisStore";
 function AnalysisContent() {
   const searchParams = useSearchParams();
 
-  const carriedQuery = searchParams.get("q") ?? undefined;
+  // The URL is the primary carrier, but an upload that happened before a prompt was
+  // chosen arrives here without one. The store keeps the prompt next to the imagery,
+  // so fall back to it rather than opening with an empty composer.
+  const storedPrompt = useAnalysisStore((s) => s.pendingPrompt);
+  const carriedQuery = searchParams.get("q") ?? storedPrompt ?? undefined;
 
   useEffect(() => {
     // This page used to call resetAnalysis() unconditionally on mount, which wiped

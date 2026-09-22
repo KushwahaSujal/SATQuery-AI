@@ -125,6 +125,7 @@ export default function HomePage() {
   const [query, setQuery] = useState("");
   const [dragActive, setDragActive] = useState(false);
   const handleUpload = useAnalysisStore((s) => s.handleUpload);
+  const setPendingPrompt = useAnalysisStore((s) => s.setPendingPrompt);
   const uploadProgress = useAnalysisStore((s) => s.uploadProgress);
   const [isUploading, setIsUploading] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -155,7 +156,13 @@ export default function HomePage() {
     const ok = await handleUpload(Array.from(files));
     setIsUploading(false);
     if (ok) {
-      router.push(query.trim() ? `/analysis?q=${encodeURIComponent(query.trim())}` : "/analysis");
+      // `query` is local state and is empty whenever this page remounts (a back
+      // navigation, a fresh visit). The prompt a sample-query click chose lives in
+      // the store, which survives that, so fall back to it -- otherwise the upload
+      // carried over on its own and landed in an empty composer.
+      const carried = query.trim() || useAnalysisStore.getState().pendingPrompt?.trim() || "";
+      setPendingPrompt(carried || null);
+      router.push(carried ? `/analysis?q=${encodeURIComponent(carried)}` : "/analysis");
     } else {
       setUploadError(useAnalysisStore.getState().uploadError ?? "Upload failed");
     }
@@ -164,6 +171,7 @@ export default function HomePage() {
   const handleQuerySubmit = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     setIsSubmitting(true);
+    setPendingPrompt(query.trim() || null);
     if (query.trim()) {
       router.push(`/analysis?q=${encodeURIComponent(query.trim())}`);
     } else {
@@ -174,6 +182,8 @@ export default function HomePage() {
   const handleQuickPrompt = (promptText: string) => {
     setQuery(promptText);
     setIsSubmitting(true);
+    // Persist alongside any uploaded imagery so the pair survives a remount.
+    setPendingPrompt(promptText);
     router.push(`/analysis?q=${encodeURIComponent(promptText)}`);
   };
 
@@ -202,10 +212,10 @@ return (
         />
       </div>
 
-      <div className="bg-[var(--canvas)] text-[var(--text)] font-sans min-h-screen flex antialiased">
-        <Sidebar activeItem="home" hideBrand={false} className="sticky top-0 h-screen flex-shrink-0" />
+      <div className="bg-[var(--canvas)] text-[var(--text)] font-sans h-screen overflow-hidden flex antialiased">
+        <Sidebar activeItem="home" hideBrand={false} className="h-full flex-shrink-0" />
 
-        <main className="flex-1 flex flex-col min-w-0 bg-[var(--canvas)] relative">
+        <main className="flex-1 min-w-0 min-h-0 overflow-y-auto bg-[var(--canvas)] relative">
           <TopBar
             showBrand={false}
             searchPlaceholder='Search anything… e.g. "urban expansion in Delhi"'

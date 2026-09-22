@@ -156,7 +156,7 @@ export default function Sidebar({ hideBrand = false, activeItem, className = "" 
         id="app-sidebar"
         className={`fixed inset-y-0 left-0 z-40 w-[17rem] max-w-[85vw] transform transition-transform duration-200 ease-out md:static md:z-20 md:w-60 md:min-w-[15rem] md:max-w-[15rem] md:translate-x-0 ${
           isOpen ? "translate-x-0" : "-translate-x-full"
-        } h-full min-h-0 bg-[var(--sidebar-bg)] border-r border-[var(--sidebar-border)] flex flex-col justify-between py-4 px-3 shrink-0 overflow-y-auto select-none ${className}`}
+        } h-full min-h-0 bg-[var(--sidebar-bg)] border-r border-[var(--sidebar-border)] flex flex-col justify-between pt-4 pb-14 px-3 shrink-0 overflow-y-auto select-none ${className}`}
         data-purpose="sidebar"
         aria-hidden={isOpen ? undefined : "true"}
       >
@@ -357,29 +357,6 @@ export default function Sidebar({ hideBrand = false, activeItem, className = "" 
         </div>
       </motion.div>
 
-      {/* Bottom Mission Card */}
-      <motion.div
-        initial={{ opacity: 0, y: 8 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.5, duration: 0.4 }}
-        className="mt-4 p-3 rounded-lg bg-[var(--surface-2)] border border-[var(--border)]"
-      >
-        <div className="flex items-start gap-2.5">
-          <div className="w-6 h-6 rounded-md bg-[var(--primary-glow)] border border-[var(--primary)]/20 flex items-center justify-center shrink-0 mt-0.5">
-            <svg className="w-3 h-3 text-[var(--primary)]" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-              <path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10Z" />
-              <path d="M2 21c0-3 1.85-5.36 5.08-6C9.5 14.52 12 13 13 12" />
-            </svg>
-          </div>
-          <div>
-            <p className="text-[11px] font-semibold text-[var(--heading)] leading-snug">
-              Better insights <br />
-              <span className="text-[var(--text-2)] font-normal">for a healthier planet</span>
-            </p>
-            <p className="text-[9px] text-[var(--text-3)] leading-tight mt-1">AI-powered remote sensing for a sustainable future.</p>
-          </div>
-        </div>
-      </motion.div>
     </aside>
     </>
   );

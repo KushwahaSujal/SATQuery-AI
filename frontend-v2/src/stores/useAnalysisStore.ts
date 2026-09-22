@@ -156,7 +156,9 @@ export const useAnalysisStore = create<AnalysisState>((set, get) => ({
       if (r.preview_url) previews.push(r.preview_url);
     });
 
-    set({ analysisError: null, liveResult: null, liveJob: null });
+    // The carried-over prompt has now been consumed; drop it so a later
+    // navigation cannot resurrect it into an unrelated analysis.
+    set({ analysisError: null, liveResult: null, liveJob: null, pendingPrompt: null });
 
     set((s) => ({
       messages: [
@@ -275,6 +277,7 @@ export const useAnalysisStore = create<AnalysisState>((set, get) => ({
       analysisError: null,
       isSubmittingAnalysis: false,
       uploadProgress: null,
+      pendingPrompt: null,
     }),
 }));
 

@@ -1,8 +1,9 @@
 "use client";
 
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useJob, useAnalysisResult, useLayers, useVideoResult } from "@/hooks/useSystem";
 import { api } from "@/lib/api";
 import { useJobProgress } from "@/hooks/useJobProgress";
@@ -75,11 +76,53 @@ export default function AnalysisJobPage() {
   // raster request for every video job.
   const layersQuery = useLayers(jobId, Boolean(job.data) && !isVideoJob);
 
-  const [activeTab, setActiveTab] = useState<"chat" | "analysis" | "trace">("chat");
+  // "chat" is gone as a tab: the reply now renders under the image.
+  const [activeTab, setActiveTab] = useState<"analysis" | "trace">("analysis");
   const [followUp, setFollowUp] = useState("");
+  const [rePromptBusy, setRePromptBusy] = useState(false);
+  const [rePromptError, setRePromptError] = useState<string | null>(null);
   const [activeLayerId, setActiveLayerId] = useState<string | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+
+  const router = useRouter();
+  const queryClient = useQueryClient();
+
+  // Layers are discovered from the job workspace, so a page opened while the pipeline
+  // is still running sees only the source bands -- the mask and overlay layers do not
+  // exist yet. Re-prompting navigates here immediately (by design), so that is the
+  // normal case, not the edge case. Refetch once the job reports COMPLETED.
+  const settledRef = useRef(false);
+  useEffect(() => {
+    if (job.data?.status !== "COMPLETED") return;
+    if (settledRef.current) return;
+    settledRef.current = true;
+    queryClient.invalidateQueries({ queryKey: ["layers", jobId] });
+    queryClient.invalidateQueries({ queryKey: ["result", jobId] });
+  }, [job.data?.status, jobId, queryClient]);
+
+
+  // Re-ask on the same scene. The server copies this job's input imagery into a new
+  // workspace (POST /jobs/{id}/reuse-source) rather than re-running against this
+  // request_id, which would overwrite the masks and result being displayed.
+  const submitRePrompt = async () => {
+    const text = followUp.trim();
+    if (!text || rePromptBusy) return;
+    setRePromptBusy(true);
+    setRePromptError(null);
+    try {
+      const { request_id, image_filenames } = await api.reuseSource(jobId);
+      // POST /analyze does not resolve until the whole pipeline finishes, so this is
+      // deliberately not awaited -- the new job page polls progress by request_id.
+      void api.analyze({ query: text, request_id, image_filenames }).catch(() => {});
+      setFollowUp("");
+      router.push(`/analysis/${request_id}`);
+    } catch (e) {
+      setRePromptError(e instanceof Error ? e.message : "Could not start the follow-up analysis.");
+    } finally {
+      setRePromptBusy(false);
+    }
+  };
 
   const status: JobStatus = (job.data?.status as JobStatus) || "QUEUED";
   const isFailed = status === "FAILED";
@@ -169,53 +212,27 @@ export default function AnalysisJobPage() {
             <div className="flex-1 grid grid-cols-1 lg:grid-cols-[1fr_400px] overflow-hidden">
               {/* Center workspace */}
               <div className="flex flex-col overflow-hidden bg-[var(--workspace)] border-r border-[var(--border)]">
-                {/* Layer toolbar */}
-                <div className="min-h-14 border-b border-[var(--border)] bg-[var(--surface)] flex items-stretch justify-between px-4 shrink-0">
-                  <div className="flex min-w-0 flex-1 items-stretch gap-3 text-xs">
-                    <div className="flex shrink-0 items-center gap-1.5">
-                      <Layers className="w-3.5 h-3.5 text-[var(--cyan)]" />
-                      <span className="font-medium text-[var(--heading)]">Layer</span>
-                    </div>
-                    {isCompleted && layers.length > 0 ? (
-                      <div className="flex min-w-0 flex-1 items-stretch gap-1 overflow-x-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-[var(--border)]">
-                        {layers.map((layer) => {
-                          const active = layer.id === currentLayer?.id;
-                          return (
-                            <button
-                              key={layer.id}
-                              onClick={() => setActiveLayerId(layer.id)}
-                              title={layer.name}
-                              className={`min-w-[92px] max-w-[190px] shrink-0 px-2.5 py-1.5 text-center text-[11px] leading-4 transition border border-b-2 ${
-                                active
-                                  ? "bg-[var(--cyan)]/10 border-[var(--cyan)]/40 border-b-[var(--cyan)] text-[var(--cyan)] font-medium"
-                                  : "border-transparent text-[var(--text-2)] hover:border-[var(--border)] hover:text-[var(--heading)] hover:bg-[var(--surface-2)]"
-                              }`}
-                            >
-                              <span className="line-clamp-3">{layer.name}</span>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    ) : (
-                      <span className="text-[var(--text-3)] font-mono-data">
-                        {isCompleted ? "No layers" : "Awaiting completion"}
-                      </span>
-                    )}
+                {/* Active-layer header. The layer *picker* now lives in the right
+                    panel; this keeps the name of what is on screen, plus fullscreen. */}
+                <div className="min-h-14 border-b border-[var(--border)] bg-[var(--surface)] flex items-center justify-between gap-3 px-4 shrink-0">
+                  <div className="flex min-w-0 items-center gap-2 text-xs">
+                    <Layers className="w-3.5 h-3.5 text-[var(--cyan)] shrink-0" />
+                    <span className="truncate font-medium text-[var(--heading)]">
+                      {currentLayer?.name ?? (isCompleted ? "No layers" : "Awaiting completion")}
+                    </span>
                   </div>
-                  <div className="flex shrink-0 items-center gap-1 border-l border-[var(--border)] pl-2">
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <button
-                          onClick={toggleFullscreen}
-                          aria-label={isFullscreen ? "Exit fullscreen" : "View layer fullscreen"}
-                          className="w-7 h-7 rounded-md hover:bg-[var(--surface-2)] text-[var(--text-3)] hover:text-[var(--heading)] transition flex items-center justify-center"
-                        >
-                          {isFullscreen ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
-                        </button>
-                      </TooltipTrigger>
-                      <TooltipContent>{isFullscreen ? "Exit fullscreen" : "Fullscreen"}</TooltipContent>
-                    </Tooltip>
-                  </div>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button
+                        onClick={toggleFullscreen}
+                        aria-label={isFullscreen ? "Exit fullscreen" : "View layer fullscreen"}
+                        className="w-7 h-7 shrink-0 rounded-md hover:bg-[var(--surface-2)] text-[var(--text-3)] hover:text-[var(--heading)] transition flex items-center justify-center"
+                      >
+                        {isFullscreen ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent>{isFullscreen ? "Exit fullscreen" : "Fullscreen"}</TooltipContent>
+                  </Tooltip>
                 </div>
 
                 {/* Canvas */}
@@ -327,6 +344,114 @@ export default function AnalysisJobPage() {
                   )}
                 </div>
 
+                {/* Result caption. This is the assistant's reply, which used to sit in the
+                    right panel; it reads as an answer to the image directly above it. */}
+                <div className="max-h-[42%] shrink-0 overflow-y-auto border-t border-[var(--border)] bg-[var(--surface)] p-4 space-y-4">
+                      <div className="flex items-start gap-2.5">
+                        <div className="w-6 h-6 rounded-full bg-[var(--surface-3)] flex items-center justify-center text-[10px] font-bold text-[var(--heading)] shrink-0 mt-0.5">
+                          YOU
+                        </div>
+                        <div className="flex-1">
+                          <div className="bg-[var(--surface-3)] border border-[var(--border)] rounded-xl rounded-tl-sm p-3 text-[var(--text)] text-xs leading-relaxed">
+                            {data?.query || job.data?.query || "Untitled analysis"}
+                          </div>
+                        </div>
+                      </div>
+
+                      {(isCompleted || data?.answer) && (
+                        <BlurFade>
+                          <div className="flex items-start gap-2.5">
+                            <div className="w-6 h-6 rounded-md bg-gradient-to-tr from-[var(--cyan)] to-[var(--teal)] flex items-center justify-center shrink-0 mt-0.5">
+                              <Sparkles className="w-3 h-3 text-[var(--canvas)]" />
+                            </div>
+                            <div className="flex-1">
+                              <div className="p-3.5 rounded-xl bg-[var(--surface)] border border-[var(--border)] text-xs text-[var(--text-2)] leading-relaxed space-y-3">
+                                {isVideoJob
+                                  ? data?.workflow_reason || "Video analysis completed."
+                                  : data?.answer || "Analysis complete. View layers and metrics in the Analysis tab."}
+
+                                {isVideoJob && videoMetadata && (
+                                  <div className="grid grid-cols-2 gap-2">
+                                    {[
+                                      ["Duration", `${videoMetadata.duration_sec.toFixed(1)}s`],
+                                      ["Resolution", `${videoMetadata.width} × ${videoMetadata.height}`],
+                                      ["Frame rate", `${videoMetadata.fps.toFixed(2)} fps`],
+                                      ["Events", `${videoFlags.length}`],
+                                    ].map(([label, value]) => (
+                                      <div key={label} className="rounded-lg border border-[var(--border)] bg-[var(--surface-2)] p-2">
+                                        <p className="text-[10px] text-[var(--text-3)]">{label}</p>
+                                        <p className="mt-0.5 text-xs font-semibold text-[var(--heading)]">{value}</p>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+
+                                {isVideoJob && videoFlags.length > 0 && (
+                                  <div className="space-y-2">
+                                    <p className="text-[11px] font-semibold text-[var(--cyan)]">Detected moments</p>
+                                    {videoFlags.map((flag) => (
+                                      <div key={flag.flag_id} className="rounded-lg border border-[var(--border)] bg-[var(--surface-2)] p-2.5">
+                                        <div className="flex items-center justify-between gap-2">
+                                          <span className="truncate text-[11px] font-semibold text-[var(--heading)]">{flag.label}</span>
+                                          <span className="font-mono-data text-[10px] text-[var(--cyan)]">{flag.event_score.toFixed(2)}</span>
+                                        </div>
+                                        <p className="mt-1 text-[10px] text-[var(--text-3)]">
+                                          {flag.start_timestamp.toFixed(2)}s → {flag.end_timestamp.toFixed(2)}s
+                                        </p>
+                                        {flag.reason && <p className="mt-1 text-[10px] leading-relaxed text-[var(--text-2)]">{flag.reason}</p>}
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+
+                                {data?.confidence != null && (
+                                  <div className="p-2 rounded-lg bg-[var(--surface-2)] border border-[var(--border)]">
+                                    <div className="flex items-center justify-between text-[11px] mb-1.5">
+                                      <span className="text-[var(--text-3)]">Confidence</span>
+                                      <span className="font-mono-data font-bold text-[var(--cyan)]">
+                                        {Math.round(data.confidence * 100)}%
+                                      </span>
+                                    </div>
+                                    <Progress value={data.confidence * 100} className="h-1" />
+                                  </div>
+                                )}
+
+                                {statistics && (
+                                  <div className="rounded-lg bg-[var(--surface-2)] border border-[var(--border)] p-2.5 space-y-1.5">
+                                    <p className="text-[var(--cyan)] font-semibold text-[11px]">Key Findings</p>
+                                    <ul className="space-y-1 text-[var(--text-2)] text-[11px]">
+                                      {statistics.region_count > 0 && (
+                                        <li>Regions detected: <strong className="text-[var(--heading)]">{statistics.region_count}</strong></li>
+                                      )}
+                                      {statistics.changed_pixels > 0 && (
+                                        <li>Changed pixels: <strong className="text-[var(--heading)]">{statistics.changed_pixels.toLocaleString()}</strong></li>
+                                      )}
+                                      {statistics.estimated_area_sq_km != null && (
+                                        <li>Estimated area: <strong className="text-[var(--heading)]">{statistics.estimated_area_sq_km.toFixed(2)} km²</strong></li>
+                                      )}
+                                    </ul>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        </BlurFade>
+                      )}
+
+                      {!isCompleted && !data?.answer && !isFailed && (
+                        <div className="flex items-start gap-2.5">
+                          <div className="w-6 h-6 rounded-md bg-[var(--surface-3)] flex items-center justify-center shrink-0 mt-0.5">
+                            <Loader2 className="w-3 h-3 text-[var(--cyan)] animate-spin" />
+                          </div>
+                          <div className="flex-1 space-y-2">
+                            <Skeleton className="h-3 w-full" />
+                            <Skeleton className="h-3 w-5/6" />
+                            <Skeleton className="h-3 w-2/3" />
+                          </div>
+                        </div>
+                      )}
+                </div>
+
                 {/* Footer hint */}
                 <div className="border-t border-[var(--border)] bg-[var(--surface)] px-4 py-2 flex items-center justify-between text-[10px] font-mono-data text-[var(--text-3)] shrink-0">
                   <div className="flex items-center gap-3">
@@ -339,10 +464,80 @@ export default function AnalysisJobPage() {
                     <span>Trace: {trace.length} steps</span>
                   )}
                 </div>
-              </div>
+
+                {/* Re-prompt. Asks a new question about the same scene: the server copies
+                    this job's imagery into a fresh workspace, so this result survives. */}
+                <div className="border-t border-[var(--border)] bg-[var(--surface)] px-4 py-2.5 shrink-0">
+                  <div className="flex items-center gap-2 rounded-lg border border-[var(--border)] bg-[var(--surface-2)] px-3 py-2 transition focus-within:border-[var(--cyan)] focus-within:ring-1 focus-within:ring-[var(--cyan)]/30">
+                    <input
+                      value={followUp}
+                      onChange={(e) => setFollowUp(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" && !e.shiftKey) {
+                          e.preventDefault();
+                          submitRePrompt();
+                        }
+                      }}
+                      type="text"
+                      disabled={rePromptBusy}
+                      placeholder="Ask another question about this same image..."
+                      className="flex-1 border-0 bg-transparent text-xs text-[var(--heading)] placeholder-[var(--text-3)] focus:outline-none disabled:opacity-50"
+                    />
+                    <button
+                      onClick={submitRePrompt}
+                      disabled={rePromptBusy || !followUp.trim()}
+                      aria-label="Run this question on the same image"
+                      className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-[var(--cyan)] text-[var(--canvas)] transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      {rePromptBusy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
+                    </button>
+                  </div>
+                  {rePromptError && (
+                    <p className="mt-1.5 text-[10px] text-[var(--error)]">{rePromptError}</p>
+                  )}
+                </div>
+                </div>
 
               {/* Right panel */}
               <aside className="flex flex-col bg-[var(--surface)] overflow-hidden shrink-0">
+                {/* Layer picker. Vertical here rather than a horizontal strip over the
+                    canvas: the names are long and were being clipped at three lines. */}
+                <div className="border-b border-[var(--border)] px-4 py-3 shrink-0">
+                  <div className="mb-2 flex items-center gap-1.5 text-xs">
+                    <Layers className="w-3.5 h-3.5 text-[var(--cyan)]" />
+                    <span className="font-medium text-[var(--heading)]">Layers</span>
+                    {layers.length > 0 && (
+                      <span className="font-mono-data text-[10px] text-[var(--text-3)]">{layers.length}</span>
+                    )}
+                  </div>
+                  {isCompleted && layers.length > 0 ? (
+                    <div className="max-h-52 space-y-1 overflow-y-auto pr-0.5">
+                      {layers.map((layer) => {
+                        const active = layer.id === currentLayer?.id;
+                        return (
+                          <button
+                            key={layer.id}
+                            onClick={() => setActiveLayerId(layer.id)}
+                            title={layer.name}
+                            className={`flex w-full items-center gap-2 rounded-md border px-2.5 py-1.5 text-left text-[11px] leading-4 transition ${
+                              active
+                                ? "border-[var(--cyan)]/40 bg-[var(--cyan)]/10 font-medium text-[var(--cyan)]"
+                                : "border-transparent text-[var(--text-2)] hover:border-[var(--border)] hover:bg-[var(--surface-2)] hover:text-[var(--heading)]"
+                            }`}
+                          >
+                            <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${active ? "bg-[var(--cyan)]" : "bg-[var(--border-strong)]"}`} />
+                            <span className="truncate">{layer.name}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <p className="font-mono-data text-[11px] text-[var(--text-3)]">
+                      {isCompleted ? "No layers" : "Awaiting completion"}
+                    </p>
+                  )}
+                </div>
+
                 <Tabs
                   value={activeTab}
                   onValueChange={(v) => setActiveTab(v as typeof activeTab)}
@@ -350,7 +545,6 @@ export default function AnalysisJobPage() {
                 >
                   <div className="border-b border-[var(--border)] px-4 shrink-0">
                     <TabsList className="border-b-0 gap-3">
-                      <TabsTrigger value="chat">Chat</TabsTrigger>
                       <TabsTrigger value="analysis">Analysis</TabsTrigger>
                       <TabsTrigger value="trace">Trace</TabsTrigger>
                     </TabsList>
@@ -517,6 +711,33 @@ export default function AnalysisJobPage() {
                                         {(b.score * 100).toFixed(0)}%
                                       </span>
                                     )}
+                                  </div>
+                                ))}
+                              </div>
+                            ) : statistics?.region_count ? (
+                              // A segmenter workflow produces a mask, not detection boxes, so
+                              // `boxes` is legitimately empty here. Reporting "no regions" next
+                              // to an answer that counts 217 of them was the panel's fault, not
+                              // the pipeline's: fall back to the mask's own statistics.
+                              <div className="space-y-1.5">
+                                <p className="text-[10px] text-[var(--text-3)]">
+                                  Segmentation mask — no bounding boxes for this workflow
+                                </p>
+                                {[
+                                  ["Regions", statistics.region_count.toLocaleString()],
+                                  ...(statistics.changed_pixels
+                                    ? [["Masked pixels", statistics.changed_pixels.toLocaleString()]]
+                                    : []),
+                                  ...(statistics.estimated_area_sq_km != null
+                                    ? [["Estimated area", `${statistics.estimated_area_sq_km.toFixed(2)} km²`]]
+                                    : []),
+                                ].map(([label, value]) => (
+                                  <div
+                                    key={label}
+                                    className="flex items-center justify-between p-2 rounded-md bg-[var(--surface-2)] border border-[var(--border)]"
+                                  >
+                                    <span className="text-xs text-[var(--text-2)]">{label}</span>
+                                    <span className="text-[10px] font-mono-data text-[var(--cyan)]">{value}</span>
                                   </div>
                                 ))}
                               </div>
