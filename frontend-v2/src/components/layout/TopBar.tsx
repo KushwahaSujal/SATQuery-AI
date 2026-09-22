@@ -93,60 +93,60 @@ export default function TopBar({
           entirely commented out, so the search the topbar advertised did not exist in
           the DOM at all. The Cmd/Ctrl+K hint is real now too -- the palette is mounted
           in components/Providers.tsx. */}
-      <div
-        className={`relative flex-1 min-w-0 transition-all duration-200 ${focused ? "md:max-w-2xl" : "md:max-w-xl"}`}
-      >
-        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-[var(--text-3)]">
-          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-            <circle cx="11" cy="11" r="8" />
-            <line x1="21" x2="16.65" y1="21" y2="16.65" strokeLinecap="round" />
-          </svg>
-        </div>
-        <input
-          value={query}
-          onChange={(e) => {
-            setQuery(e.target.value);
-            // Filter as you type where the page wants it; Enter still works.
-            onSearch?.(e.target.value);
-          }}
-          onKeyDown={handleKeyDown}
-          onFocus={() => setFocused(true)}
-          onBlur={() => setFocused(false)}
-          className={`w-full pl-9 pr-16 py-2 bg-[var(--input-bg)] border rounded-lg text-xs text-[var(--text)] placeholder-[var(--text-3)] focus:outline-none transition-all duration-200 ${
-            focused
-              ? "border-[var(--cyan)]/60 ring-1 ring-[var(--cyan)]/20"
-              : "border-[var(--input-border)] hover:border-[var(--border-strong)]"
-          }`}
-          placeholder={searchPlaceholder}
-          type="text"
-          aria-label={searchPlaceholder}
-        />
-        {query && (
-          <button
-            type="button"
-            onClick={() => {
-              setQuery("");
-              onSearch?.("");
-            }}
-            aria-label="Clear search"
-            className="absolute inset-y-0 right-10 flex items-center px-1.5 text-[var(--text-3)] hover:text-[var(--heading)]"
-          >
-            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-              <path d="M6 18L18 6M6 6l12 12" strokeLinecap="round" />
-            </svg>
-          </button>
-        )}
-        <button
-          type="button"
-          onClick={togglePalette}
-          aria-label="Open command palette"
-          className="absolute inset-y-0 right-0 pr-2.5 hidden sm:flex items-center"
-        >
-          <kbd className="px-1.5 py-0.5 text-[9px] font-mono text-[var(--text-3)] bg-[var(--kbd-bg)] border border-[var(--border)] rounded flex items-center gap-0.5 opacity-60 hover:opacity-100 transition-opacity">
-            <span>⌘</span><span>K</span>
-          </kbd>
-        </button>
-      </div>
+      {/*<div*/}
+      {/*  className={`relative flex-1 min-w-0 transition-all duration-200 ${focused ? "md:max-w-2xl" : "md:max-w-xl"}`}*/}
+      {/*>*/}
+      {/*  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-[var(--text-3)]">*/}
+      {/*    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">*/}
+      {/*      <circle cx="11" cy="11" r="8" />*/}
+      {/*      <line x1="21" x2="16.65" y1="21" y2="16.65" strokeLinecap="round" />*/}
+      {/*    </svg>*/}
+      {/*  </div>*/}
+      {/*  <input*/}
+      {/*    value={query}*/}
+      {/*    onChange={(e) => {*/}
+      {/*      setQuery(e.target.value);*/}
+      {/*      // Filter as you type where the page wants it; Enter still works.*/}
+      {/*      onSearch?.(e.target.value);*/}
+      {/*    }}*/}
+      {/*    onKeyDown={handleKeyDown}*/}
+      {/*    onFocus={() => setFocused(true)}*/}
+      {/*    onBlur={() => setFocused(false)}*/}
+      {/*    className={`w-full pl-9 pr-16 py-2 bg-[var(--input-bg)] border rounded-lg text-xs text-[var(--text)] placeholder-[var(--text-3)] focus:outline-none transition-all duration-200 ${*/}
+      {/*      focused*/}
+      {/*        ? "border-[var(--cyan)]/60 ring-1 ring-[var(--cyan)]/20"*/}
+      {/*        : "border-[var(--input-border)] hover:border-[var(--border-strong)]"*/}
+      {/*    }`}*/}
+      {/*    placeholder={searchPlaceholder}*/}
+      {/*    type="text"*/}
+      {/*    aria-label={searchPlaceholder}*/}
+      {/*  />*/}
+      {/*  {query && (*/}
+      {/*    <button*/}
+      {/*      type="button"*/}
+      {/*      onClick={() => {*/}
+      {/*        setQuery("");*/}
+      {/*        onSearch?.("");*/}
+      {/*      }}*/}
+      {/*      aria-label="Clear search"*/}
+      {/*      className="absolute inset-y-0 right-10 flex items-center px-1.5 text-[var(--text-3)] hover:text-[var(--heading)]"*/}
+      {/*    >*/}
+      {/*      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">*/}
+      {/*        <path d="M6 18L18 6M6 6l12 12" strokeLinecap="round" />*/}
+      {/*      </svg>*/}
+      {/*    </button>*/}
+      {/*  )}*/}
+      {/*  <button*/}
+      {/*    type="button"*/}
+      {/*    onClick={togglePalette}*/}
+      {/*    aria-label="Open command palette"*/}
+      {/*    className="absolute inset-y-0 right-0 pr-2.5 hidden sm:flex items-center"*/}
+      {/*  >*/}
+      {/*    <kbd className="px-1.5 py-0.5 text-[9px] font-mono text-[var(--text-3)] bg-[var(--kbd-bg)] border border-[var(--border)] rounded flex items-center gap-0.5 opacity-60 hover:opacity-100 transition-opacity">*/}
+      {/*      <span>⌘</span><span>K</span>*/}
+      {/*    </kbd>*/}
+      {/*  </button>*/}
+      {/*</div>*/}
 
       {/* Right Controls */}
       <div className="flex items-center gap-3 ml-auto shrink-0">

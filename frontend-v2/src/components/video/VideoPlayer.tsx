@@ -51,6 +51,7 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, {
   const [volume, setVolume] = useState(1);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [scrubbing, setScrubbing] = useState(false);
+  const [failedSource, setFailedSource] = useState<string | null>(null);
 
   // Events sorted by time; this ordering is what prev/next step through.
   const events = useMemo(
@@ -83,12 +84,14 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, {
         // Unmuted autoplay can be refused without a gesture; muting always succeeds.
         video.muted = true;
         setMuted(true);
-        void video.play();
+        return video.play().catch(() => {
+          setFailedSource(src);
+        });
       });
     } else {
       video.pause();
     }
-  }, [videoRef]);
+  }, [src, videoRef]);
 
   // The index of the event the playhead currently sits in, or the previous one.
   const currentEventIndex = useMemo(() => {
@@ -197,11 +200,18 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, {
         src={src}
         className="h-full w-full object-contain"
         playsInline
+        onError={() => setFailedSource(src)}
         onClick={togglePlay}
       />
 
       {/* Live boxes on the tracked object. */}
       <TrackOverlay videoRef={videoRef} tracks={tracks} activeId={activeSegment?.id ?? null} />
+
+      {failedSource === src && (
+        <div className="absolute inset-0 flex items-center justify-center bg-black/80 px-6 text-center text-xs text-[var(--text-2)]">
+          This video cannot be played. Verify that the video stream exists and uses a browser-supported codec.
+        </div>
+      )}
 
       {/* Centre play affordance, shown while paused. */}
       {!isPlaying && (
