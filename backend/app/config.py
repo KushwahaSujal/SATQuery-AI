@@ -27,6 +27,11 @@ class AppSettings(BaseModel):
     host: str = "0.0.0.0"
     port: int = 8000
     cors_origins: List[str] = ["http://localhost:3000", "http://127.0.0.1:3000"]
+    # Vercel gives every deployment its own preview host
+    # (<project>-<hash>-<org>.vercel.app), so a fixed list only ever covers the
+    # production alias and every preview build hits a CORS wall. A regex is the
+    # only way to admit them without listing hosts that do not exist yet.
+    cors_origin_regex: Optional[str] = None
 
 
 class StorageSettings(BaseModel):
@@ -290,6 +295,8 @@ class Config:
             self.storage.results_dir = os.getenv("SATQUERY_RESULTS_DIR")
         if os.getenv("SATQUERY_CORS_ORIGINS"):
             self.app.cors_origins = [o.strip() for o in os.getenv("SATQUERY_CORS_ORIGINS").split(",") if o.strip()]
+        if os.getenv("SATQUERY_CORS_ORIGIN_REGEX"):
+            self.app.cors_origin_regex = os.getenv("SATQUERY_CORS_ORIGIN_REGEX").strip()
         if os.getenv("SATQUERY_MAX_UPLOAD_MB"):
             self.storage.max_upload_size_mb = int(os.getenv("SATQUERY_MAX_UPLOAD_MB"))
         if os.getenv("SATQUERY_TRAINED_SEGMENTERS_ENABLED"):

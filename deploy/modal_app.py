@@ -21,11 +21,19 @@ image = (
     # cu128 wheels still target Turing (T4, sm_75); record the installed torch version in Q-022.
     .pip_install("torch", "torchvision", index_url="https://download.pytorch.org/whl/cu128")
     .pip_install_from_requirements(str(REPO / "backend" / "requirements.txt"))
+    # The trained segmenters (buildings, roads, water, cloud, landcover, ISPRS) build their
+    # network through training.segmentation.train_seg, so the serving image needs the two
+    # training-only libraries it imports. Without them binary_segmenter.trainer_importable()
+    # is False and every one of those models reports unavailable on the cloud while working
+    # locally. Deliberately not added to backend/requirements.txt, which stays serve-only.
+    .pip_install("segmentation-models-pytorch", "albumentations", "rasterio")
     .env({"HF_HOME": "/models/hf", "SATQUERY_RESULTS_DIR": "/results", "PYTHONPATH": REMOTE,
           "SATQUERY_ANSWER_WRITER": "on", "SATQUERY_RESULTS_RETENTION_DAYS": "7"})
     .run_commands(f"mkdir -p {REMOTE}", f"ln -s /models/checkpoints {REMOTE}/checkpoints")
     .add_local_dir(str(REPO / "backend"), f"{REMOTE}/backend", ignore=["**/__pycache__", "**/*.pyc"])
     .add_local_dir(str(REPO / "configs"), f"{REMOTE}/configs")
+    # 284 KB of Python. Ships for the same reason as the two libraries above.
+    .add_local_dir(str(REPO / "training"), f"{REMOTE}/training", ignore=["**/__pycache__", "**/*.pyc"])
 )
 
 app = modal.App("satquery-ai")

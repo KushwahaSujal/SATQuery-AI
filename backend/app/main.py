@@ -48,13 +48,18 @@ app = FastAPI(
 app.add_middleware(ApiKeyMiddleware)
 
 # CORS configuration
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=settings.app.cors_origins,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+_cors_kwargs = {
+    "allow_origins": settings.app.cors_origins,
+    "allow_credentials": True,
+    "allow_methods": ["*"],
+    "allow_headers": ["*"],
+}
+# Only pass the regex when one is configured: allow_origin_regex=None is fine, but
+# keeping it out of the call leaves local runs byte-identical to before.
+if settings.app.cors_origin_regex:
+    _cors_kwargs["allow_origin_regex"] = settings.app.cors_origin_regex
+
+app.add_middleware(CORSMiddleware, **_cors_kwargs)
 
 
 from fastapi.exceptions import RequestValidationError, ResponseValidationError

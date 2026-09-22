@@ -163,6 +163,56 @@ Switch back to a local GPU backend by entering `http://localhost:8000` with an e
 | Video/images don't load, zip gives 401 | frontend must be the version with the connection panel (adds `?key=` to media) |
 | Out of credit | Modal stops serving; use the local backend (`http://localhost:8000`) until the monthly reset |
 
+## 9. Hosting the frontend (Vercel) and installing it as an app
+
+The frontend is a Next.js app and hosts fine on Vercel's free tier. **The backend cannot go
+there**: it needs a CUDA GPU, PyTorch and ~5.2 GB of weights, and runs jobs for tens of seconds.
+Vercel is for `frontend-v2/` only; the backend stays on Modal (sections 1-5).
+
+### Build-time environment (Vercel → Project → Settings → Environment Variables)
+
+| Variable | Value |
+|---|---|
+| `NEXT_PUBLIC_API_BASE_URL` | the Modal URL, e.g. `https://<org>--satquery-ai-fastapi-app.modal.run` |
+| `NEXT_PUBLIC_API_KEY` | one of the keys in `SATQUERY_API_KEYS` |
+
+Both are `NEXT_PUBLIC_*`, so they are **baked in at build time** — changing either needs a
+redeploy, not just a restart. `frontend-v2` has no runtime connection panel; that was the old
+`frontend/` (section 6). The key is sent as `X-API-Key`, and appended as `?key=` on image, video
+and download URLs, which cannot carry headers.
+
+### Allow the Vercel origin through CORS
+
+The backend defaults to `http://localhost:3000` only (`backend/app/config.py:29`), so a hosted
+frontend is blocked until its origin is listed. Add to `deploy/.env.modal` and redeploy:
+
+```
+SATQUERY_CORS_ORIGINS=https://<your-project>.vercel.app,http://localhost:3000
+```
+
+This is the most common "deployed site shows AI Ready but nothing works" cause — `/api/health` is
+an open path, so the status pill goes green while every real request fails on CORS or 401.
+
+### Installing it as an app (PWA)
+
+`frontend-v2/src/app/manifest.ts` and `frontend-v2/public/sw.js` make the site installable: open it
+in Chrome/Edge on the lab PC and use the install icon in the address bar (or ⋮ → Cast, save and
+share → Install page as app). It then opens in its own window with the SatQuery icon, no browser
+chrome, which is what you want in front of a mentor.
+
+What the PWA does **not** do: it does not remove the need for a backend. Every analysis is GPU work
+on Modal. The service worker only caches the shell (HTML, JS, CSS, icons) and deliberately never
+caches `/api/*`, so results are never stale. With the backend down, the app opens and then reports
+errors on every query. The worker is registered in production builds only, so `npm run dev` is
+unaffected.
+
+### Does the lab PC need your machine running?
+
+No, provided the backend is deployed to Modal. Your PC is only required if
+`NEXT_PUBLIC_API_BASE_URL` points at `http://localhost:8000` — that resolves to *the lab PC*, not
+to yours, so a Vercel build pointed at localhost will never work. See section 7 for keeping the
+Modal container warm on demo day.
+
 ## Measured
 
 | Measurement | Value |

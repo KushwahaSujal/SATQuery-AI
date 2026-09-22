@@ -482,10 +482,25 @@ async def export_layer(job_id: str, layer_id: str, format: str = "png"):
         legend_png = vis_dir / f"{layer_id}_legend.png"
         export_out = vis_dir / f"{job_id}_{layer_id}_export.png"
 
+        source_png = layer_png
         if not layer_png.exists():
-            await get_visualization_image(job_id, layer_id)
+            # get_visualization_image serves each layer from wherever it actually lives
+            # (masks/, overlays/, ...) and does not write into visualizations/. Assuming a
+            # file had appeared at layer_png made export 500 with FileNotFoundError for
+            # every derived layer -- the SAM mask and the grounding overlays included.
+            resolved = await get_visualization_image(job_id, layer_id)
+            candidate = getattr(resolved, "path", None)
+            if candidate:
+                source_png = Path(candidate)
 
-        layer_img = Image.open(layer_png)
+        if not source_png.exists():
+            raise ArtifactNotFoundError(
+                layer_id,
+                message=f"Layer '{layer_id}' has no image to export for job '{job_id}'.",
+                details={"job_id": job_id, "layer_id": layer_id},
+            )
+
+        layer_img = Image.open(source_png)
         legend_img = Image.open(legend_png) if legend_png.exists() else None
 
         layer_meta = LayerMetadata(
