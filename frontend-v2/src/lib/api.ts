@@ -1,4 +1,4 @@
-import { endpoints, API_BASE } from "./endpoints";
+import { endpoints, API_BASE, authHeaders, withKey } from "./endpoints";
 import type {
   AnalyzeRequest,
   AnalysisResult,
@@ -14,11 +14,13 @@ import type {
   VideoJobResult,
 } from "./types";
 
+
 async function http<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${API_BASE}${path}`, {
     ...init,
     headers: {
       Accept: "application/json",
+      ...authHeaders(),
       ...init?.headers,
     },
   });
@@ -49,6 +51,10 @@ function httpWithProgress<T>(
     const xhr = new XMLHttpRequest();
     xhr.open("POST", `${API_BASE}${path}`);
     xhr.setRequestHeader("Accept", "application/json");
+    // Uploads go through XHR rather than http() so the progress bar has an event to
+    // read, which means the key set in http() never reached them: every upload against
+    // an authenticated backend came back 401 while the rest of the app worked.
+    for (const [k, v] of Object.entries(authHeaders())) xhr.setRequestHeader(k, v);
 
     xhr.upload.addEventListener("progress", (e) => {
       if (e.lengthComputable && onProgress) {
@@ -166,9 +172,11 @@ export const api = {
     const rasters: UploadedRaster[] = files.map((file, i) => {
       const meta = metadataList[i] || {};
       const preview = meta.preview_url
-        ? (meta.preview_url as string).startsWith("http")
-          ? meta.preview_url as string
-          : `${API_BASE}${meta.preview_url}`
+        ? withKey(
+            (meta.preview_url as string).startsWith("http")
+              ? (meta.preview_url as string)
+              : `${API_BASE}${meta.preview_url}`,
+          )
         : undefined;
 
       return {
@@ -214,7 +222,7 @@ export const api = {
       height: meta.height as number,
       frames: meta.frame_count as number,
       codec: meta.codec as string,
-      preview_url: `${API_BASE}${res.video_url || endpoints.videoStream(res.job_id as string)}`,
+      preview_url: withKey(`${API_BASE}${res.video_url || endpoints.videoStream(res.job_id as string)}`),
     };
 
     return { video };
@@ -245,9 +253,11 @@ export const api = {
     const rasters: UploadedRaster[] = files.map((file, i) => {
       const meta = metadataList[i] || {};
       const preview = meta.preview_url
-        ? (meta.preview_url as string).startsWith("http")
-          ? (meta.preview_url as string)
-          : `${API_BASE}${meta.preview_url}`
+        ? withKey(
+            (meta.preview_url as string).startsWith("http")
+              ? (meta.preview_url as string)
+              : `${API_BASE}${meta.preview_url}`,
+          )
         : undefined;
 
       return {
@@ -297,10 +307,20 @@ export const api = {
       height: meta.height as number,
       frames: meta.frame_count as number,
       codec: meta.codec as string,
-      preview_url: `${API_BASE}${res.video_url || endpoints.videoStream(res.job_id as string)}`,
+      preview_url: withKey(`${API_BASE}${res.video_url || endpoints.videoStream(res.job_id as string)}`),
     };
 
     return { video };
+  },
+
+  // Copies an existing job's source imagery into a fresh workspace so the same scene
+  // can be re-queried without re-uploading it, and without overwriting that job.
+  reuseSource: async (jobId: string): Promise<{ request_id: string; image_filenames: string[] }> => {
+    const res = await http<{ request_id: string; image_filenames: string[] }>(
+      endpoints.reuseSource(jobId),
+      { method: "POST" },
+    );
+    return res;
   },
 
   analyze: async (payload: AnalyzeRequest): Promise<{ job_id: string }> => {
@@ -358,8 +378,8 @@ export const api = {
       description: `${l.units || ""} ${l.layer_type ? "(" + l.layer_type + ")" : ""}`.trim(),
       available: true,
       legend_available: Boolean(l.legend_url),
-      artifact_url: l.artifact_url ? `${API_BASE}${l.artifact_url}` : `${API_BASE}${endpoints.visualization(jobId, l.layer_id as string)}`,
-      legend_url: l.legend_url ? `${API_BASE}${l.legend_url}` : undefined,
+      artifact_url: withKey(l.artifact_url ? `${API_BASE}${l.artifact_url}` : `${API_BASE}${endpoints.visualization(jobId, l.layer_id as string)}`),
+      legend_url: l.legend_url ? withKey(`${API_BASE}${l.legend_url}`) : undefined,
     }));
     return { layers };
   },
@@ -377,20 +397,20 @@ export const api = {
     http<HistogramResponse>(endpoints.histogram(jobId, layerId)),
 
   visualizationUrl: (jobId: string, layerId: string) =>
-    `${API_BASE}${endpoints.visualization(jobId, layerId)}`,
+    withKey(`${API_BASE}${endpoints.visualization(jobId, layerId)}`),
 
   exportUrl: (
     jobId: string,
     layerId: string,
     format: "png" | "geotiff" | "geojson",
   ) =>
-    `${API_BASE}${endpoints.exportLayer(jobId, layerId)}?format=${format}`,
+    withKey(`${API_BASE}${endpoints.exportLayer(jobId, layerId)}?format=${format}`),
 
   reportUrl: (requestId: string) =>
-    `${API_BASE}${endpoints.report(requestId)}`,
+    withKey(`${API_BASE}${endpoints.report(requestId)}`),
 
   downloadUrl: (requestId: string) =>
-    `${API_BASE}${endpoints.downloadResult(requestId)}`,
+    withKey(`${API_BASE}${endpoints.downloadResult(requestId)}`),
 
   videoJob: (jobId: string) =>
     http<VideoJobResult>(endpoints.videoJob(jobId)),
@@ -430,7 +450,7 @@ export const api = {
   },
 
   videoStreamUrl: (jobId: string) =>
-    `${API_BASE}${endpoints.videoStream(jobId)}`,
+    withKey(`${API_BASE}${endpoints.videoStream(jobId)}`),
 
   listJobs: async (): Promise<Record<string, unknown>[]> => {
     const raw = await http<Record<string, unknown>[] | Record<string, unknown>>(endpoints.jobs);

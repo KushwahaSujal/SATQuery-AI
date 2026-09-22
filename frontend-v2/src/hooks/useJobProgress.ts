@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { API_BASE } from "@/lib/endpoints";
+import { API_BASE, authHeaders } from "@/lib/endpoints";
 
 /** One entry from the pipeline's execution trace. */
 export interface ProgressTraceEntry {
@@ -57,7 +57,9 @@ export function useJobProgress(jobId?: string | null, enabled = true) {
     staleTime: 0,
     retry: false,
     queryFn: async () => {
-      const res = await fetch(`${API_BASE}/api/jobs/${jobId}/progress`);
+      const res = await fetch(`${API_BASE}/api/jobs/${jobId}/progress`, {
+        headers: authHeaders(),
+      });
       if (res.status === 404) return null;
       if (!res.ok) throw new Error(`Progress unavailable (${res.status})`);
       return (await res.json()) as JobProgress;

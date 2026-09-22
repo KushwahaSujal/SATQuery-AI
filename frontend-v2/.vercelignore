@@ -1,0 +1,8 @@
+# The repo root holds the Python backend, weights and results. Only this directory
+# is deployed, but keep local build output and scratch out of the upload regardless.
+.next
+node_modules
+results
+dev_output.log
+dev_output.txt
+.playwright-mcp
