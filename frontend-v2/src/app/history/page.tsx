@@ -86,10 +86,12 @@ export default function HistoryPage() {
   };
 
   const activeId = selectedId || (jobs.length > 0 ? jobs[0].id : null);
+  const activeJob = jobs.find((j) => j.id === activeId);
+  const isVideoTask = activeJob?.task?.startsWith("video") ?? false;
 
   const { data: result } = useQuery<AnalysisResult>({
-    queryKey: ["result", activeId],
-    queryFn: () => api.result(activeId!),
+    queryKey: ["result", activeId, isVideoTask],
+    queryFn: () => isVideoTask ? api.videoResult(activeId!) : api.result(activeId!),
     enabled: Boolean(activeId),
     staleTime: 60_000,
     retry: 1,
@@ -371,6 +373,14 @@ export default function HistoryPage() {
                                 onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
                               />
                             </>
+                          ) : item.task?.startsWith("video") ? (
+                            <video
+                              src={api.videoStreamUrl(item.id)}
+                              className="w-full h-full object-cover"
+                              preload="auto"
+                              muted
+                              playsInline
+                            />
                           ) : (
                             <img
                               src={api.visualizationUrl(item.id, "true_color")}
@@ -462,17 +472,27 @@ export default function HistoryPage() {
             </div>
 
             {/* Visualization Preview */}
-            {result && activeId && (
+            {activeId && (result || isVideoTask) && (
               <div
                 className="relative h-64 rounded-xl border border-[var(--border)] overflow-hidden shadow-lg cursor-ew-resize select-none"
                 onMouseMove={(e) => {
+                  if (isVideoTask) return; // no slider for video
                   const rect = e.currentTarget.getBoundingClientRect();
                   const x = e.clientX - rect.left;
                   const pct = Math.max(0, Math.min(100, (x / rect.width) * 100));
                   setSliderPos(pct);
                 }}
               >
-                {["bi_temporal_change", "bi_temporal_change_vqa"].includes(result.task) ? (
+                {isVideoTask ? (
+                  <video
+                    src={api.videoStreamUrl(activeId)}
+                    className="w-full h-full object-cover"
+                    preload="auto"
+                    muted
+                    playsInline
+                    controls
+                  />
+                ) : result && ["bi_temporal_change", "bi_temporal_change_vqa"].includes(result.task) ? (
                   <>
                     {/* Base image */}
                     <img
@@ -506,17 +526,17 @@ export default function HistoryPage() {
                       After
                     </div>
                   </>
-                ) : (
+                ) : result ? (
                   <img
                     src={api.visualizationUrl(activeId, "true_color")}
                     alt="Analysis visualization"
                     className="w-full h-full object-cover"
                     onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
                   />
-                )}
+                ) : null}
                 <div className="absolute inset-0 bg-gradient-to-t from-[var(--surface)]/80 to-transparent pointer-events-none" />
                 <div className="absolute top-2.5 right-2.5 px-2 py-0.5 rounded text-[10px] font-semibold bg-[var(--primary-glow)] text-[var(--primary)] border border-[var(--primary)]/40 backdrop-blur-md z-10">
-                  {taskLabel(result.task)}
+                  {taskLabel(result?.task ?? activeJob?.task ?? "")}
                 </div>
               </div>
             )}
@@ -524,16 +544,53 @@ export default function HistoryPage() {
             {/* Details */}
             <div>
               <h2 className="text-base font-bold text-[var(--heading)]">
-                {result?.query || jobs.find((j) => j.id === activeId)?.query || "Analysis"}
+                {result?.query || activeJob?.query || "Analysis"}
               </h2>
               <p className="text-[11px] text-[var(--text-3)] mt-0.5">
-                {formatTimestamp(result?.job_id ? (jobs.find((j) => j.id === activeId)?.created_at || "") : "")}
+                {formatTimestamp(activeJob?.created_at || "")}
               </p>
               {result?.answer && (
                 <p className="text-xs text-[var(--text-2)] mt-2 leading-relaxed">{result.answer}</p>
               )}
+              {/* Video-specific summary: flags detected */}
+              {isVideoTask && result?.flags != null && (
+                <div className="mt-3 grid grid-cols-2 gap-2">
+                  <div className="p-2.5 rounded-xl bg-[var(--surface-2)] border border-[var(--border)]">
+                    <div className="text-sm font-bold text-[var(--cyan)]">{result.flags.length}</div>
+                    <p className="text-[10px] text-[var(--text-3)] leading-tight mt-0.5">Events detected</p>
+                  </div>
+                  {result.video_metadata && (
+                    <div className="p-2.5 rounded-xl bg-[var(--surface-2)] border border-[var(--border)]">
+                      <div className="text-sm font-bold text-[var(--heading)]">
+                        {result.video_metadata.duration_sec.toFixed(1)}s
+                      </div>
+                      <p className="text-[10px] text-[var(--text-3)] leading-tight mt-0.5">Duration @ {result.video_metadata.fps.toFixed(0)} fps</p>
+                    </div>
+                  )}
+                </div>
+              )}
+              {/* Video flags list */}
+              {isVideoTask && result?.flags && result.flags.length > 0 && (
+                <div className="mt-3 space-y-1.5">
+                  <h4 className="text-xs font-semibold text-[var(--text-2)] uppercase tracking-wider">Detected Events</h4>
+                  {result.flags.slice(0, 5).map((flag, i) => (
+                    <div key={flag.flag_id ?? i} className="flex items-center justify-between py-1.5 px-2.5 rounded-lg bg-[var(--surface-2)] border border-[var(--border)]">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0" />
+                        <span className="text-[11px] text-[var(--text-2)] truncate">{flag.label}</span>
+                      </div>
+                      <span className="text-[10px] text-[var(--text-3)] font-mono shrink-0 ml-2">
+                        {flag.start_timestamp.toFixed(1)}s
+                      </span>
+                    </div>
+                  ))}
+                  {result.flags.length > 5 && (
+                    <p className="text-[10px] text-[var(--text-3)] pl-1">+{result.flags.length - 5} more events</p>
+                  )}
+                </div>
+              )}
               {result?.models_used && result.models_used.length > 0 && (
-                <div className="flex items-center gap-1.5 mt-2.5">
+                <div className="flex items-center gap-1.5 mt-2.5 flex-wrap">
                   {result.models_used.map((m) => (
                     <span key={m} className="px-2 py-0.5 rounded bg-[var(--surface-2)] border border-[var(--border)] text-[10px] text-[var(--text-2)]">
                       {m}

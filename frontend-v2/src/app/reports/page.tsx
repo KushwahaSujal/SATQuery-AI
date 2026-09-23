@@ -52,10 +52,12 @@ export default function ReportsPage() {
       }));
 
   const activeId = selectedId || (jobs.length > 0 ? jobs[0].id : null);
+  const activeJob = jobs.find((j) => j.id === activeId);
+  const isVideoTask = activeJob?.task?.startsWith("video") ?? false;
 
   const { data: result } = useQuery<AnalysisResult>({
-    queryKey: ["result", activeId],
-    queryFn: () => api.result(activeId!),
+    queryKey: ["result", activeId, isVideoTask],
+    queryFn: () => isVideoTask ? api.videoResult(activeId!) : api.result(activeId!),
     enabled: Boolean(activeId),
     staleTime: 60_000,
     retry: 1,
@@ -205,6 +207,14 @@ export default function ReportsPage() {
                                       onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
                                     />
                                   </>
+                                ) : report.task?.startsWith("video") ? (
+                                  <video
+                                    src={api.videoStreamUrl(report.id)}
+                                    className="w-full h-full object-cover"
+                                    preload="auto"
+                                    muted
+                                    playsInline
+                                  />
                                 ) : (
                                   <img
                                     src={api.visualizationUrl(report.id, "true_color")}
@@ -309,7 +319,7 @@ export default function ReportsPage() {
 
           <div>
             <h2 className="text-base font-bold text-[var(--heading)] tracking-tight">
-              {result?.query || jobs.find((j) => j.id === activeId)?.query || "Report"}
+              {result?.query || activeJob?.query || "Report"}
             </h2>
             {result?.workflow && <p className="text-xs text-[var(--text-3)] mt-0.5">{result.workflow}</p>}
           </div>
@@ -329,51 +339,110 @@ export default function ReportsPage() {
           )}
 
           {/* Visualization */}
-          {result && activeId && (
+          {activeId && (result || isVideoTask) && (
             <div
               className="relative w-full h-80 rounded-xl overflow-hidden border border-[var(--border)] shadow-md cursor-ew-resize select-none"
               onMouseMove={(e) => {
+                if (isVideoTask) return;
                 const rect = e.currentTarget.getBoundingClientRect();
                 const x = e.clientX - rect.left;
                 const pct = Math.max(0, Math.min(100, (x / rect.width) * 100));
                 setSliderPos(pct);
               }}
             >
-              {/* Base image (True Color) */}
-              <img
-                alt="True Color"
-                className="absolute inset-0 w-full h-full object-cover"
-                src={api.visualizationUrl(activeId, "true_color")}
-                onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
-              />
-
-              {/* Overlay image (Change Heatmap) — clipped */}
-              <div
-                className="absolute inset-0 overflow-hidden"
-                style={{ clipPath: `inset(0 0 0 ${sliderPos}%)` }}
-              >
-                <img
-                  alt="Change Heatmap"
-                  className="absolute inset-0 w-full h-full object-cover"
-                  src={api.visualizationUrl(activeId, "change_probability_heatmap")}
-                  onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
+              {isVideoTask ? (
+                <video
+                  src={api.videoStreamUrl(activeId)}
+                  className="w-full h-full object-cover"
+                  preload="auto"
+                  muted
+                  playsInline
+                  controls
                 />
-                <div className="absolute inset-0 bg-red-600/20 mix-blend-color-dodge" />
-              </div>
+              ) : (
+                <>
+                  {/* Base image (True Color) */}
+                  <img
+                    alt="True Color"
+                    className="absolute inset-0 w-full h-full object-cover"
+                    src={api.visualizationUrl(activeId, "true_color")}
+                    onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
+                  />
 
-              {/* Divider */}
-              <div
-                className="absolute top-0 bottom-0 w-0.5 bg-white/80 shadow-[0_0_8px_rgba(255,255,255,0.5)] z-10 pointer-events-none"
-                style={{ left: `${sliderPos}%` }}
-              />
+                  {/* Overlay image (Change Heatmap) — clipped */}
+                  <div
+                    className="absolute inset-0 overflow-hidden"
+                    style={{ clipPath: `inset(0 0 0 ${sliderPos}%)` }}
+                  >
+                    <img
+                      alt="Change Heatmap"
+                      className="absolute inset-0 w-full h-full object-cover"
+                      src={api.visualizationUrl(activeId, "change_probability_heatmap")}
+                      onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
+                    />
+                    <div className="absolute inset-0 bg-red-600/20 mix-blend-color-dodge" />
+                  </div>
 
-              {/* Labels */}
-              <div className="absolute top-2 left-2 px-2 py-0.5 rounded bg-[var(--scrim)] backdrop-blur text-[10px] text-[var(--heading)] font-medium border border-[var(--border)] z-10">
-                True Color
-              </div>
-              <div className="absolute top-2 right-2 px-2 py-0.5 rounded bg-[var(--scrim)] backdrop-blur text-[10px] text-[var(--heading)] font-medium border border-[var(--border)] z-10">
-                Change Heatmap
-              </div>
+                  {/* Divider */}
+                  <div
+                    className="absolute top-0 bottom-0 w-0.5 bg-white/80 shadow-[0_0_8px_rgba(255,255,255,0.5)] z-10 pointer-events-none"
+                    style={{ left: `${sliderPos}%` }}
+                  />
+
+                  {/* Labels */}
+                  <div className="absolute top-2 left-2 px-2 py-0.5 rounded bg-[var(--scrim)] backdrop-blur text-[10px] text-[var(--heading)] font-medium border border-[var(--border)] z-10">
+                    True Color
+                  </div>
+                  <div className="absolute top-2 right-2 px-2 py-0.5 rounded bg-[var(--scrim)] backdrop-blur text-[10px] text-[var(--heading)] font-medium border border-[var(--border)] z-10">
+                    Change Heatmap
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+
+          {/* Video-specific: Detected Events */}
+          {isVideoTask && result?.flags != null && (
+            <div>
+              <h3 className="text-xs font-semibold text-[var(--text-2)] uppercase tracking-wider mb-2.5 flex items-center gap-1.5">
+                <svg className="w-3.5 h-3.5 text-[var(--cyan)]" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                  <path d="M15 10l4.553-2.069A1 1 0 0121 8.87v6.26a1 1 0 01-1.447.894L15 14M3 8a2 2 0 012-2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V8z" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+                <span>Detected Events</span>
+                <span className="ml-auto px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-cyan-500/20 text-[var(--cyan)]">{result.flags.length}</span>
+              </h3>
+              {result.video_metadata && (
+                <div className="grid grid-cols-2 gap-2 mb-2.5">
+                  <div className="p-2.5 rounded-xl bg-[var(--surface-2)] border border-[var(--border)]">
+                    <div className="text-sm font-bold text-[var(--heading)]">{result.video_metadata.duration_sec.toFixed(1)}s</div>
+                    <p className="text-[10px] text-[var(--text-3)] leading-tight mt-0.5">Duration</p>
+                  </div>
+                  <div className="p-2.5 rounded-xl bg-[var(--surface-2)] border border-[var(--border)]">
+                    <div className="text-sm font-bold text-[var(--heading)]">{result.video_metadata.fps.toFixed(0)} fps</div>
+                    <p className="text-[10px] text-[var(--text-3)] leading-tight mt-0.5">{result.video_metadata.width}×{result.video_metadata.height}</p>
+                  </div>
+                </div>
+              )}
+              {result.flags.length === 0 ? (
+                <p className="text-[11px] text-[var(--text-3)]">No events detected in this video.</p>
+              ) : (
+                <div className="space-y-1.5">
+                  {result.flags.slice(0, 6).map((flag, i) => (
+                    <div key={flag.flag_id ?? i} className="flex items-center justify-between py-1.5 px-2.5 rounded-lg bg-[var(--surface-2)] border border-[var(--border)]">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0" />
+                        <span className="text-[11px] text-[var(--text-2)] truncate">{flag.label}</span>
+                      </div>
+                      <span className="text-[10px] text-[var(--text-3)] font-mono shrink-0 ml-2">
+                        {flag.start_timestamp.toFixed(1)}s
+                      </span>
+                    </div>
+                  ))}
+                  {result.flags.length > 6 && (
+                    <p className="text-[10px] text-[var(--text-3)] pl-1">+{result.flags.length - 6} more events</p>
+                  )}
+                </div>
+              )}
             </div>
           )}
 
