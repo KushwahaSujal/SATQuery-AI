@@ -156,6 +156,24 @@ export default function AnalysisJobPage() {
     setIsFullscreen((fullscreen) => !fullscreen);
   };
 
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Don't trigger if the user is typing in an input
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
+        return;
+      }
+      if (e.key === 'f' || e.key === 'F') {
+        e.preventDefault();
+        setIsFullscreen((f) => !f);
+      } else if (e.key === 'Escape') {
+        setIsFullscreen(false);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
   return (
     <TooltipProvider delayDuration={120}>
       <div className={`${isFullscreen ? "fixed inset-0 z-50" : "h-screen w-full"} flex flex-col bg-[var(--canvas)] text-[var(--text)] font-sans overflow-hidden antialiased`}>
