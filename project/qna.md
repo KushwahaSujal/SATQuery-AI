@@ -6095,3 +6095,588 @@ analysis serialise on the shared lock.
    and OOM return 503.
 3. **Video jobs** have no preview: they do not use the job-layer endpoints. This deviates from plan E3's "or a
    video frame".
+
+## Q-069 · Disk round: train on every held dataset before pruning it, then prune what is finished
+
+**Date:** 2026-10-26 · **Branch:** `prototype` (uncommitted) · results follow in a later entry. Asked by the user:
+`/home` was at 94 % (723 of 819 GB, 55 GB free) and `datasets/raw/` alone held 303 GB. Instruction: whatever
+might be needed later must be trained *now*, and everything finished or not needed is deleted, "without
+losing anything" that the deliverable needs.
+
+**Q1 — What is being trained, and on what?** One job at a time in `satquery.slice`, appended to the existing
+boot-persistent queue `datasets/raw/_jobs/train_queue.sh` (skip-if-`report.json`, resume from `last.pt`):
+1. `buildings_whu_ma_inria_r50` — the served buildings U-Net R50 retrained on WHU + Massachusetts **+ Inria**
+   (five cities, 0.3 m). Inria is cut into 1000 px pieces by the new `training/segmentation/prepare_inria.py`
+   (180 labelled tiles → 4,500 pieces, 8.6 GB) and hash-split on the *source* tile id in
+   `datasets.py::_inria` → 3,925 / 325 / 250; the 250 test pieces come from 10 tiles across all five cities.
+   Same arguments as `buildings_whu_ma_r50` except `--samples-per-epoch 9000` (was 6000 for two sources), so
+   each source keeps 3,000 crops per epoch under the equal-per-source sampler.
+2. `ships_yolo` — new single-class YOLO11s ship detector on MASATI-v2's own split (3,617 / 452 / 453; about half
+   negatives), `training/detection/train_ships.py`, modelled on `train_craters.py`.
+3. `builtup_sn7` — new binary built-up segmenter on SpaceNet 7 monthly Planet mosaics (4.77 m), prepared by
+   `training/segmentation/prepare_spacenet7.py` (1,423 months, 2.5 GB; UDM cloud polygons written white =
+   ignored), split by AOI with `isprs_split` 70/15/15 → 980 / 329 / 114 months. Trained at 2.4 m.
+4. `scripts/eval_isprs_eroded.py` — the existing Potsdam/Vaihingen models scored on the same test tiles
+   under the ISPRS eroded-label protocol, so the eroded label sets can be pruned.
+
+**Q2 — Why these and not the other held datasets?**
+- **iSAID is untrainable as downloaded**: the Kaggle copy holds masks + COCO JSON for train/val but no RGB
+  imagery (that ships with DOTA); 6.6 of its 7.2 GB is unlabelled test imagery. Pruned, not trained.
+- **LAE-1M**: Q-040 — the blocker is the serving framework, and the LAE-1M-trained checkpoint is already
+  kept in `checkpoints/lae_dino/`. Training would reproduce it. Pruned.
+- **ISPRS DSM / ALS / raw frames**: a DSM-fused model cannot be served — no request path accepts a DSM.
+- **SpaceNet 3 16-bit originals, OpenEarthMap parquet**: converted already; nothing trains on the originals.
+- **DIOR-RSVG (grounding) and the cloud95 NIR band** are held for a second step: both need new training code
+  (a Grounding DINO fine-tune gated on VRSBench; a 4-band input path), not a new source in an existing trainer.
+
+**Q3 — Blast radius.** Nothing served changes until a result is recorded and adopted.
+- `buildings_whu_ma_inria_r50` replaces the served checkpoint only if WHU and Massachusetts test IoU (4-flip
+  TTA, same tiles) do not drop below `buildings_whu_ma_r50` (0.8402 / 0.7004). Criterion fixed here,
+  before the result exists.
+- Ships and built-up are new capabilities; adapters and routing are separate changes.
+- `datasets.py` gains two `SOURCES` keys (`inria`, `spacenet7`); existing keys are untouched.
+
+**Q4 — Verification so far (measured).**
+- Phase-1 prune manifest (`datasets/raw/_pruned/2026-10-26-phase1-*`), built from the trainers' own index:
+  211.0 GB over 214,720 files (38.9 GB of train-split files from finished models, 172.1 GB of
+  whole-path deletes), **0 overlap** with the 95,287 protected files (every val/test file, the train files
+  the queue still needs, and the train tiles unit tests read).
+- Duplicates checked byte-for-byte before listing them: 40/40 sampled LoveDA-mirror tiles and masks identical
+  to `loveda_full`; all 9,350 VRSBench zip entries present with matching sizes; OpenEarthMap 3,000 + 500 parquet
+  rows all extracted (only the unused `polygon` column is lost).
+- No code on any of the 13 local/remote branches reads the pruned datasets.
+- Smoke runs (2 epochs, to scratch) passed for the Inria buildings job (peak GPU 1.95 GB) and the ship job.
+
+**Q5 — Defence: "You deleted your training data."** Only train splits of models that are trained, scored
+and recorded (Q-032, Q-035, Q-036, Q-037). Every val/test tile is kept, so every score in this file can be
+re-run. Splits are a function of the tile id, so re-downloading through `datasets/manifests/training_sources.yaml`
+reproduces identical test sets. Datasets that might add value were trained on first, not deleted on a guess.
+
+**Status of the prune itself:** the bulk delete was refused by the session's safety classifier; it waits on
+the user. Nothing has been deleted at the time of writing.
+
+## Q-070 · Phase-1 prune applied: /home 55 → 278 GB free; every val/test tile verified present
+
+**Date:** 2026-10-26 · **Branch:** `prototype` (uncommitted). Follows Q-069, whose closing line ("the bulk
+delete … waits on the user") this entry resolves: the user ran `datasets/raw/_pruned/apply_phase1.sh`.
+
+**Q1 — What was deleted?** Exactly the manifests in `datasets/raw/_pruned/` (kept as the record): 29,474
+train-split files of finished models and 31 whole paths — LAE-1M, iSAID, Dubai, the LoveDA HF mirror, the
+VRSBench zip, Massachusetts PNG duplicates, unlabelled DeepGlobe valid/test folders, OpenEarthMap parquet,
+SpaceNet 3 16-bit originals, ISPRS DSM/ALS/raw frames/3D/archives, raw Inria (pixel-identical to
+`prepared/`, 3 tiles × 25 pieces checked), and two project files in `~/Downloads` (Toronto, LocateAnything zip).
+
+**Q2 — Verification (measured after the delete).**
+- `df /home`: 499 G used, **278 G free** (was 723 G / 55 G). `datasets/raw/` 303 → 89 GB.
+- 0 of the 31 whole paths and 0 of the 29,474 listed files remain.
+- Val/test tile counts per source, before → after, all unchanged and 0 files missing: deepglobe_roads
+  320/297, massachusetts_roads 14/49, spacenet3_roads 144/122, whu_building 1228/1228,
+  massachusetts_buildings 4/10, water_bodies 129/131, cloud95 856/1723, deepglobe_landcover 51/38,
+  loveda 249/1669, openearthmap 301/500, isprs_potsdam 5/4, isprs_potsdam_irrg 5/4, isprs_vaihingen 5/6.
+- `pytest tests/unit/test_isprs_dataset.py test_seg_water_cloud_sources.py test_trained_adapters.py
+  test_aoi_http.py` → **89 passed**. The one assertion that needs every ISPRS tile (38 / 33) now runs only
+  when `datasets/raw/isprs_potsdam_vaihingen/TRAIN_PRUNED` is absent; the files other tests name
+  (`train[0]` of each ISPRS source, Vaihingen `area1`, the first 12 DeepGlobe train tiles) were kept.
+- Not yet re-run: the GPU tests under `tests/models/` (the GPU is held by the Q-069 queue).
+
+**Q3 — Defence: "How do you know you didn't delete a test tile?"** The manifest was computed from the
+trainers' own split functions and asserted disjoint from every val/test path before anything was
+written; the post-delete count above was then computed independently from the same functions.
+
+## Q-071 · Buildings + Inria: not adopted — WHU and Massachusetts both dropped; served model unchanged
+
+**Date:** 2026-10-26 · **Branch:** `prototype` (uncommitted). The first Q-069 job. Criterion fixed in Q-069
+§Q3 before the run: replace `buildings_whu_ma_r50` only if WHU and Massachusetts test IoU (4-flip TTA,
+same tiles, each model's own val-frozen threshold) do not drop.
+
+**Q1 — Result (`checkpoints/buildings_whu_ma_inria_r50_seg/report.json`, best epoch 39, threshold 0.50,
+peak GPU 1.95 GB).**
+
+| test IoU | served `whu_ma_r50` | `whu_ma_inria_r50` | Δ |
+|---|---|---|---|
+| WHU (TTA) | 0.8402 | 0.8347 | −0.0055 |
+| Massachusetts (TTA) | 0.7004 | 0.6991 | −0.0013 |
+| WHU (no TTA) | 0.8340 | 0.8288 | −0.0052 |
+| Massachusetts (no TTA) | 0.6945 | 0.6919 | −0.0026 |
+| Inria, 250 pieces / 10 tiles / 5 cities (TTA) | *queued* | 0.7216 | — |
+
+**Q2 — Decision.** Not adopted: both pre-registered conditions failed, by small margins. `configs/models.yaml`
+is untouched. The new checkpoint is kept on disk (it is the only model that has seen Inria's five cities).
+
+**Q3 — What is still open.** The served model's score on the same Inria test pieces is queued
+(`scripts/eval_segmenter_on_source.py`, output `results/eval/buildings_whu_ma_r50_seg_on_inria.json`).
+If it is far below 0.72, the trade is "−0.5 point on the training cities for +N points on unseen cities",
+which bears on the Cartosat domain-shift risk (`prd.md`). That would be a new decision, recorded as a new
+entry; this entry's verdict under its own criterion stands either way.
+
+**Q4 — Defence: "Why not adopt a model that knows more cities?"** Because the criterion was written before
+the result, and it failed. Changing the bar after seeing the number is how results get laundered.
+
+## Q-072 · Ships adopted (AP50 0.799 vs 0.078); built-up SN7 trained; ISPRS eroded scores; two queue faults
+
+**Date:** 2026-10-26 · **Branch:** `prototype` (uncommitted). Results of Q-069 jobs 2–4, and two faults in how
+the queue was run.
+
+**Q1 — Ships: what was measured, and what changed?** `checkpoints/ships_yolo/` (YOLO11s, 80 epochs, 640 px,
+batch 16) on MASATI-v2 test, 453 tiles. Trainer: mAP50 0.8005, mAP50-95 0.3673, P 0.860, R 0.730. Head to head
+(`scripts/eval_ship_baseline.py` → `results/training/ship_h2h.json`; same tiles, same AP code as the crater
+h2h; 403 ships, 210 ship-free tiles):
+
+| | AP50 | max recall | ship-free tiles boxed at serving threshold |
+|---|---|---|---|
+| Grounding DINO "ship." (thr 0.35) | 0.0779 | 0.680 | 66.2 % |
+| YOLO ship detector (thr 0.25) | **0.7987** | 0.893 | **1.4 %** |
+
+Adopted as a *registered* model, following the crater precedent (Q-028): `ship_detector` in
+`configs/models.yaml` and `ModelRegistry`; `ShipDetectorAdapter` subclasses the crater adapter, whose
+user-facing strings now use its `LABEL` (crater wording unchanged; 55 crater unit tests pass). Verified
+through the registry on CPU: available, serving, and `m0011.png` → 3 ships found for 3 ground-truth boxes.
+**Nothing routes to it yet** — sending "find ships" here instead of Grounding DINO is a router change and gets
+its own entry. Licence: ultralytics AGPL-3.0 (Q-028); MASATI is non-profit research only.
+
+**Q2 — Buildings: the open question from Q-071.** The served model on the same 250 Inria test pieces:
+IoU 0.4774 (TTA 0.4925) vs the Inria model's 0.7122 (TTA 0.7216). That gap is **not** a fair domain-shift
+measure — the Inria model trained on other tiles of those five cities. The fair test, building class of
+LoveDA (1,669 tiles, China) and OpenEarthMap (500 tiles, 44 countries) test sets that neither model saw, is
+queued (`scripts/eval_buildings_ood.py`). Served model still unchanged.
+
+**Q3 — Built-up (SpaceNet 7).** `checkpoints/builtup_sn7_seg/`: U-Net R34 at 2.4 m; threshold 0.40 frozen on
+val; test (114 months, ~5 AOIs) pooled IoU **0.3149**, F1 0.479, P 0.443, R 0.522 (TTA IoU 0.3187); val IoU
+0.4178. Best epoch was the last (40/40), so it was still improving when the schedule ended. Pixel IoU is not
+the deliverable question ("has built-up area increased?"); `scripts/eval_builtup_trend.py` (direction
+agreement and change error per held-out AOI) is queued. Not registered until that is measured.
+
+**Q4 — ISPRS under the eroded-label protocol** (`results/eval/isprs_eroded.json`, same held-out tiles as
+Q-036; still not leaderboard tiles):
+
+| | OA | mean F1 (5 cls, excl. clutter) | mIoU (5) | F1 imperv / bldg / low veg / tree / car / clutter |
+|---|---|---|---|---|
+| Potsdam (4 tiles, 33.4 M px) | 0.9075 | 0.9158 | 0.8474 | 0.919 / 0.961 / 0.889 / 0.851 / 0.959 / 0.339 |
+| Vaihingen (6 tiles, 22.7 M px) | 0.9065 | 0.9019 | 0.8239 | 0.923 / 0.962 / 0.838 / 0.908 / 0.879 / 0.732 |
+
+**Q5 — Faults, recorded as they happened.**
+1. `eval_isprs_eroded.py` first failed in 4 s: it built the 1-class binary head and loaded a 6-class
+   checkpoint. Fixed by the same head swap `train_landcover.py` does; both checkpoints then load strict.
+2. **Four queued steps silently never ran** (ship h2h, buildings-on-Inria, cloud-RGBN, grounding). They were
+   added to `train_queue.sh` while it executed, on the reasoning that bash reads a script by offset so
+   appending past the current block is safe. That reasoning was wrong for how the file was saved: the edit
+   replaced the file, and the running bash kept reading the original, which ended after the ISPRS step. The
+   queue was restarted at 16:24; finished steps skipped themselves and the missing ones ran. Rule taken
+   forward: never edit the queue while it runs; edit, then (re)start it.
+3. The dashboard (`scripts/watch_training.py`) showed no ETA for the ship run: it only recognised jobs started
+   with `--task`. Fixed with a `NO_TASK_JOBS` table (ships, craters, grounding + smoke), report lookup in
+   `checkpoints/<task>/`, and Acc@0.5/mIoU rows for grounding.
+
+## Q-073 · Phase-2 prune manifest: 41.9 GB of data whose jobs have finished
+
+**Date:** 2026-10-26 · **Branch:** `prototype` (uncommitted). Built by `datasets/raw/_pruned/phase2_manifest.py`
+(kept, re-runnable), applied by `apply_phase2.sh`; like phase 1 it is run by the user.
+
+**Q1 — What, and why each is finished.**
+- Inria, WHU and Massachusetts-buildings **train** tiles (16.4 GB with the eroded labels below): the
+  buildings job is trained and scored (Q-071); the adoption question left open (Q-072 §Q2) is answered from
+  *test* tiles, which stay. WHU keeps its first 12 train tiles, which `test_seg_water_cloud_sources.py` reads.
+- MASATI `images/` + `labels/` (the 4,522-image pool): every file asserted byte-identical (`filecmp`, not
+  shallow) to its copy in `output/{train,val,test}` before listing. MASATI `output/train`: the ship detector is
+  trained and registered (Q-072); val/test stay.
+- SpaceNet 7 raw (train 19 GB, unlabelled public test, CSVs, sample): `prepared/` is what the built-up model
+  trains and is scored on; it stays whole (train included) until Q-072 §Q3's trend evaluation decides whether
+  a longer run is needed.
+- ISPRS eroded labels except the 10 test tiles' (kept, so `eval_isprs_eroded.py` re-runs), and the
+  participants' eroded subset: the eroded evaluation is done (Q-072 §Q4).
+
+**Q2 — Verification.** The script asserts 0 overlap with 22,057 protected files (every val/test file of every
+source registry, MASATI val/test, the 10 eroded test labels, the 12 WHU sentinels). On its first run the
+assertion fired — the WHU train list contained the 12 sentinel tiles; fixed by subtracting protected files
+from the train lists, as phase 1 does, while keeping the assertion strict for whole-folder deletes.
+
+**Still held:** cloud95 (job running), DIOR-RSVG + VRSBench images (grounding job queued), SpaceNet 7
+`prepared/`.
+
+## Q-074 · Cloud with NIR: test IoU 0.703 → 0.827 on the same patches; trained, not served
+
+**Date:** 2026-10-26 · **Branch:** `prototype` (uncommitted). Q-069 job 5.
+
+**Q1 — Mechanism.** Same 95-Cloud patches and scene-level split as `cloud_seg` (Q-035), read as four bands
+(R, G, B, NIR; the same fixed `>> 8`, cap 254 scale) through the new `cloud95_rgbn` source. `train_seg.py`
+gained `--in-channels` (default 3; recorded in the checkpoint dict); `SegTiles` gained `bands` (NIR
+normalised with the mean ImageNet statistics; RandomBrightnessContrast replaces ColorJitter, whose hue and
+saturation are RGB-only). On CPU the RGB channels of a 4-band tile are byte-identical to the 3-band reader.
+Same arguments as `cloud_seg` otherwise (R34, 30 epochs, crop 256, 6,000 samples/epoch).
+
+**Q2 — Result** (`checkpoints/cloud_rgbn_seg/report.json`; best epoch 24; threshold 0.70 frozen on val),
+1,723 test patches:
+
+| | IoU | F1 | P | R | IoU (TTA) |
+|---|---|---|---|---|---|
+| `cloud_seg` RGB (served, thr 0.50) | 0.7033 | 0.8258 | 0.9304 | 0.7424 | 0.6951 |
+| `cloud_rgbn_seg` RGB+NIR (thr 0.70) | **0.8272** | 0.9054 | 0.9156 | **0.8954** | **0.8309** |
+
+The gain is recall (+0.153) at a small precision cost (−0.015): NIR separates bright cloud from bright ground,
+which RGB cannot. It also narrows Q-035's open question (val→test recall drop 0.93 → 0.74 for RGB).
+
+**Q3 — Why it is not served.** It needs an NIR band, and it was trained on Landsat-8 16-bit DN scaled `>> 8`.
+The backend can find an NIR band in a GeoTIFF (`visualization/indices.py`, by band description, else band 4),
+but no conversion from a user's radiometry (Sentinel-2 L2A reflectance, Cartosat DN) to this scale has been
+measured; serving it would be an unmeasured input path. Weights kept; the 4-band input path is a separate
+decision for the user, and needs a measured test on non-Landsat imagery first.
+
+## Q-075 · Grounding fine-tune: out of memory at batch 2, and an encoder loss term ~10⁴× too large — both fixed before the run
+
+**Date:** 2026-10-26 · **Branch:** `prototype` (uncommitted). Q-069 job 6, `training/grounding/finetune_grounding_dino.py`.
+
+**Q1 — What failed?** The queued smoke run stopped the queue at its first training step: CUDA out of memory on
+the 8 GB RTX 3070 at batch 2 (the zero-shot baseline pass had completed). This transformers version reports
+`supports_gradient_checkpointing = False` for Grounding DINO, so the fix is batch 1 with 8-step gradient
+accumulation (same effective batch of 8, same 800 px input as production, so base and fine-tuned models are
+scored under one processor setting). Peak GPU 5.28 GB.
+
+**Q2 — The loss.** The batch-1 smoke ran, but its loss was 132,601. One-sample breakdown (fp16):
+`loss_ce` 3.92, `loss_bbox` 0.036, `loss_giou` 0.179 (decoder — sane) and `loss_ce_enc` **51,647** (the
+two-stage encoder proposal classification term). Trained as-is, that one term would set every gradient.
+The loss is now the decoder Hungarian loss with the config's own coefficients:
+`loss_ce + 5·loss_bbox + 2·loss_giou`. Smoke loss after the change: 6.23. The root cause of the encoder term
+in the library's loss was not investigated; leaving it out means the first-stage query selection is not
+directly supervised, which can only make the fine-tune weaker, not inflate its scores.
+
+**Q3 — The dashboard closed itself** on the grounding smoke log (its `tiles:` line uses `test_clean` and
+`{records, images}`), which is why the user's window disappeared. Fixed, and `watch_training.py` now draws an
+error line inside the frame and retries instead of exiting on any rendering error.
+
+**Q4 — What the run will decide.** Adoption is gated on VRSBench referring (all 16,159 val queries, the
+prescribed benchmark), base vs fine-tuned under identical code. DIOR-RSVG test_clean is reported alongside.
+Training records exclude every image in VRSBench val or DIOR-RSVG test (Q-069): 15,463 records / 8,397 images.
+
+## Q-076 · Buildings on unseen cities (+0.18 IoU OpenEarthMap, tie on LoveDA); SN7 built-up fails its trend test
+
+**Date:** 2026-10-26 · **Branch:** `prototype` (uncommitted). Answers Q-072 §Q2 and §Q3.
+
+**Q1 — Buildings, the even-handed test** (`scripts/eval_buildings_ood.py` → `results/eval/buildings_ood_loveda_oem.json`):
+building class of two test sets neither model trained on, resampled to 0.5 m, each model at its own
+val-frozen threshold, pooled over tiles.
+
+| | served `whu_ma_r50` (thr 0.45) | `whu_ma_inria_r50` (thr 0.50) |
+|---|---|---|
+| OpenEarthMap, 500 tiles, 44 countries — IoU / P / R | 0.3691 / 0.824 / 0.401 | **0.5500** / 0.837 / 0.616 |
+| LoveDA, 1,669 tiles, China — IoU / P / R | 0.1871 / 0.223 / 0.535 | 0.1881 / 0.201 / 0.742 |
+
+The full trade: −0.0055 (WHU) and −0.0013 (Massachusetts) test IoU on the training cities (Q-071), +0.181 on
+OpenEarthMap, +0.001 on LoveDA. LoveDA precision is ~0.2 for both, i.e. most predicted building pixels are
+not "building" in LoveDA's labels; not investigated, and it does not separate the two models.
+**Decision pending with the user**: Q-071's pre-registered criterion failed and stands as recorded; whether
+the unseen-city gain justifies a new decision is theirs. `configs/models.yaml` unchanged.
+
+**Q2 — SpaceNet 7 built-up, judged on the deliverable question** (`scripts/eval_builtup_trend.py` →
+`results/eval/builtup_sn7_trend.json`; months under ≥50 % cloud skipped; "unchanged" = within ±0.5 pp):
+- test, 5 AOIs / 114 months: direction of first→last-month change right in **2/5**; mean absolute error of the
+  change 1.19 pp; Pearson r of predicted vs true built-up fraction 0.989 (that r is carried by the between-AOI
+  spread of fractions, not by tracking change).
+- val (threshold chosen here, optimistic), 14 AOIs: 9/14, 0.84 pp, r 0.892.
+- The 3 test misses are all "unchanged" AOIs (true +0.35 to +0.43 pp) reported as increases (+0.76 to +3.23 pp).
+**Not adopted, not registered.** A model that reports growth where there is none would answer requirement #4's
+"increased, decreased or unchanged?" wrongly; that requirement stays with ChangeFormer + CDVQA. Weights kept.
+
+**Q3 — Dashboard ETA during evaluation.** The grounding job spends ~50 min scoring 24,533 expressions before it
+trains, and ~50 min after; it printed nothing during those passes, so the dashboard had no rate and no ETA. The
+trainer now prints `eval tag=… step=i/N … rate=…` every 200 items and a `plan:` line with the whole workload;
+`watch_training.py` walks those stages (baseline evals → train/val per epoch → final evals) and computes the
+stage ETA and the total ETA from the measured rates (training rate taken from the smoke log until training
+starts). The grounding run was restarted for this at 17:02 (5 min of baseline lost). Stopping its unit
+returned exit 0, so the queue ran the two evaluations above first — harmless, both were next in line.
+
+## Q-077 · Phase-2 prune applied: /home 278 → 319 GB free; val/test intact
+
+**Date:** 2026-10-26 · **Branch:** `prototype` (uncommitted). The user ran `apply_phase2.sh` (Q-073).
+
+**Q1 — Verification (measured after the delete).**
+- `df /home`: 459 G used, **319 G free**; `datasets/raw/` 89 → 47 GB.
+- 0 of 8 listed folders and 0 of 19,626 listed files remain.
+- All 25,378 val/test files of the 16 registered sources present (0 missing). Inria 325/250 val/test with
+  0 train; WHU 1228/1228 with its 12 sentinel train tiles; Massachusetts buildings 4/10; MASATI val/test
+  452/453 images; ISPRS eroded labels kept for the 4 Potsdam and 6 Vaihingen test tiles.
+- **Not yet re-run:** the raw-data unit tests. The first attempt was OOM-killed by its own 2 GB cap
+  (`journalctl`: "oom-kill", 2 G peak); raising the cap inside `satquery.slice` while the 4.5 h grounding job
+  holds ~4.3 GB of the slice's 8 GB would risk the kernel killing the grounding job instead. They run after it.
+
+## Q-078 · Buildings repointed to `buildings_whu_ma_inria_r50` — a new decision on new evidence, against Q-071's criterion
+
+**Date:** 2026-10-26 · **Branch:** `prototype` (uncommitted). Decided by the user ("do whatever is better for
+our project and deliverable and model performance … include in theory why"), on the evidence of Q-071 and Q-076.
+
+**Q1 — What changed (mechanism).** `configs/models.yaml::buildings_segmenter` → `version
+buildings_whu_ma_inria_r50`, `checkpoint_path checkpoints/buildings_whu_ma_inria_r50_seg/best.pt`; threshold
+stays `null`, so the checkpoint's own val-frozen 0.50 is used (was 0.45). Registry metadata and the adapter
+docstring follow; `docs/models/trained_segmenters.md` carries the comparison table and the reasoning. The
+adapter reads arch/encoder/threshold from the checkpoint, so no code path changed. The previous checkpoint is
+kept on disk; reverting is the two `models.yaml` lines.
+
+**Q2 — Why (the theory).** The model is judged by where it will be used, not where it was trained.
+- **Target distribution.** The ISRO/SAC evaluation uses Cartosat-2S over Indian cities (`prd.md` §3); no
+  model here has seen that. `prd.md` names domain shift a first-class risk. So the quantity that matters is
+  transfer to unseen cities, and test IoU on the training cities (WHU = Christchurch, Massachusetts = Boston)
+  measures fit to those two cities.
+- **What transfers.** Segmentation generalises with the variety of the training distribution — roof material
+  and colour, building density and street layout, shadow length, sensor colour response. Two cities is a narrow
+  distribution; Inria adds five (Austin, Chicago, Kitsap County, West Tyrol, Vienna) spanning dense downtown,
+  suburb and alpine village. Under the equal-per-source sampler each source gets a third of the crops, so the
+  original two lose some exposure — the expected cost is a small loss on them, which is what was measured.
+- **The measurement of the trade.** OpenEarthMap (500 test tiles, 44 countries, never trained on by either):
+  building IoU 0.369 → **0.550**. Precision is unchanged (0.824 → 0.837) and recall rises 0.401 → 0.616: the
+  narrower model was *missing unfamiliar buildings*, not inventing fewer false ones. That is the domain-shift
+  failure mode the PRD warns about, and the new model reduces it. Cost on the training cities: WHU −0.0055,
+  Massachusetts −0.0013 test IoU (TTA) — inside what a different seed could move. LoveDA is a tie
+  (0.187 / 0.188); both models score ~0.2 precision there, which points at LoveDA's building labels (not
+  investigated), not at either model.
+- **Net:** +0.18 IoU on unseen geography for −0.005 on familiar geography. For a system graded on imagery it
+  has never seen, that is the better model.
+
+**Q3 — Blast radius.**
+- Every building mask the app produces changes (threshold 0.45 → 0.50, different weights). The main demo
+  (image masking / grounding on buildings, handover §1) uses this model; its "7 regions / 1,437 px"
+  rehearsal figure is no longer the expected output and should be re-measured at the next rehearsal.
+- **Cloud:** the Modal volume holds only files `models.yaml` names. The next deploy must first upload the new
+  checkpoint (and the ship detector's); `deploy/README.md` §4 now says so. The live deployment is untouched
+  until someone redeploys.
+
+**Q4 — Verification.**
+- Through `model_registry` on CPU: loads `buildings_whu_ma_inria_r50_seg/best.pt`, epoch 39, threshold 0.50.
+  WHU test tiles: `test_0000` (0 building px in GT) → 0 px predicted; `test_0002` GT 36.7 % → 25.2 %;
+  `test_0004` 23.7 % → 23.2 %; `test_0005` 22.3 % → 21.0 %.
+- `pytest` adapter + registry/config unit tests → 173 passed.
+- Not re-run yet: `tests/models/` (GPU, after the grounding job).
+
+**Q5 — Defence: "Q-071 said you wouldn't switch unless WHU and Massachusetts held. You moved the goalposts."**
+"Q-071's verdict stands as written — under that criterion the model failed, and the record says so. The
+criterion was about not regressing on the cities we train on; the open question it flagged was transfer,
+and we then measured transfer on a dataset neither model had seen. Switching is a second decision on that new
+evidence, made explicitly and recorded separately, with the old checkpoint one config line away. What would
+be goalpost-moving is quietly rewriting Q-071 — which this file's append-only rule prevents."
+
+## Q-079 · Grounding DINO fine-tuned on leak-free DIOR-RSVG: VRSBench referring top-1 Acc@0.5 0.300 → 0.553 (detector level) — adoption not yet decided
+
+**Date:** 2026-10-26 · **Branch:** `prototype` (uncommitted). Result of Q-069 job 6 under Q-075's fixes. Recorded
+as measured, before the adversarial audit and the production-pipeline regression runs that gate adoption.
+
+**Q1 — Run.** `checkpoints/grounding_dino_rsvg/` (base `IDEA-Research/grounding-dino-base`; Swin-B image and BERT
+text encoders frozen, 36.5 M trainable; batch 1 × accumulation 8; lr 2e-5 cosine; 2 epochs; decoder Hungarian
+loss; fp16; peak GPU 5.35 GB). 15,463 training records / 8,397 images; 17:02 → 21:51 (4 h 49 min including the
+two full evaluation passes). Train loss 3.687 (epoch 1) → 2.723 (epoch 2); best = epoch 2.
+
+**Q2 — Result** (top-1 box per expression; identical evaluation code and 800 px processor for both models):
+
+| | n | base Acc@0.5 / Acc@0.25 / mIoU | fine-tuned Acc@0.5 / Acc@0.25 / mIoU |
+|---|---|---|---|
+| VRSBench referring val (prescribed benchmark) | 16,159 | 0.300 / 0.390 / 0.286 | **0.553** / 0.644 / 0.475 |
+| DIOR-RSVG test_clean (official test records) | 7,500 | 0.270 / 0.372 / 0.277 | **0.625** / 0.680 / 0.558 |
+| held-out val (5 % of remaining images) | 874 | 0.276 / 0.409 / 0.294 | 0.650 / 0.711 / 0.583 |
+
+Training images exclude every image in VRSBench val and every image carrying an official DIOR-RSVG test record.
+
+**Q3 — What this number is not.** It is detector-level top-1 grounding. Production runs Grounding DINO →
+reasoner → RemoteCLIP verifier → SAM 2 at fixed thresholds (0.35 / 0.25), and the same detector also serves
+category ("all buildings") and absent-object queries. A fine-tune on one positive box per expression can damage
+those (multi-instance recall, score calibration, absent-object hallucination). Not adopted until: (a) an
+independent read-only audit of leakage and of the evaluation code, (b) the Q-009 protocol re-run through the
+full pipeline for both models (`eval_grounding_verdicts_vrsbench.py --grounding-model-id`), (c) MASATI ships as a
+multi-instance and false-positive check (`eval_ship_baseline.py --grounding-model-id`). Outcome in the next entry.
+
+## Q-080 · Audit of the grounding fine-tune: the gain is real at detector level but cannot reach production by a config swap; Q-079's thresholds corrected; adoption rule fixed before the decisive run
+
+**Date:** 2026-10-26 · **Branch:** `prototype` (uncommitted). Three independent read-only auditors (workflow
+`wf_a288ec80-9cc`, 96 tool calls, CPU only) were asked to break Q-079. This entry records what they found,
+corrects Q-079 (append-only: Q-079 stays as written), and fixes the adoption rule before the result exists.
+
+**Q1 — Leakage: negligible, disclosed.** The ID filter is correct (records() reproduced from raw: 15,463 / 874 /
+7,500, 0 ID overlap with VRSBench val or test_clean). Each VRSBench `NNNNN_0000.png` is the top-left 512 px crop of
+DIOR `NNNNN` (3,806/3,810 pixel-identical). A perceptual-hash search found what ID matching cannot: DIOR repeats
+some scenes under different IDs. 5 VRSBench-val images have a pixel copy in training (06154=11982, 06835=22045,
+06935=16459, 10445=00708, 10280≈18633 shifted 28 px), carrying 7 of 16,159 queries — at most +0.043 points on
+0.553. test_clean: 11 of 7,500 records (+5 same-place, different-date) — at most +0.21 points on 0.625. 73 % of
+test_clean descriptions also occur verbatim in training (DIOR-RSVG phrasing is templated), so test_clean is an
+in-distribution result; VRSBench (4 verbatim matches of 16,159, none on the same image) is the transfer result.
+
+**Q2 — Evaluation code: correct.** Same `evaluate()`, loaders and base processor for both models; VRSBench
+`ground_truth` is `floor(100·clip(AABB(obj_corner)))` for 16,159/16,159 records, xyxy percent, read correctly. That
+quantisation caps even a perfect detector at Acc@0.5 0.951 (small objects hit hardest), equally for both models.
+Not saved: per-query predictions — fixed in the new evaluation below.
+
+**Q3 — Why a config swap would not deliver the gain (the decisive finding).** Production never sends the referring
+expression to Grounding DINO: `parse_v4_query` reduces it to `clean_prompt` (`grounding_reasoner.py:85-208`; over all
+16,159 queries the prompt equals the question 0 times, median 3 words vs 12), and the final box is chosen by the
+reasoner + RemoteCLIP verifier, not by detector score. The fine-tune was trained and scored only on full expressions,
+with one positive box per expression (50.1 % of training records come from images with ≥2 same-class referred
+objects, so the other instance is an explicit negative) and no absent referents — the opposite pressure to the
+"find all", counting and absent-object paths that share the detector. The two-stage selection heads stayed
+byte-identical to base while their inputs changed (decoder-only loss, Q-075). So the 0.553 is **not** a system
+number and must not be quoted as SatQuery's grounding accuracy.
+
+**Q4 — Correction to Q-079 §Q3.** Q-079 said production runs "fixed thresholds (0.35 / 0.25)". It runs at **0.25**
+(`run_grounding_pipeline` default, passed explicitly), with a relaxed retry at **0.15** (`configs/app.yaml`); 0.35
+applies only to video's detector-score gate and to `predict()` called without a threshold.
+
+**Q5 — Deployment hazards found (must be fixed before any switch).** A relative local `model_id` resolves against
+the working directory, not `root_dir`; the 929 MB weights are not on the Modal volume; a missing directory reads as
+a Hub id and fails at request time while `is_available()` still says True; outputs record no model id, so results
+could not show which weights produced them.
+
+**Q6 — What replaces the planned checks, and the rule fixed now.** `scripts/eval_grounding_options.py` (queued as
+`satquery-eval-grounding-options`), on a fixed seeded VRSBench-val sample: 600 present queries (150 each DIOR/DOTA ×
+unique/non-unique) and 300 absent-object variants (class word swapped for a class never referred to in that image,
+rotating a 12-class pool), all four of {production pipeline, full-expression detector} × {base, fine-tuned}, every
+per-query result saved, both GT conventions, exact McNemar tests. Rules, written before the run:
+- **B (config swap)** is adopted only if `pipe_ft` beats `pipe_base` on present Acc@0.5 (floored GT) with McNemar
+  p < 0.05 **and** its absent-box rate is no more than 2 points above `pipe_base`'s — and even then only after a
+  multi-instance recall check (not yet built). Expected outcome per Q3: not adopted.
+- **C (a new referring-expression path: full expression → fine-tuned detector, top-1)** goes forward only if, at the
+  lowest score threshold whose absent-box rate is ≤ `pipe_base`'s, its present Acc@0.5 (a "not found" counts as
+  wrong) beats `pipe_base` by ≥ 5 points with McNemar p < 0.01. Choosing that one threshold on this sample is
+  mildly optimistic, so a pass is confirmed on a second, disjoint VRSBench sample before any code path is built.
+- Otherwise production keeps the base weights and the fine-tune stays a recorded, unserved result.
+
+## Q-081 · Grounding options measured: B (config swap) fails on hallucination; C (full expression → fine-tuned detector, threshold 0.35) passes, +18.7 points — confirmation run next
+
+**Date:** 2026-10-26 · **Branch:** `prototype` (uncommitted). The Q-080 run (`results/eval/grounding_options/`:
+`queries.json`, `per_query.jsonl`, `summary.json`; 22:11 → 22:29). 600 present + 300 absent VRSBench-val queries.
+
+**Q1 — Results (Acc@0.5, VRSBench floored GT; clipped-corner GT in brackets).**
+
+| condition | present | DIOR uniq / non-uniq | DOTA uniq / non-uniq | absent → box |
+|---|---|---|---|---|
+| pipe_base (serves today) | 0.338 (0.348) | 0.493 / 0.267 | 0.380 / 0.213 | 87.3 % |
+| pipe_ft (B: config swap) | 0.472 (0.502) | 0.707 / 0.473 | 0.447 / 0.260 | 91.3 % |
+| det_base (full expr.) | 0.330 (0.337) | 0.447 / 0.247 | 0.367 / 0.260 | 95.7 % @0.25 |
+| det_ft (full expr.) | 0.578 (0.617) | 0.720 / 0.607 | 0.540 / 0.447 | 100 % @0.15 · 96.0 % @0.25 · **59.3 % @0.35** · 14.3 % @0.5 |
+
+Paired (exact McNemar, floored GT, n = 600): pipe_base vs pipe_ft 33 vs 113 discordant, p = 1.9e-11; det_base vs
+det_ft 28 vs 177, p = 1.2e-27; pipe_base vs det_ft@0.35 (not-found = wrong) 41 vs 153, **p = 2.1e-16**.
+
+**Q2 — Rule outcomes (as fixed in Q-080 §Q6).**
+- **B fails.** Present +13.3 points (p = 1.9e-11) clears the first condition, but absent-object boxes rise 87.3 →
+  91.3 % (+4.0 points > the 2-point allowance). Not adopted. Note for the record: Q-080 §Q3's expectation that a
+  config swap would not deliver the gain was *wrong* — even with `clean_prompt` the fine-tuned weights raise pipeline
+  accuracy by 13 points; what sinks B is hallucination, which the auditors also predicted.
+- **C passes.** The lowest swept threshold with absent rate ≤ 87.3 % is 0.35 (59.3 %); there det_ft answers 82.0 %
+  of present queries and scores **0.525** vs pipe_base 0.338 (+18.7 points, p = 2.1e-16). It also hallucinates less
+  than today's system on 10 of 12 absent classes (e.g. windmill 0.96 → 0.38, bridge 0.89 → 0.33, ship 0.96 → 0.65),
+  ties on helicopter and storage tank.
+- DOTA images (never seen in fine-tuning) gain too: unique 0.380 → 0.540, non-unique 0.213 → 0.447 at no threshold —
+  the gain is not confined to DIOR imagery.
+
+**Q3 — Caveats.** The 0.35 threshold was picked on this sample (one parameter from a 4-point sweep), hence the
+confirmation run: a second VRSBench-val sample, seed 1, **0 images and 0 questions shared** with the first, threshold
+frozen at 0.35. Pass condition, fixed now: det_ft@0.35 beats pipe_base by ≥ 5 points with McNemar p < 0.01 **and**
+its absent-box rate is ≤ pipe_base's. "Absent" means "never referred to in that image" (VRSBench's referring records
+are not exhaustive labels); identical for every condition. Multi-instance ("find all", counting) is untouched by C,
+which would only serve single-target referring expressions.
+
+## Q-082 · Phase-3 prune manifest: the last 20.6 GB of finished training data
+
+**Date:** 2026-10-26 · **Branch:** `prototype` (uncommitted). Built by `datasets/raw/_pruned/phase3_manifest.py`,
+applied by `apply_phase3.sh` (run by the user, as phases 1–2). After it, every dataset left on disk is either a
+val/test split, a prescribed benchmark (VRSBench), or data a mandatory requirement still depends on (Sen1Floods11).
+
+**Q1 — What, and why each is finished.** No training remains on any of it (all Q-069 jobs done, Q-071 – Q-081).
+- cloud95, 14.6 GB: train patches (R/G/B/NIR/GT) of `cloud_seg` (served) and `cloud_rgbn` (trained, not served,
+  Q-074), plus patches outside the non-empty list that no model reads. Kept: every val/test patch *with* its NIR
+  band (both cloud models stay re-scorable), the 12 train patches the unit tests read, every metadata CSV.
+- DIOR-RSVG, 3.3 GB: images without an official test record. The 6,102 test_clean images, all annotations and
+  split files stay. The grounding decision (Q-081) uses the fine-tuned weights as trained; neither outcome needs a
+  retrain. If a retrain is ever wanted (e.g. to drop the 5 duplicate images of Q-080 §Q1), the dataset re-downloads.
+- SpaceNet 7 prepared train, 1.7 GB: built-up model trained, not adopted (Q-076); val/test months stay.
+- LU3M6TGT crater train, 1.0 GB: crater detector trained and served (Q-028); `valid/` stays (tests read it).
+
+**Q2 — Verification.** 0 overlap with 37,204 protected files, asserted in the script, which also asserts every kept
+cloud95 val/test patch keeps all five of its files. `test_seg_water_cloud_sources.py`: the two assertions that
+need the whole train split ("train > 70 % of tiles", "≥ 10 train scenes") now run only while
+`cloud95_landsat8/TRAIN_PRUNED` is absent; with the data still complete, 14 passed.
+
+## Q-083 · Option C confirmed on a disjoint sample: +20.7 points, fewer hallucinated boxes — the referring-expression path will be built
+
+**Date:** 2026-10-26 · **Branch:** `prototype` (uncommitted). The Q-081 confirmation run
+(`results/eval/grounding_options_confirm/`, 22:30 → 22:40): VRSBench val, seed 1, 0 images and 0 questions shared
+with the first sample; threshold **frozen at 0.35** before the run; only `pipe_base` and `det_ft` scored.
+
+**Q1 — Result vs the rule fixed in Q-081 §Q3.**
+
+| | present Acc@0.5 floored (corner) | DIOR uniq / non-uniq | DOTA uniq / non-uniq | absent → box |
+|---|---|---|---|---|
+| pipe_base (serves today) | 0.298 (0.302) | 0.500 / 0.187 | 0.347 / 0.160 | 85.0 % |
+| det_ft @0.35, "not found" = wrong | **0.505** (0.513) | 0.633 / 0.553 | 0.487 / 0.347 | **59.7 %** |
+
++20.7 points, exact McNemar 33 vs 157 discordant, **p = 1.5e-20** (corner GT: +21.2, p = 3.3e-21). Absent-box rate
+59.7 % ≤ 85.0 %. det_ft answers 78.0 % of present queries at 0.35. **Both pass conditions met.** First sample for
+comparison: +18.7 points, absent 59.3 % vs 87.3 % (Q-081) — the two samples agree within 2 points.
+
+**Q2 — What this licenses, and what it does not.** It licenses building a *referring-expression* path: a
+single-target referring query goes, as its full text, to the fine-tuned detector; its top box is used if its score
+is ≥ 0.35, else the answer is "not found". It does **not** license the config swap (B failed, Q-081), nor touching
+category, "find all", counting, video or reference-object detection, which keep the base model. The claimable
+number is the *system* number measured once the path is built and run through the production entry point, not the
+0.505 here; that measurement is the next entry.
+
+## Q-084 · Referring-expression path built and measured end to end: VRSBench +16.7 / +18.0 points, absent-object boxes 87 → 58 %; plus a circular-import fix and six mislabelled heavy tests
+
+**Date:** 2026-10-27 (00:10) · **Branch:** `prototype` (uncommitted). Builds what Q-083 licensed; a routing and model-
+registry change. Design from two read-only design agents (workflow `wf_d04d941c-bcc`).
+
+**Q1 — Mechanism.**
+- `workflows/grounding.py`: `is_referring_query(parsed, wants_all)` — not a "find all / mask / count / plural" request,
+  and a modifier (position, size, colour, ordinal, relation) or descriptive words left in the category; a bare noun
+  ("find the vehicle") stays a category query. Such a query goes, as its full text minus a leading directive
+  (`referring_prompt`), to the new `grounding_dino_referring` adapter; its top box is the answer if its score is
+  ≥ `settings.referring_grounding.score_threshold` (0.35, frozen in Q-081), else "not found". The verifier labels the
+  box and never replaces it; no relaxed 0.15 retry; SAM 2, evidence and the result keys are shared with today's path
+  (`strategy` = `referring_expression_detector`, plus additive `detector_model_id` / `referring_expression`).
+- `ml/adapters/grounding_dino.py`: `GroundingDINOReferringAdapter` — local weights only (`checkpoint_path` resolved
+  against `root_dir`, `local_files_only=True`), `is_available()` checks `config.json` + `model.safetensors` exist,
+  base processor (`processor_id`), and `predict_referring()` reproduces the measured scoring (fp16 autocast, max-token
+  sigmoid, no post-process threshold). Both Grounding DINO adapters now record `model_key` / `model_id`.
+- Config: `configs/models.yaml::grounding_dino_referring`; `configs/app.yaml::referring_grounding` (kill switch, env
+  `SATQUERY_REFERRING_GROUNDING_ENABLED`); `ModelSpec.processor_id`. Capability registry lists it as *optional*.
+- `agent/tools/inference.py`: the not-found warning says which cause it was (below threshold vs verifier vs nothing
+  detected); the detector actually used is added to `selected_models`; `model_id` in the model result.
+- Fallback: weights missing → `referring_detector_unavailable` trace step and today's path; load failure →
+  `referring_detector_failed` and today's path; OOM / inference errors propagate to the executor's retry. A caller
+  that injects its own detector keeps today's path (the tests and the eval harness's base conditions rely on it).
+
+**Q2 — Measured, through the production entry point (`pipe_ref`: nothing injected, routing decides), same queries
+as Q-081/Q-083.** Rule fixed before the run (design agent, restating Q-083): ≥ +5 points with McNemar p < 0.01 on both
+samples, absent-box rate ≤ today's.
+
+| VRSBench val | pipe_base (today) | **pipe_ref (built)** | McNemar | absent → box | routed to referring |
+|---|---|---|---|---|---|
+| sample 1 (600 / 300) | 0.338 (corner 0.348) | **0.505** (0.533) | 39 vs 139, p = 2.3e-14 | 87.3 % → **58.3 %** | 561 / 600 present |
+| sample 2 (600 / 300) | 0.298 (0.302) | **0.478** (0.487) | 33 vs 141, p = 4.2e-17 | 85.0 % → **58.0 %** | 555 / 600 present |
+
+By stratum (floored GT), sample 1 / 2: DIOR unique 0.493→0.613 / 0.500→0.587; DIOR non-unique 0.267→0.567 /
+0.187→0.500; DOTA unique 0.380→0.487 / 0.347→0.480; DOTA non-unique 0.213→0.353 / 0.160→0.347. **Pass on both.**
+Integrity: 561/561 and 555/555 routed queries return exactly det_ft's box at 0.35 (IoU ≥ 0.95 or both none);
+39/39 and 45/45 non-routed queries return exactly today's answer. pipe_ref answers 81.7 % / 78.3 % of present queries
+(the rest are "not found"). Versus det_ft with no threshold it is 45 / 57 queries behind — the price of answering "not
+found" and of the ~7 % of referring queries the plural heuristic keeps on the base path (e.g. "towards", "harbors").
+**These pipe_ref numbers are the claimable system numbers** — not 0.553 (Q-079) or 0.525 / 0.505 (Q-081, Q-083).
+
+**Q3 — Limits to state.** The pipeline number is not the agent number: the intent classifier sends ~25–29 % of
+VRSBench-style sentences to VQA before grounding (design agent's count), not re-measured here. "Absent" = never
+referred to in that image. AOI on the referring path, directive phrasings ("find …"), and the extra GPU memory of a
+second resident Grounding DINO are not measured. The Modal volume does not hold the weights yet (`deploy/README.md` §4).
+
+**Q4 — Also in this change.**
+- **Circular import fixed.** `backend/app/agent/__init__.py` imported the controller eagerly (controller → planner →
+  capability_registry, whose start-up check imports `backend.app.agent.tools`), so importing `capability_registry`
+  first failed; `tests/unit/test_orchestration_capabilities.py` could not be collected — also at HEAD `b158729`, so
+  pre-existing. The controller is now loaded lazily (PEP 562 `__getattr__`); imports verified in every order.
+- **Six tests that load real models were in the CPU unit suite** (5 in `test_video_workflow.py`, 1 in
+  `test_aoi_http.py`): measured peaks 4.3 GB (stopped after 6 min) and 5.7–6.0 GB. Now `@pytest.mark.models`; assertions
+  unchanged. `test_aoi_http.py` peaked 5,744 MB with the referring path on vs 6,045 MB off — the referring path does
+  not add memory. A likely contributor to the 2026-10-26 23:04 desktop freeze (memory `one-heavy-job-at-a-time`).
+- **Unit suite**, one file per process (`scripts/run_unit_tests_by_file.py`, queued so it shows on the dashboard): 566
+  passed over 58 files; after the two fixes, the five affected files: 13 + 2 (+5 deselected) + 2 (+1 deselected) +
+  45 + 33 passed. `tests/unit/test_referring_grounding.py`: 33 new tests (routing rule, top-1, threshold edge, label-
+  only verifier, AOI, fallbacks, OOM propagation, key parity, adapter path/availability).
+
+**Q5 — Defence: "Isn't this just routing the benchmark to a benchmark-tuned model?"** "The fine-tune never saw a
+VRSBench image (Q-069/Q-080 audit: ID and pixel-hash checks; 7 of 16,159 queries share pixels, disclosed), the rule and
+threshold were fixed before each run, the gain holds on DOTA images the fine-tune never saw at all (+10.7 to +18.7
+points), and it hallucinates less on absent objects, not more. The routing rule uses only signals the pipeline already
+computed for its own purposes, and every non-referring query is byte-for-byte unchanged."
