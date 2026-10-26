@@ -76,6 +76,15 @@ agent_verification:
 trained_segmenter_routing:
   enabled: true
 
+# Single-target referring expressions -> Grounding DINO fine-tuned on DIOR-RSVG, full text, top-1 box, "not found"
+# below score_threshold (project/qna.md Q-083: VRSBench +20.7 points Acc@0.5, absent-object boxes 85.0% -> 59.7%;
+# Q-084: wiring). enabled: false sends every query down Grounding DINO base + V4 again.
+# Env override: SATQUERY_REFERRING_GROUNDING_ENABLED.
+referring_grounding:
+  enabled: true
+  model: grounding_dino_referring
+  score_threshold: 0.35
+
 # ChangeFormer vs CDVQA adjudication (project/qna.md Q-012).
 change_adjudication:
   # ChangeFormer building-change ratio treated as "buildings changed". On the 1,113 no-change LEVIR-CD test

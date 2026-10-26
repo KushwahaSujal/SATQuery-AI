@@ -120,18 +120,28 @@ def run_grounding(state: AgentState) -> None:
         state.warnings.append("The verification agent disputes the detected category; treat the result as doubtful.")
     elif deliberation.get("decision") == "accepted_unconfirmed":
         state.warnings.append("Detection not confirmed by the verification agent; treat the result as unconfirmed.")
-    elif deliberation.get("decision") == "not_found":
-        state.warnings.append("Verification agent contradicted every detector candidate; nothing was segmented.")
     ev_dict = pipeline_res.get("evidence", {})
+    if deliberation.get("decision") == "not_found":
+        if ev_dict.get("reasoning_strategy") == "referring_score_below_threshold":
+            thr = (ev_dict.get("referring_expression") or {}).get("score_threshold")
+            state.warnings.append(f"The referring-expression detector found no box at or above its {thr} acceptance "
+                                  "threshold; nothing was segmented.")
+        elif deliberation.get("attempts"):
+            state.warnings.append("Verification agent contradicted every detector candidate; nothing was segmented.")
+        else:
+            state.warnings.append("No candidate was detected for the query; nothing was segmented.")
 
     # Append to model_results so controller doesn't overwrite confidence
     used_model = pipeline_res.get("detector", "grounding_dino")
+    if used_model not in state.selected_models:  # the referring path's detector is not in required_models
+        state.selected_models.append(used_model)
     state.model_results.append(ModelResult(
         model_name=used_model,
         task="grounding",
         answer=state.answer,
         confidence=grounding_confidence,
-        metadata={"sam2_score": pipeline_res.get("sam2_score"), "grounding_score": pipeline_res.get("grounding_score")}
+        metadata={"sam2_score": pipeline_res.get("sam2_score"), "grounding_score": pipeline_res.get("grounding_score"),
+                  "model_id": pipeline_res.get("detector_model_id")}
     ))
 
     # Connect grounding workflow output to Evidence Engine
@@ -155,6 +165,8 @@ def run_grounding(state: AgentState) -> None:
             "candidate_scores": [c["score"] for c in ev_dict.get("all_candidates", [])],
             "query": state.query,
             "agent_deliberation": pipeline_res.get("agent_deliberation"),
+            "referring_expression": ev_dict.get("referring_expression"),
+            "detector_model_id": pipeline_res.get("detector_model_id"),
         }
     )
 

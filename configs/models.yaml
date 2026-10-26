@@ -62,6 +62,25 @@ models:
     box_threshold: 0.35
     text_threshold: 0.25
 
+  grounding_dino_referring:
+    # Grounding DINO base fine-tuned on leak-free DIOR-RSVG referring expressions (project/qna.md Q-079..Q-084).
+    # Serves only single-target referring queries routed by workflows/grounding.py; category, "find all",
+    # counting and video keep grounding_dino. Weights are local only; the processor is the base model's, as in
+    # the measured runs. Not-found threshold: configs/app.yaml referring_grounding.score_threshold.
+    name: "GroundingDINO-RSVG"
+    version: "base-dior-rsvg-e2"
+    task: "grounding"
+    supported_tasks:
+      - "single_image_referring_grounding"
+    supported_modalities:
+      - "optical"
+    input_count: 1
+    input_relationship: "single"
+    enabled: true
+    checkpoint_path: "checkpoints/grounding_dino_rsvg"
+    processor_id: "IDEA-Research/grounding-dino-base"
+    device: "auto"
+
   sam2:
     name: "SAM2"
     version: "Hiera-Base"
@@ -192,7 +211,7 @@ models:
 
   buildings_segmenter:
     name: "BuildingSegmenter"
-    version: "buildings_whu_ma_r50"
+    version: "buildings_whu_ma_inria_r50"
     task: "segmentation"
     supported_tasks:
       - "single_image_segmentation"
@@ -201,9 +220,12 @@ models:
     input_count: 1
     input_relationship: "single"
     enabled: true
-    checkpoint_path: "checkpoints/buildings_whu_ma_r50_seg/best.pt"
+    # WHU + Massachusetts + Inria (five more cities). Chosen for unseen-city generalisation: building IoU on
+    # OpenEarthMap (44 countries, never trained on) 0.369 -> 0.550, at -0.0055 WHU / -0.0013 Massachusetts
+    # test IoU on the training cities (Q-071, Q-076, Q-078). Previous: buildings_whu_ma_r50_seg (kept).
+    checkpoint_path: "checkpoints/buildings_whu_ma_inria_r50_seg/best.pt"
     class_name: "building"
-    threshold: null  # checkpoint threshold: 0.45
+    threshold: null  # checkpoint threshold: 0.50
     tta: false
     trained_gsd_m: 0.5
     device: "auto"
@@ -322,6 +344,24 @@ models:
     checkpoint_path: "checkpoints/craters_yolo/weights/best.pt"
     # Trained at 832 px; ultralytics confidence threshold for serving.
     input_size: 832
+    box_threshold: 0.25
+    device: "auto"
+
+  ship_detector:
+    name: "ShipDetector"
+    version: "yolo11s-masati"
+    task: "detection"
+    supported_tasks:
+      - "single_image_detection"
+    supported_modalities:
+      - "optical"
+    input_count: 1
+    input_relationship: "single"
+    enabled: true
+    checkpoint_path: "checkpoints/ships_yolo/weights/best.pt"
+    # MASATI-v2 test (453 tiles): AP50 0.799 vs Grounding DINO "ship." 0.078; boxes 1.4% of ship-free
+    # tiles at this threshold vs 66.2% (Q-072). Trained at 640 px.
+    input_size: 640
     box_threshold: 0.25
     device: "auto"
 

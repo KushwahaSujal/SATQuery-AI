@@ -33,8 +33,8 @@ class CraterDetectorAdapter(BaseModelAdapter):
     _MAX_DET = 1000
     _DEFAULT_CONF = 0.25
 
-    def __init__(self) -> None:
-        super().__init__("crater_detector")
+    def __init__(self, model_key: str = "crater_detector") -> None:
+        super().__init__(model_key)
         self._imgsz: int = self._IMGSZ
 
     def is_available(self) -> bool:
@@ -62,24 +62,24 @@ class CraterDetectorAdapter(BaseModelAdapter):
         except ImportError as e:
             raise ModelUnavailableError(
                 model_name=self.name,
-                message="ultralytics (AGPL-3.0) is not installed; the crater detector cannot load.",
+                message=f"ultralytics (AGPL-3.0) is not installed; the {self.LABEL} detector cannot load.",
                 details={"package": "ultralytics"},
             ) from e
 
         ckpt_file = self.checkpoint_path
-        logger.info(f"Loading crater detector from {ckpt_file} onto {self.device}...")
+        logger.info(f"Loading {self.LABEL} detector from {ckpt_file} onto {self.device}...")
         try:
             model = YOLO(str(ckpt_file))
             model.to(self.device)
             self._imgsz = int(self.config.input_size) if (self.config and self.config.input_size) else self._IMGSZ
             self._model = model
             self._loaded = True
-            logger.info(f"Crater detector loaded (imgsz {self._imgsz}, classes {model.names}).")
+            logger.info(f"{self.LABEL.capitalize()} detector loaded (imgsz {self._imgsz}, classes {model.names}).")
         except Exception as e:
             self._model = None
             self._loaded = False
-            logger.error(f"Failed to load crater detector {ckpt_file}: {e}", exc_info=True)
-            raise InferenceError(f"Failed to load crater detector: {e}", model_name=self.name)
+            logger.error(f"Failed to load {self.LABEL} detector {ckpt_file}: {e}", exc_info=True)
+            raise InferenceError(f"Failed to load {self.LABEL} detector: {e}", model_name=self.name)
 
     def unload(self) -> None:
         if self._model is not None:
@@ -136,7 +136,7 @@ class CraterDetectorAdapter(BaseModelAdapter):
             )
         except Exception as e:
             logger.error(f"{self.name} inference failed: {e}", exc_info=True)
-            raise InferenceError(f"Crater detection failed: {e}", model_name=self.name)
+            raise InferenceError(f"{self.LABEL.capitalize()} detection failed: {e}", model_name=self.name)
 
         boxes: List[Dict[str, Any]] = []
         for res in results:
@@ -162,8 +162,8 @@ class CraterDetectorAdapter(BaseModelAdapter):
             model_name=self.name,
             task="detection",
             answer=(
-                f"Detected {len(boxes)} craters at confidence threshold {conf_thr:.2f}."
-                if boxes else f"No craters detected at confidence threshold {conf_thr:.2f}."
+                f"Detected {len(boxes)} {self.LABEL}s at confidence threshold {conf_thr:.2f}."
+                if boxes else f"No {self.LABEL}s detected at confidence threshold {conf_thr:.2f}."
             ),
             confidence=avg,
             boxes=boxes,
@@ -179,3 +179,18 @@ class CraterDetectorAdapter(BaseModelAdapter):
                 "license": "AGPL-3.0 (ultralytics)",
             },
         )
+
+
+class ShipDetectorAdapter(CraterDetectorAdapter):
+    """Ships (single class), YOLO11s trained by `training/detection/train_ships.py` on MASATI-v2.
+
+    MASATI tiles are ~512 px Bing Maps RGB and hold a handful of vessels at most, so it runs at the
+    640 px it was trained at with the default detection cap. Same output shape as the crater detector.
+    """
+
+    LABEL = "ship"
+    _IMGSZ = 640
+    _MAX_DET = 300
+
+    def __init__(self) -> None:
+        super().__init__("ship_detector")

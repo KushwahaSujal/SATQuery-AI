@@ -54,6 +54,7 @@ def test_geotiff_upload_reports_crs_and_aoi_upload_validates(client, tmp_path):
     assert wrong_ext.status_code == 415
 
 
+@pytest.mark.models  # loads real model weights (ran 4-6 GB on CPU; project/qna.md Q-084)
 def test_analyze_restricts_change_to_aoi(client, tmp_path):
     if not (SCENES / "test_100_label.png").is_file():
         pytest.skip("LEVIR-CD 1024 scenes not available")

@@ -27,7 +27,7 @@ from backend.app.schemas.agent import JobStatus, TaskType, ExecutionStep
 from backend.app.schemas.responses import AnalyzeResponse
 from backend.app.schemas.evidence import EvidencePackage, SpatialEvidence, BoundingBoxEvidence, AreaStatistics
 from backend.app.evidence.fusion import EvidenceFusionEngine
-from backend.app.exceptions import InvalidInputError, InferenceError
+from backend.app.exceptions import InvalidInputError, InferenceError, ModelUnavailableError
 from backend.app.config import settings
 from backend.app.evidence.verifier import CONTRADICTED, UNVERIFIED, VERIFIED, DetectionVerifier
 from backend.app.logging import logger
@@ -102,6 +102,36 @@ def _wants_all_instances(query: str, strategy: str, parsed: Optional[Dict[str, A
     return any(t.endswith("s") and not t.endswith("ss") and len(t) > 3 for t in re.findall(r"[a-z]+", q)[1:])
 
 
+# Single-target referring expressions ("the small vehicle on the top-left", "the second ship from the left") go,
+# as their full text, to the Grounding DINO fine-tuned on DIOR-RSVG: its top box is the answer if it scores
+# >= settings.referring_grounding.score_threshold, else "not found". Measured on two disjoint VRSBench-val samples:
+# Acc@0.5 +18.7 / +20.7 points over this pipeline, absent-object boxes 87.3 -> 59.3% / 85.0 -> 59.7%
+# (project/qna.md Q-081, Q-083; wiring Q-084). Category, "find all", counting and video stay on the base path.
+REFERRING_STRATEGY = "referring_expression_detector"
+_SCENE_TARGETS = ("object", "scene", "image", "area", "background", "entire")
+_DIRECTIVE = re.compile(r"^\s*(?:please\s+)?(?:can\s+you\s+)?(?:find|locate|detect|ground|segment|highlight|outline|"
+                        r"identify|pinpoint|mark|mask|spot|delineate|isolate|extract|show(?:\s+me)?|where\s+is)\s+", re.I)
+
+
+def is_referring_query(parsed: Dict[str, Any], wants_all: bool) -> bool:
+    """True for a single-target referring expression: no "all/every/count/plural" request, and either a modifier
+    (position, size, colour, ordinal, relation) or descriptive words left in the category. A bare noun ("find the
+    vehicle") stays a category query with verifier backtracking."""
+    if wants_all:
+        return False
+    category = str(parsed.get("category") or "object")
+    if category in _SCENE_TARGETS:
+        return False
+    if any(parsed.get(k) for k in ("position", "size", "color", "ordinal", "relation")):
+        return True
+    return len(category.split()) >= 2
+
+
+def referring_prompt(query: str) -> str:
+    """The full expression the fine-tune was trained on, minus a leading directive ("find", "show me")."""
+    return _DIRECTIVE.sub("", query).strip() or query.strip()
+
+
 def _satisfies_relation(box: List[float], reference_boxes: List[List[float]], relation: str,
                         img_w: int, img_h: int) -> bool:
     """Instance filter for plural relational queries. "near" uses the edge-to-edge gap, not the centre
@@ -141,6 +171,7 @@ def _color_matches(score: float, color: str) -> bool:
 
 _DETECTOR_LABELS = {
     "grounding_dino": "Grounding DINO (proposes boxes, detector confidence)",
+    "grounding_dino_referring": "Grounding DINO fine-tuned on DIOR-RSVG (full referring expression, top-1 box)",
 }
 
 
@@ -154,7 +185,8 @@ def run_grounding_pipeline(
     grounding_model: str = "grounding_dino",
     sam2_adapter: Optional[SAM2Adapter] = None,
     verifier: Optional[DetectionVerifier] = None,
-    aoi_mask: Optional[np.ndarray] = None
+    aoi_mask: Optional[np.ndarray] = None,
+    referring_adapter: Optional[Any] = None,
 ) -> Dict[str, Any]:
     """
     Production Grounding Pipeline connecting Grounding DINO, V4 Multi-Attribute
@@ -326,7 +358,72 @@ def run_grounding_pipeline(
         })
         return found, res
 
-    candidates, reasoning_res = detect_and_rank(box_threshold, "initial")
+    rg = settings.referring_grounding
+
+    def detect_referring(model_key: str) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
+        """Referring path: full expression -> fine-tuned detector -> its top box if score >= threshold."""
+        nonlocal used_model
+        ad = referring_adapter or model_registry.get_adapter(model_key)
+        detector_adapters[model_key] = ad
+        used_model = model_key
+        expression = referring_prompt(norm_query)
+        step = f"call_{model_key}"
+        record_step(step, "started", tool="GroundingDINOReferringAdapter", details={
+            "model": model_key, "model_id": getattr(ad, "model_id", None), "expression": expression})
+        try:
+            res = ad.predict_referring(pil_img, expression)
+        except Exception as e:
+            record_step(step, "error", tool="GroundingDINOReferringAdapter", details={"error": str(e)})
+            raise InferenceError(f"GroundingDINOReferringAdapter inference error: {e}", model_name=model_key) from e
+        ranked = sorted(res.get("boxes", []), key=lambda c: -float(c.get("score", 0.0)))
+        record_step(step, "success", tool="GroundingDINOReferringAdapter", details={
+            "proposals": len(ranked), "top_score": ranked[0]["score"] if ranked else None})
+        if aoi_mask is not None and aoi_mask.shape == (h, w):
+            from backend.app.geo.aoi import aoi_bbox_ratio
+            inside = [c for c in ranked if aoi_bbox_ratio(c["xyxy"], aoi_mask)[0]]
+            if len(inside) < len(ranked):
+                record_step("filter_area_of_interest", "success", details={
+                    "dropped_outside_aoi": len(ranked) - len(inside), "attempt": "referring"})
+            ranked = inside
+        for c in ranked:
+            c["reasoning_score"] = None
+            c["reasoning_scores"] = {"detector": c["score"]}
+        top = ranked[0] if ranked else None
+        accepted = top if top is not None and float(top["score"]) >= rg.score_threshold else None
+        kept = [c for c in ranked if float(c["score"]) >= rg.score_threshold]
+        referring = {"model_key": model_key, "model_id": getattr(ad, "model_id", None), "expression_sent": expression,
+                     "score_threshold": rg.score_threshold, "top_score": top["score"] if top else None}
+        record_step("select_referring_top1", "success" if accepted else "warning", tool="referring_detector",
+                    details={**referring, "proposals_considered": len(ranked), "accepted": accepted is not None})
+        return kept, {"selected_box": accepted, "strategy": REFERRING_STRATEGY, "candidates": kept,
+                      "parsed_query": parsed, "referring": referring,
+                      "reasoning_scores": accepted["reasoning_scores"] if accepted else {},
+                      "reference_evidence": {"reference_category": parsed.get("reference_category"),
+                                             "reference_boxes": [], "reference_count": 0, "method": "none"}}
+
+    # A caller that injects its own detector chose it (tests, the eval harness's base condition): it keeps today's
+    # path unless it also injects a referring adapter.
+    referring_key: Optional[str] = None
+    if rg.enabled and (grounding_adapter is None or referring_adapter is not None) and is_referring_query(parsed, wants_all):
+        if referring_adapter is not None or model_registry.is_model_available(rg.model):
+            referring_key = rg.model
+        else:
+            record_step("referring_detector_unavailable", "warning", details={
+                "model": rg.model, "reason": "checkpoint_missing_or_disabled", "fallback": "grounding_dino_v4_reasoner"})
+            logger.warning(f"Referring-expression detector '{rg.model}' unavailable; '{norm_query}' falls back to "
+                           f"Grounding DINO base + V4.")
+    if referring_key is not None:
+        try:
+            candidates, reasoning_res = detect_referring(referring_key)
+        except InferenceError as e:
+            if not isinstance(e.__cause__, ModelUnavailableError):
+                raise  # OOM and real inference errors propagate: the executor releases GPU memory and retries once
+            record_step("referring_detector_failed", "warning", details={
+                "model": referring_key, "error": str(e.__cause__), "fallback": "grounding_dino_v4_reasoner"})
+            logger.warning(f"Referring-expression detector failed to load ({e.__cause__}); falling back to base + V4.")
+            referring_key, used_model = None, primary_model
+    if referring_key is None:
+        candidates, reasoning_res = detect_and_rank(box_threshold, "initial")
 
     # Step 7: Two-agent deliberation — the reasoner ranks, the verification agent confirms,
     # contradicts (-> backtrack) or cannot confirm each candidate; all rejected -> re-evaluate.
@@ -336,9 +433,11 @@ def run_grounding_pipeline(
     deliberation: Dict[str, Any] = {
         "agents": {
             "detector": _DETECTOR_LABELS.get(used_model, used_model),
-            "reasoner": "V4 reasoner (ranks by query attributes)",
+            "reasoner": ("not used: the referring-expression detector's top box is the answer" if referring_key
+                         else "V4 reasoner (ranks by query attributes)"),
             "verifier": "RemoteCLIP contrastive verification" if use_verifier else None,
         },
+        "path": "referring_expression" if referring_key else "detector_reasoner",
         "verification_enabled": use_verifier,
         "attempts": [],
         "backtracks": 0,
@@ -352,7 +451,7 @@ def run_grounding_pipeline(
         first = res.get("selected_box")
         order = ([first] if first else []) + [c for c in ranked if first is None or c["xyxy"] != first["xyxy"]]
         strategy = str(res.get("strategy", ""))
-        attribute_query = strategy == "multi_attribute_ranking" or strategy.startswith("ordinal_")
+        attribute_query = strategy in ("multi_attribute_ranking", REFERRING_STRATEGY) or strategy.startswith("ordinal_")
         if attribute_query:
             # Attribute queries ("the largest building", "white car bottom left", "second from left"):
             # the reasoner's choice encodes the attributes, which the verifier cannot judge, so another
@@ -360,7 +459,8 @@ def run_grounding_pipeline(
             # it. Measured on 206 VRSBench attribute queries: backtracking cut R@0.5 from 48.1% to 41.3%;
             # labelling keeps 48.1% (agent_deliberation_rules_vrsbench_20260914.json, R3 vs R7).
             order = order[:1]
-        deliberation["mode"] = "attribute_query_label_only" if attribute_query else "category_query_backtracking"
+        deliberation["mode"] = ("referring_expression_label_only" if strategy == REFERRING_STRATEGY else
+                                "attribute_query_label_only" if attribute_query else "category_query_backtracking")
         order = [c for c in order if not any(_box_iou(c["xyxy"], x) > 0.5 for x in exclude)]
         order = order[: settings.agent_verification.max_candidates]
 
@@ -418,7 +518,8 @@ def run_grounding_pipeline(
     selected_cand, verdict = deliberate(reasoning_res, "initial", rejected, allow_unconfirmed=True)
 
     relaxed = settings.agent_verification.relaxed_box_threshold
-    if use_verifier and selected_cand is None and relaxed < box_threshold:
+    # Not on the referring path: its measured answer below the threshold is "not found", not a base-model retry.
+    if use_verifier and selected_cand is None and relaxed < box_threshold and referring_key is None:
         deliberation["re_evaluated"] = True
         record_step("agent_re_evaluate", "started", details={
             "reason": "no candidate confirmed by both agents",
@@ -445,8 +546,16 @@ def run_grounding_pipeline(
         })
         reason = "all_candidates_contradicted_by_verifier" if deliberation["attempts"] else (
             "no_detector_candidates" if not candidates else "reasoner_filtered_all")
+        ref = reasoning_res.get("referring") if referring_key else None
+        if ref is not None:
+            reason = "referring_score_below_threshold" if ref["top_score"] is not None else "no_detector_candidates"
         record_step("select_target_candidate", "warning", details={"reason": reason})
-        if deliberation["attempts"]:
+        if ref is not None and ref["top_score"] is not None:
+            answer = (f"No {target_category} matching '{norm_query}' was found: the referring-expression detector's "
+                      f"best box scored {ref['top_score']:.3f}, below its {ref['score_threshold']} acceptance threshold.")
+        elif ref is not None:
+            answer = f"No {target_category} matching '{norm_query}' was found: the referring-expression detector proposed no box."
+        elif deliberation["attempts"]:
             answer = (
                 f"No {target_category} found for '{norm_query}'. The detector proposed "
                 f"{len(deliberation['attempts'])} candidate(s)"
@@ -466,8 +575,9 @@ def run_grounding_pipeline(
             "segmentation_mask": None,
             "grounding_score": None,
             "sam2_score": None,
-            "strategy": "V4_RELATIONAL",
+            "strategy": REFERRING_STRATEGY if referring_key else "V4_RELATIONAL",
             "detector": used_model,
+            "detector_model_id": getattr(detector_adapters.get(used_model), "model_id", None),
             "evidence": {
                 "target_category": target_category,
                 "selected_box": None,
@@ -475,6 +585,7 @@ def run_grounding_pipeline(
                 "reasoning_strategy": reason,
                 "reference_evidence": reasoning_res.get("reference_evidence", {}),
                 "agent_deliberation": deliberation,
+                "referring_expression": reasoning_res.get("referring"),
             },
             "agent_deliberation": deliberation,
             "trace": trace
@@ -647,7 +758,9 @@ def run_grounding_pipeline(
                 "reasoning_score": cand.get("reasoning_score")
             }
             for cand in reasoning_res.get("candidates", [])
-        ]
+        ],
+        "referring_expression": reasoning_res.get("referring"),
+        "detector_model_id": getattr(detector_adapters.get(used_model), "model_id", None),
     }
     record_step("build_visual_evidence", "success", details={
         "mask_pixel_count": mask_pixel_count,
@@ -668,7 +781,8 @@ def run_grounding_pipeline(
                   f"(rank {accepted_attempt.get('verifier_rank')}).")
     elif verdict == CONTRADICTED:
         top = (accepted_attempt.get("verifier_top_matches") or [{}])[0]
-        answer = (f"DISPUTED {target_category} at {box_txt}: the detector and reasoner selected it for the query's "
+        chooser = "the referring-expression detector" if referring_key else "the detector and reasoner"
+        answer = (f"DISPUTED {target_category} at {box_txt}: {chooser} selected it for the query's "
                   f"attributes ({scores_txt}), but the verification agent reads this region as "
                   f"'{top.get('label', 'another category')}' (rank {accepted_attempt.get('verifier_rank')} for {target_category}).")
     elif verdict == UNVERIFIED:
@@ -681,6 +795,9 @@ def run_grounding_pipeline(
         answer += f" Backtracked past {deliberation['backtracks']} candidate(s) the verification agent contradicted."
     if deliberation["re_evaluated"]:
         answer += " Re-evaluated with a relaxed detector threshold."
+    if referring_key:
+        answer += (f" Selected by the referring-expression detector (Grounding DINO fine-tuned on DIOR-RSVG), score "
+                   f"{grounding_score:.3f} >= {rg.score_threshold}.")
     if multi_instance and filters["top_instance_failed_filters"] and len(instances) == 1 and instances[0]["xyxy"] == [round(float(v), 2) for v in selected_box]:
         wanted = " ".join(x for x in (target_color, target_category) if x)
         answer = (f"No instance satisfied every condition of '{norm_query}' (colour {target_color or '-'}, reference colour "
@@ -702,8 +819,9 @@ def run_grounding_pipeline(
         "segmentation_mask": segmentation_mask,
         "grounding_score": round(grounding_score, 4),
         "sam2_score": round(sam2_score, 4),
-        "strategy": "V4_RELATIONAL",
+        "strategy": REFERRING_STRATEGY if referring_key else "V4_RELATIONAL",
         "detector": used_model,
+        "detector_model_id": getattr(detector_adapters.get(used_model), "model_id", None),
         "instance_boxes": [i["xyxy"] for i in instances],
         "evidence": evidence,
         "agent_deliberation": deliberation,

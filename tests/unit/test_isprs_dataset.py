@@ -11,6 +11,7 @@ from training.segmentation.datasets import (
     IGNORE,
     ISPRS_CLASSES,
     ISPRS_GSD_M,
+    ISPRS_RAW,
     ISPRS_SOURCES,
     IsprsTiles,
     decode_isprs_label,
@@ -91,7 +92,8 @@ def test_splits_are_disjoint_and_cover_every_tile(source):
     assert ids["val"] & ids["test"] == set()
     total = sum(len(v) for v in ids.values())
     assert total == len(set().union(*ids.values()))
-    assert total == (38 if source.startswith("isprs_potsdam") else 33)
+    if not (ISPRS_RAW / "TRAIN_PRUNED").exists():  # train tiles deleted after training (qna.md Q-069)
+        assert total == (38 if source.startswith("isprs_potsdam") else 33)
     assert all(len(v) > 0 for v in ids.values()), "every split must have at least one tile"
 
 

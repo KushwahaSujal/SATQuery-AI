@@ -1,7 +1,7 @@
 import torch
 from typing import Any, Dict, List, Optional, Tuple, Type
 from backend.app.ml.base import BaseModelAdapter
-from backend.app.ml.adapters.grounding_dino import GroundingDINOAdapter
+from backend.app.ml.adapters.grounding_dino import GroundingDINOAdapter, GroundingDINOReferringAdapter
 from backend.app.ml.adapters.sam2 import SAM2Adapter
 from backend.app.ml.adapters.changeformer import ChangeFormerAdapter
 from backend.app.ml.adapters.cdvqa import CDVQAAdapter
@@ -24,7 +24,7 @@ from backend.app.ml.adapters.landcover_segmenter import (
     IsprsVaihingenSegmenterAdapter,
     LandCoverSegmenterAdapter,
 )
-from backend.app.ml.adapters.crater_detector import CraterDetectorAdapter
+from backend.app.ml.adapters.crater_detector import CraterDetectorAdapter, ShipDetectorAdapter
 from backend.app.schemas.models import ModelCapabilityInfo
 from backend.app.config import settings
 from backend.app.logging import logger
@@ -148,6 +148,8 @@ class ModelRegistry:
     """
     ADAPTER_CLASSES: Dict[str, Type[BaseModelAdapter]] = {
         "grounding_dino": GroundingDINOAdapter,
+        # Routed from workflows/grounding.py for single-target referring expressions only (project/qna.md Q-084).
+        "grounding_dino_referring": GroundingDINOReferringAdapter,
         "sam2": SAM2Adapter,
         "changeformer": ChangeFormerAdapter,
         "cdvqa": CDVQAAdapter,
@@ -171,6 +173,7 @@ class ModelRegistry:
         "isprs_potsdam_segmenter": IsprsPotsdamSegmenterAdapter,
         "isprs_vaihingen_segmenter": IsprsVaihingenSegmenterAdapter,
         "crater_detector": CraterDetectorAdapter,
+        "ship_detector": ShipDetectorAdapter,
         # Same spirit, different reasons (Q-041). EuroSAT is scene-level: one label for the whole
         # tile, no mask and no box, so it cannot satisfy the grounding pipeline's response contract.
         # The flood segmenter loads its real checkpoint but NEVER serves a mask — the training-time
@@ -189,6 +192,15 @@ class ModelRegistry:
             "capabilities": ["zero_shot_grounding", "bounding_box_localization"],
             "input_requirements": {"image": "RGB (H, W, 3)", "text_prompt": "string ending in period"},
             "output_schema": {"boxes": "List[[x1, y1, x2, y2]] normalized", "scores": "List[float]"},
+            "device_requirements": {"min_vram_gb": 2.0, "preferred": "cuda"},
+        },
+        "grounding_dino_referring": {
+            "family": "GroundingDINO (DIOR-RSVG fine-tune)",
+            "source": "checkpoints/grounding_dino_rsvg (IDEA-Research/grounding-dino-base fine-tuned on DIOR-RSVG, Q-079)",
+            "license": "Apache 2.0 (base weights); DIOR-RSVG dataset terms (research)",
+            "capabilities": ["referring_expression_grounding", "bounding_box_localization"],
+            "input_requirements": {"image": "RGB (H, W, 3)", "text_prompt": "full referring expression, one target"},
+            "output_schema": {"boxes": "top-k [x1, y1, x2, y2] px by score; the top box answers at score >= 0.35"},
             "device_requirements": {"min_vram_gb": 2.0, "preferred": "cuda"},
         },
         "sam2": {
@@ -285,8 +297,8 @@ class ModelRegistry:
         },
         "buildings_segmenter": {
             "family": "U-Net / ResNet-50 (smp)",
-            "source": "checkpoints/buildings_whu_ma_r50_seg/best.pt",
-            "license": "MIT (code); per-dataset licences for WHU Building and Massachusetts",
+            "source": "checkpoints/buildings_whu_ma_inria_r50_seg/best.pt",
+            "license": "MIT (code); per-dataset licences for WHU Building, Massachusetts and Inria Aerial (research)",
             "capabilities": ["building_footprint_segmentation", "binary_mask_segmentation"],
             "input_requirements": {"image": "RGB (H, W, 3), trained at 0.5 m GSD"},
             "output_schema": {"binary_mask": "ndarray (H, W) uint8", "probability_map": "ndarray (H, W) float32"},
@@ -365,6 +377,15 @@ class ModelRegistry:
             "license": "AGPL-3.0 (ultralytics); LU3M6TGT and Mars/Lunar dataset terms",
             "capabilities": ["crater_detection", "planetary_object_detection"],
             "input_requirements": {"image": "RGB (H, W, 3), lunar or Mars imagery, trained at 832 px"},
+            "output_schema": {"boxes": "List[{xyxy:[x1,y1,x2,y2](px), score:float, label:str, box_2d:[...]}]"},
+            "device_requirements": {"min_vram_gb": 2.0, "preferred": "cuda"},
+        },
+        "ship_detector": {
+            "family": "YOLO11s (ultralytics)",
+            "source": "checkpoints/ships_yolo/weights/best.pt",
+            "license": "AGPL-3.0 (ultralytics); MASATI-v2 non-profit research terms (Bing Maps imagery)",
+            "capabilities": ["ship_detection", "maritime_object_detection"],
+            "input_requirements": {"image": "RGB (H, W, 3), optical maritime/coastal imagery, trained at 640 px"},
             "output_schema": {"boxes": "List[{xyxy:[x1,y1,x2,y2](px), score:float, label:str, box_2d:[...]}]"},
             "device_requirements": {"min_vram_gb": 2.0, "preferred": "cuda"},
         },

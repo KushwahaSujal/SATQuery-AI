@@ -30,10 +30,10 @@ ROOT = Path(__file__).resolve().parents[2]
 THRESHOLDS = np.round(np.arange(0.2, 0.8, 0.05), 2)
 
 
-def build_model(arch: str, encoder: str) -> torch.nn.Module:
+def build_model(arch: str, encoder: str, in_channels: int = 3) -> torch.nn.Module:
     cls = {"unet": smp.Unet, "unetpp": smp.UnetPlusPlus, "linknet": smp.Linknet,
            "deeplabv3p": smp.DeepLabV3Plus, "segformer": smp.Segformer}[arch]
-    return cls(encoder_name=encoder, encoder_weights="imagenet", in_channels=3, classes=1)
+    return cls(encoder_name=encoder, encoder_weights="imagenet", in_channels=in_channels, classes=1)
 
 
 def dice_loss(logits: torch.Tensor, target: torch.Tensor, eps: float = 1.0) -> torch.Tensor:
@@ -112,6 +112,8 @@ def main() -> None:
                     help="metres per pixel every source is resampled to. The 0.5 m default suits the "
                          "sub-metre road/building sources; pass the source's own GSD for coarse "
                          "imagery (10 for water_bodies, 30 for cloud95) so it is not upsampled")
+    ap.add_argument("--in-channels", type=int, default=3,
+                    help="4 for sources whose loader returns RGB + NIR (cloud95_rgbn)")
     ap.add_argument("--batch", type=int, default=8)
     ap.add_argument("--epochs", type=int, default=40)
     ap.add_argument("--samples-per-epoch", type=int, default=4000,
@@ -139,7 +141,7 @@ def main() -> None:
     def split(name):
         return [SOURCES[s](name) for s in args.sources]
 
-    train_sets = [SegTiles(items, crop=args.crop, train=True, target_gsd=args.target_gsd)
+    train_sets = [SegTiles(items, crop=args.crop, train=True, target_gsd=args.target_gsd, bands=args.in_channels)
                   for items in split("train")]
     val_items = [x for items in split("val") for x in items]
     test_items = [x for items in split("test") for x in items]
@@ -156,10 +158,10 @@ def main() -> None:
     train_loader = DataLoader(train, batch_size=args.batch, sampler=sampler,
                               num_workers=args.workers, pin_memory=True, drop_last=True,
                               persistent_workers=args.workers > 0)
-    val_loader = DataLoader(SegTiles(val_items, crop=None, train=False, target_gsd=args.target_gsd), batch_size=1,
+    val_loader = DataLoader(SegTiles(val_items, crop=None, train=False, target_gsd=args.target_gsd, bands=args.in_channels), batch_size=1,
                             num_workers=args.workers)
 
-    model = build_model(args.arch, args.encoder).to(device).to(memory_format=torch.channels_last)
+    model = build_model(args.arch, args.encoder, args.in_channels).to(device).to(memory_format=torch.channels_last)
     opt = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=1e-4)
     steps = args.epochs * len(train_loader)
     warm = min(500, steps // 10)
@@ -218,6 +220,7 @@ def main() -> None:
         if m["iou"][bi] > best:
             best = m["iou"][bi]
             torch.save({"model": model.state_dict(), "arch": args.arch, "encoder": args.encoder,
+                        "in_channels": args.in_channels,
                         "threshold": m["thresholds"][bi], "epoch": epoch, "val": row["val"]},
                        out / "best.tmp")
             (out / "best.tmp").replace(out / "best.pt")
@@ -229,14 +232,14 @@ def main() -> None:
     print("phase=test", flush=True)
     ckpt = torch.load(out / "best.pt", map_location=device)
     model.load_state_dict(ckpt["model"])
-    test_loader = DataLoader(SegTiles(test_items, crop=None, train=False, target_gsd=args.target_gsd), batch_size=1,
+    test_loader = DataLoader(SegTiles(test_items, crop=None, train=False, target_gsd=args.target_gsd, bands=args.in_channels), batch_size=1,
                              num_workers=args.workers)
     per_source, per_source_tta = {}, {}
     for s in args.sources:
         items = SOURCES[s]("test")
         if args.smoke:
             items = items[:4]
-        loader = DataLoader(SegTiles(items, crop=None, train=False, target_gsd=args.target_gsd),
+        loader = DataLoader(SegTiles(items, crop=None, train=False, target_gsd=args.target_gsd, bands=args.in_channels),
                             batch_size=1, num_workers=args.workers)
         per_source[s] = at(evaluate(model, loader, device), ckpt["threshold"])
         per_source_tta[s] = at(evaluate(model, loader, device, tta=True), ckpt["threshold"])

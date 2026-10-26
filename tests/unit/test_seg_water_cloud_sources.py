@@ -21,6 +21,8 @@ from training.segmentation.datasets import (
 )
 
 SPLITS = ("train", "val", "test")
+# The train split is deleted after training and scoring (project/qna.md Q-082); the files the read tests use stay.
+CLOUD_PRUNED = (RAW / "cloud95_landsat8" / "TRAIN_PRUNED").exists()
 
 # (source, its native GSD, the raw directory it needs, how many tiles to actually decode)
 CASES = [
@@ -42,7 +44,8 @@ def test_index_is_populated_and_paths_exist(source, gsd, raw_dir, n):
         assert items[split], f"{source}/{split} is empty"
     # Both sources are hash_split 90/5/5, so train dominates but val and test are not slivers.
     total = sum(len(items[s]) for s in SPLITS)
-    assert len(items["train"]) > total * 0.7
+    if not (source == "cloud95" and CLOUD_PRUNED):
+        assert len(items["train"]) > total * 0.7
     assert min(len(items["val"]), len(items["test"])) > total * 0.01
     for split in SPLITS:
         for img, mask, item_gsd, *_ in items[split][:n]:
@@ -68,7 +71,8 @@ def test_cloud95_splits_do_not_share_a_landsat_scene():
     assert not scenes["train"] & scenes["val"]
     assert not scenes["train"] & scenes["test"]
     assert not scenes["val"] & scenes["test"]
-    assert len(scenes["train"]) >= 10
+    if not CLOUD_PRUNED:
+        assert len(scenes["train"]) >= 10
 
 
 @pytest.mark.parametrize("source,gsd,raw_dir,n", CASES)

@@ -12,7 +12,7 @@ All numbers below are copied from the QNA transcript. Nothing here is estimated.
 | Registry key | Checkpoint | Architecture | Routed? | QNA |
 |---|---|---|---|---|
 | `roads_segmenter` | `checkpoints/roads_all_r50_seg/best.pt` | smp U-Net, ResNet-50, 1 class | yes | Q-025, Q-030, Q-032 |
-| `buildings_segmenter` | `checkpoints/buildings_whu_ma_r50_seg/best.pt` | smp U-Net, ResNet-50, 1 class | yes | Q-026, Q-032 |
+| `buildings_segmenter` | `checkpoints/buildings_whu_ma_inria_r50_seg/best.pt` | smp U-Net, ResNet-50, 1 class | yes | Q-026, Q-032, Q-078 |
 | `water_segmenter` | `checkpoints/water_seg/best.pt` | smp U-Net, ResNet-34, 1 class | yes | Q-035 |
 | `cloud_segmenter` | `checkpoints/cloud_seg/best.pt` | smp U-Net, ResNet-34, 1 class | yes | Q-035 |
 | `landcover_segmenter` | `checkpoints/landcover_full_r50_seg/best.pt` | smp U-Net, ResNet-50, 7 classes | no | Q-029, Q-037 |
@@ -60,6 +60,35 @@ runs; and `roads_all_r50` was interrupted by a power cut at epoch 38 and continu
 `--warm-start`, so AdamW's moment estimates restarted (Q-032 §1).
 
 ## Buildings — `buildings_segmenter`
+
+**As of 2026-10-26 `buildings_segmenter` points at `buildings_whu_ma_inria_r50`** (Q-078): the same
+U-Net / ResNet-50 recipe trained on WHU + Massachusetts **+ Inria Aerial** (Austin, Chicago, Kitsap,
+West Tyrol, Vienna; 0.3 m, cut into 1000 px pieces and split by source tile). Best epoch 39, threshold
+**0.50** frozen on validation.
+
+| Test IoU | `buildings_whu_ma_r50` (previous) | `buildings_whu_ma_inria_r50` (served) |
+|---|---|---|
+| WHU, 1228 tiles (+TTA) | 0.834 (0.840) | 0.829 (0.835) |
+| Massachusetts, 10 tiles (+TTA) | 0.695 (0.700) | 0.692 (0.699) |
+| Inria, 250 pieces / 10 tiles (+TTA) | 0.477 (0.493) | 0.712 (0.722) |
+| **OpenEarthMap buildings, 500 tiles, 44 countries — neither model trained on it** | 0.369 | **0.550** |
+| LoveDA buildings, 1669 tiles, China — neither model trained on it | 0.187 | 0.188 |
+
+**Why the switch (the theory).** The deployment target is imagery we never train on: the ISRO/SAC
+evaluation uses Cartosat-2S scenes over Indian cities, and `prd.md` calls domain shift a first-class
+risk. A segmenter's test score on the cities it trained on measures fit, not transfer; what transfers is
+the variety of the training distribution - roof materials, building density and layout, sun angle and
+sensor colour. Two cities (Christchurch for WHU, Boston for Massachusetts) is a narrow distribution;
+adding five Inria cities spanning North America and the Alps widens it, at a small capacity cost on the
+original two (−0.005 IoU). The OpenEarthMap result is the direct measurement of that trade: on 44
+countries neither model saw, building IoU rises by 0.18, almost all through recall (0.40 → 0.62) at
+unchanged precision (0.82 → 0.84) - the narrower model was *missing* unfamiliar buildings rather than
+inventing them. LoveDA is a tie, and its ~0.2 precision for both models points at a label-definition
+mismatch there, not at either model. One honest caveat: the switch fails the criterion fixed before the
+run (Q-071: "no drop on WHU or Massachusetts"); it is made as a new decision on new evidence, recorded
+as such, and the previous checkpoint is kept so it can be reverted by one line.
+
+### Previous checkpoint
 
 `buildings_whu_ma_r50`: U-Net / ResNet-50 on WHU Building + Massachusetts Buildings, 256 px crops at
 0.5 m, best epoch 37, decision threshold **0.45** frozen on validation (val IoU 0.832).

@@ -100,6 +100,37 @@ def _spacenet3_roads():
 
 
 @lru_cache(None)
+def _inria():
+    """Inria Aerial (0.3 m, five cities), cut into 1000 px pieces by prepare_inria.py.
+
+    The official test tiles carry no public labels, so the 180 labelled tiles are hash_split on the
+    *source* tile id (e.g. "austin7"): every piece of a tile shares a split, so adjacent pieces of
+    one scene cannot leak between train and test."""
+    out: dict[str, list[Item]] = {"train": [], "val": [], "test": []}
+    for img in sorted((RAW / "inria_aerial/prepared/images").glob("*.png")):
+        tile = img.stem.rsplit("_", 2)[0]
+        out[hash_split(tile)].append((img, img.parent.parent / "masks" / img.name, 0.3))
+    return out
+
+
+SPACENET7_GSD_M = 4.77  # Planet monthly mosaics, EPSG:3857 pixel size
+
+
+@lru_cache(None)
+def _spacenet7():
+    """SpaceNet 7 monthly mosaics (4.77 m), prepared by prepare_spacenet7.py.
+
+    Split on the AOI with isprs_split's 70/15/15 rather than hash_split's 90/5/5: there are only 60
+    AOIs, and 5 % would leave ~3 for test. Every month of an AOI shares a split, so the same
+    buildings seen a month later cannot leak between train and test."""
+    out: dict[str, list[Item]] = {"train": [], "val": [], "test": []}
+    for img in sorted((RAW / "spacenet7_multitemporal/prepared/images").glob("*.png")):
+        aoi = img.stem.split("__", 1)[0]
+        out[isprs_split(f"sn7_{aoi}")].append((img, img.parent.parent / "masks" / img.name, SPACENET7_GSD_M))
+    return out
+
+
+@lru_cache(None)
 def _water_bodies():
     """Kaggle "Water Bodies Dataset": Sentinel-2 RGB jpgs (~10 m) with a jpg mask of the same name.
 
@@ -157,8 +188,12 @@ SOURCES = {
     "spacenet3_roads": lambda s: _spacenet3_roads()[s],
     "whu_building": lambda s: _whu_building()[s],
     "massachusetts_buildings": lambda s: _massachusetts_buildings()[s],
+    "inria": lambda s: _inria()[s],
+    "spacenet7": lambda s: _spacenet7()[s],
     "water_bodies": lambda s: _water_bodies()[s],
     "cloud95": lambda s: _cloud95()[s],
+    # Same patches and split as cloud95, read as 4 bands (R, G, B, NIR); train with --in-channels 4.
+    "cloud95_rgbn": lambda s: [(*i[:3], "cloud95_rgbn") for i in _cloud95()[s]],
 }
 
 
@@ -179,7 +214,14 @@ def _read_cloud95(red: Path) -> np.ndarray:
     return np.minimum(np.stack(bands, axis=-1) >> 8, 254).astype(np.uint8)
 
 
-_READERS = {"rgb": _read_rgb, "cloud95": _read_cloud95}
+def _read_cloud95_rgbn(red: Path) -> np.ndarray:
+    """_read_cloud95 plus the NIR band as a 4th channel, same fixed 16 -> 8 bit scale."""
+    patch = red.name[len("red_"):]
+    nir = cv2.imread(str(_CLOUD95 / "train_nir_additional_to38cloud" / f"nir_{patch}"), cv2.IMREAD_UNCHANGED)
+    return np.concatenate([_read_cloud95(red), np.minimum(nir >> 8, 254).astype(np.uint8)[..., None]], axis=-1)
+
+
+_READERS = {"rgb": _read_rgb, "cloud95": _read_cloud95, "cloud95_rgbn": _read_cloud95_rgbn}
 
 
 def _load(img_path: Path, mask_path: Path, loader: str = "rgb") -> tuple[np.ndarray, np.ndarray]:
@@ -229,12 +271,18 @@ def read_crop(img_path: Path, mask_path: Path, gsd: float, loader: str = "rgb", 
 
 class SegTiles(Dataset):
     def __init__(self, items: list[Item], crop: int | None, train: bool,
-                 target_gsd: float = TARGET_GSD_M):
+                 target_gsd: float = TARGET_GSD_M, bands: int = 3):
         self.items, self.crop, self.train = items, crop, train
         self.target_gsd = target_gsd
+        # NIR gets the mean of the ImageNet channel statistics; the first conv learns the rest.
+        self.mean = MEAN if bands == 3 else np.append(MEAN, MEAN.mean()).astype(np.float32)
+        self.std = STD if bands == 3 else np.append(STD, STD.mean()).astype(np.float32)
+        # ColorJitter's hue/saturation are defined for RGB only; a 4-band stack gets brightness/contrast.
+        colour = (A.ColorJitter(0.25, 0.25, 0.2, 0.03, p=0.6) if bands == 3
+                  else A.RandomBrightnessContrast(0.25, 0.25, p=0.6))
         self.aug = A.Compose([
             A.D4(),
-            A.ColorJitter(0.25, 0.25, 0.2, 0.03, p=0.6),
+            colour,
             A.GaussianBlur(blur_limit=(3, 5), p=0.1),
         ]) if train else None
 
@@ -250,7 +298,7 @@ class SegTiles(Dataset):
             img, (mask, valid) = r["image"], r["masks"]
         else:
             img, mask, valid = read_pair(*self.items[i], target_gsd=self.target_gsd)
-        x = torch.from_numpy(((img.astype(np.float32) - MEAN) / STD).transpose(2, 0, 1).copy())
+        x = torch.from_numpy(((img.astype(np.float32) - self.mean) / self.std).transpose(2, 0, 1).copy())
         return x, torch.from_numpy(mask[None].copy()), torch.from_numpy(valid[None].copy())
 
 

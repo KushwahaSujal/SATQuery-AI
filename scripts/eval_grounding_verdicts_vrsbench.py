@@ -68,6 +68,9 @@ def main() -> int:
     ap.add_argument("--n", type=int, default=300)
     ap.add_argument("--n-absent-attribute", type=int, default=220)
     ap.add_argument("--out", default=str(OUT))
+    ap.add_argument("--grounding-model-id", default=None,
+                    help="HF id or local dir for Grounding DINO (default: configs/models.yaml); used to compare "
+                         "the DIOR-RSVG fine-tune with the base model under the identical pipeline (Q-079)")
     args = ap.parse_args()
 
     records = json.loads(REFERRING.read_text())
@@ -94,6 +97,8 @@ def main() -> int:
     print(f"present {len(present)} · absent {len(absent)} · absent-attribute {len(abs_attr)}")
 
     gd, sam = GroundingDINOAdapter(), SAM2Adapter()
+    if args.grounding_model_id:
+        gd.model_id = args.grounding_model_id
     cache: Dict[str, np.ndarray] = {}
 
     def arr(image_id: str) -> np.ndarray:

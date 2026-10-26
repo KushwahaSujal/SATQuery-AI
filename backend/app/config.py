@@ -163,6 +163,17 @@ class TrainedSegmenterRoutingSettings(BaseModel):
     enabled: bool = True
 
 
+class ReferringGroundingSettings(BaseModel):
+    """Single-target referring expressions ("the small vehicle on the top-left") go, as their full text, to the
+    Grounding DINO fine-tuned on DIOR-RSVG; its top box is the answer if it scores >= score_threshold, else "not
+    found" (project/qna.md Q-083, Q-084). The 0.35 threshold was frozen before the confirmation run: VRSBench
+    +20.7 points Acc@0.5 and absent-object boxes 85.0% -> 59.7%. Set enabled false to send every query down the
+    Grounding DINO base + V4 reasoner path again without a code change."""
+    enabled: bool = True
+    model: str = "grounding_dino_referring"
+    score_threshold: float = 0.35
+
+
 class ModelSpec(BaseModel):
     name: str
     version: Optional[str] = None
@@ -183,6 +194,9 @@ class ModelSpec(BaseModel):
     input_size: Optional[int] = None
     max_native_side: Optional[int] = None
     model_id: Optional[str] = None
+    # Hub id of the processor when the weights are a local fine-tune saved without relying on its own processor
+    # files (the DIOR-RSVG Grounding DINO was trained and measured with the base model's processor, Q-079).
+    processor_id: Optional[str] = None
     # Binary segmenters: the foreground class the checkpoint was trained for, and whether to
     # average the four flips at inference (4x slower, +0.005 to +0.012 IoU — project/qna.md Q-032).
     class_name: Optional[str] = None
@@ -214,6 +228,7 @@ class Config:
         self.video = self._load_video_config()
         self.agent_verification = self._load_agent_verification_config()
         self.trained_segmenter_routing = self._load_trained_segmenter_routing_config()
+        self.referring_grounding = self._load_referring_grounding_config()
         self.change_adjudication = self._load_change_adjudication_config()
         self.visualization = self._load_visualization_config()
         self.models: Dict[str, ModelSpec] = self._load_models_config()
@@ -268,6 +283,10 @@ class Config:
         raw = self._load_yaml("app.yaml").get("trained_segmenter_routing", {})
         return TrainedSegmenterRoutingSettings(**raw) if raw else TrainedSegmenterRoutingSettings()
 
+    def _load_referring_grounding_config(self) -> ReferringGroundingSettings:
+        raw = self._load_yaml("app.yaml").get("referring_grounding", {})
+        return ReferringGroundingSettings(**raw) if raw else ReferringGroundingSettings()
+
     def _load_video_config(self) -> VideoSettings:
         raw = self._load_yaml("app.yaml").get("video", {})
         cfg = VideoSettings(**raw) if raw else VideoSettings()
@@ -301,6 +320,8 @@ class Config:
             self.storage.max_upload_size_mb = int(os.getenv("SATQUERY_MAX_UPLOAD_MB"))
         if os.getenv("SATQUERY_TRAINED_SEGMENTERS_ENABLED"):
             self.trained_segmenter_routing.enabled = os.getenv("SATQUERY_TRAINED_SEGMENTERS_ENABLED").lower() in ("true", "1")
+        if os.getenv("SATQUERY_REFERRING_GROUNDING_ENABLED"):
+            self.referring_grounding.enabled = os.getenv("SATQUERY_REFERRING_GROUNDING_ENABLED").lower() in ("true", "1")
 
         # Database overrides
         if os.getenv("DATABASE_URL"):

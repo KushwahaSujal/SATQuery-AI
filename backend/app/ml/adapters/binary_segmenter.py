@@ -316,7 +316,11 @@ class RoadSegmenterAdapter(BinarySegmenterAdapter):
 
 
 class BuildingSegmenterAdapter(BinarySegmenterAdapter):
-    """`buildings_whu_ma_r50`: U-Net / ResNet-50 on WHU Building + Massachusetts (Q-026, Q-032)."""
+    """`buildings_whu_ma_inria_r50`: U-Net / ResNet-50 on WHU Building + Massachusetts + Inria (Q-078).
+
+    Replaced `buildings_whu_ma_r50` (Q-026, Q-032) because it generalises to cities it never saw:
+    OpenEarthMap building IoU 0.369 -> 0.550, for a 0.005 drop on the WHU test tiles (Q-076).
+    """
 
     def __init__(self) -> None:
         super().__init__("buildings_segmenter", class_name="building")

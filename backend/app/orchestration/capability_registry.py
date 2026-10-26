@@ -39,7 +39,9 @@ class CapabilityRegistry:
                 required_modalities=["optical", "multispectral"],
                 output_types=["boxes", "masks", "overlays", "geojson", "report"],
                 required_models=["grounding_dino", "sam2"],
-                optional_models=["remoteclip"],
+                # Optional, not required: without its weights the pipeline falls back to grounding_dino itself
+                # (project/qna.md Q-084), so its absence must never refuse the whole capability.
+                optional_models=["remoteclip", "grounding_dino_referring"],
                 required_tools=["inspect_raster", "validate_single_image", "run_grounding", "run_segmentation", "generate_overlay", "generate_report"],
                 workflow="workflow_grounding",
                 priority=CapabilityPriority.GROUNDING,

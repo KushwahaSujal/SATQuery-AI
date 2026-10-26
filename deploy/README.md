@@ -103,6 +103,21 @@ Fill in:
 
 After retraining a model, re-run only its `volume put` line with `--force`, then redeploy (step 5).
 
+**Before the next deploy after 2026-10-26** (`project/qna.md` Q-078): `configs/models.yaml` now names two
+checkpoints the volume does not hold yet. Without them the buildings segmenter (used by the main demo)
+and the ship detector report unavailable in the cloud:
+
+```bash
+.venv/bin/modal volume put satquery-models checkpoints/buildings_whu_ma_inria_r50_seg/best.pt /checkpoints/buildings_whu_ma_inria_r50_seg/
+.venv/bin/modal volume put satquery-models checkpoints/ships_yolo/weights/best.pt /checkpoints/ships_yolo/weights/
+# Referring-expression grounding (Q-084), 929 MB. Without it every referring query in the cloud logs
+# `referring_detector_unavailable` and falls back to today's Grounding DINO path (it does not fail).
+.venv/bin/modal volume put satquery-models checkpoints/grounding_dino_rsvg /checkpoints/grounding_dino_rsvg
+```
+
+Check after deploying: `GET /api/models` lists `grounding_dino_referring` as available, and one referring
+query ("the small vehicle on the top-left") has a `call_grounding_dino_referring` step in its trace.
+
 If the Qwen3-VL measurement (step 2) does not beat BLIP, `scene_vlm` is disabled and VQA/captions fall
 back to BLIP — in that case BLIP must ALSO be uploaded:
 

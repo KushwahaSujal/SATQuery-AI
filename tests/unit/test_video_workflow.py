@@ -25,6 +25,7 @@ def test_route_video_query():
 
 
 @pytest.mark.asyncio
+@pytest.mark.models  # loads real model weights (ran 4-6 GB on CPU; project/qna.md Q-084)
 async def test_video_workflow_no_events_found():
     test_video = Path("datasets/samples/video/derived_patrol.mp4")
     # An object that is genuinely not in the fixture. Grounding DINO still proposes a
@@ -46,6 +47,7 @@ async def test_video_workflow_no_events_found():
 
 
 @pytest.mark.asyncio
+@pytest.mark.models  # loads real model weights (ran 4-6 GB on CPU; project/qna.md Q-084)
 async def test_video_workflow_finds_detections_when_target_is_present():
     """Positive path: a target that IS in the footage must produce detections.
 
@@ -114,6 +116,7 @@ async def test_video_workflow_reports_frame_failures_distinctly(monkeypatch):
 
 
 @pytest.mark.asyncio
+@pytest.mark.models  # loads real model weights (ran 4-6 GB on CPU; project/qna.md Q-084)
 async def test_video_flag_mask_is_not_empty():
     """SAM 2.1 must produce actual mask pixels, not an all-zero PNG.
 
@@ -152,6 +155,7 @@ async def test_video_flag_mask_is_not_empty():
 
 
 @pytest.mark.asyncio
+@pytest.mark.models  # loads real model weights (ran 4-6 GB on CPU; project/qna.md Q-084)
 async def test_absent_colour_reports_not_applicable():
     """A colour that is not in the footage must be reported as NOT_APPLICABLE.
 
@@ -176,6 +180,7 @@ async def test_absent_colour_reports_not_applicable():
 
 
 @pytest.mark.asyncio
+@pytest.mark.models  # loads real model weights (ran 4-6 GB on CPU; project/qna.md Q-084)
 async def test_present_colour_still_detected():
     """Regression guard: the colour gate must not reject a colour that IS present."""
     resp = await VideoAnalysisWorkflow.execute(
