@@ -61,3 +61,26 @@ async def test_visual_analytics_api_flow(async_client, tmp_path):
     res_exp = await async_client.get(f"/api/analysis/{job_id}/export/true_color?format=png")
     assert res_exp.status_code == 200
     assert "attachment" in res_exp.headers.get("content-disposition", "")
+
+
+@pytest.mark.asyncio
+async def test_sam2_layer_serves_mask_overlay_not_input_preview(async_client, monkeypatch):
+    # A grounding job writes overlays/<input>_preview.png (the bare image) beside
+    # overlays/grounding_overlay.png (the SAM 2 masks) and no masks/segmentation_mask.png.
+    # The SAM 2 layer fell back to whichever overlays/*.png glob() yielded first; on the
+    # Modal volume that was the preview, so the "SAM 2.1 mask" layer showed no mask.
+    # glob order is filesystem order, so it is pinned here to the order seen in the cloud.
+    job_id = "test_vis_job_sam2_layer"
+    dirs = artifact_manager.init_job_workspace(job_id)
+    Image.new("RGB", (32, 32), (100, 150, 200)).save(dirs["input"] / "airport.png")
+    overlays = dirs["input"].parent / "overlays"
+    overlays.mkdir(exist_ok=True)
+    Image.new("RGB", (32, 32), (100, 150, 200)).save(overlays / "airport_preview.png")
+    Image.new("RGB", (32, 32), (0, 255, 128)).save(overlays / "grounding_overlay.png")
+
+    real_glob = Path.glob
+    monkeypatch.setattr(Path, "glob", lambda self, pat: iter(sorted(real_glob(self, pat))))
+
+    res = await async_client.get(f"/api/analysis/{job_id}/visualizations/sam2_segmentation_overlay")
+    assert res.status_code == 200
+    assert res.content == (overlays / "grounding_overlay.png").read_bytes()

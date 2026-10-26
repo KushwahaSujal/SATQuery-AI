@@ -20,6 +20,7 @@ from backend.app.ml.adapters.sam2 import SAM2Adapter
 from backend.app.workflows.trained_segmenter import (
     classify_trained_segmenter_target,
     run_trained_segmenter_path,
+    read_ground_sample_distance,
 )
 from backend.app.agent.state import AgentState
 from backend.app.schemas.agent import JobStatus, TaskType, ExecutionStep
@@ -231,7 +232,8 @@ def run_grounding_pipeline(
     if trained_target is not None:
         if model_registry.is_model_available(trained_target):
             result = run_trained_segmenter_path(
-                trained_target, pil_img, norm_query, target_category, record_step, t0
+                trained_target, pil_img, norm_query, target_category, record_step, t0,
+                gsd_m=read_ground_sample_distance(image),
             )
             result["trace"] = trace
             return result

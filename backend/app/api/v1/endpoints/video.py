@@ -3,6 +3,7 @@ SatQuery AI — Video upload, analysis, keyframes and streaming.
 
 Split out of the former monolithic api/routes.py (1246 lines).
 """
+import asyncio
 import os
 import uuid
 import shutil
@@ -233,15 +234,24 @@ async def analyze_video(
     except Exception as e:
         logger.warning(f"Database error updating job status: {e}")
 
-    # Execute workflow
-    response = await VideoAnalysisWorkflow.execute(
+    # Execute workflow. Its detection and SAM 2 work is synchronous GPU code, so it runs on a
+    # worker thread with its own event loop; inline, it froze every other request -- including the
+    # progress poll the UI shows steps from -- for the whole ~2-minute job (Q-064). The session is
+    # bound to this loop, so persistence happens here afterwards.
+    response = await asyncio.to_thread(asyncio.run, VideoAnalysisWorkflow.execute(
         video_path=video_path,
         query=query,
         job_id=req_id,
         sampling_config=sampling_cfg,
         flagging_config=flagging_cfg,
-        db_session=db
-    )
+        db_session=None,
+    ))
+    if response.status == JobStatus.COMPLETED:
+        persist_warning = await VideoAnalysisWorkflow.persist_results(
+            db, req_id, video_path, response.video_metadata, response.flags, response.task
+        )
+        if persist_warning:
+            response.warnings.append(persist_warning)
 
     # Image jobs write result.json and trace.json (agent/controller.py); video jobs did not, so the results
     # ZIP for a video had frames but no machine-readable output (Q-017).

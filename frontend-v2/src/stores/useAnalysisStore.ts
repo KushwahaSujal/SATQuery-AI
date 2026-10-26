@@ -42,6 +42,11 @@ function isVideoFile(file: File): boolean {
   return VIDEO_EXTENSIONS.has(ext) || file.type.startsWith("video/");
 }
 
+// The upload in flight, if any. rasters only gains an image once its upload resolves -- 4 to 33 s
+// for a 2 MB PNG against the hosted backend -- so pressing Enter before then posted
+// image_filenames: [] and the backend answered 422 "Invalid request parameters" (Q-062).
+let inflightUpload: Promise<boolean> | null = null;
+
 interface AnalysisState {
   messages: ChatMessage[];
   rasters: UploadedRaster[];
@@ -67,6 +72,7 @@ interface AnalysisState {
   addMessage: (msg: Omit<ChatMessage, "id" | "timestamp">) => void;
   updateMessage: (id: string, patch: Partial<ChatMessage>) => void;
   handleUpload: (files: FileList | File[]) => Promise<boolean>;
+  _runUpload: (files: FileList | File[]) => Promise<boolean>;
   setPendingPrompt: (prompt: string | null) => void;
   /** True when work from another page is waiting to be continued here. */
   hasCarriedOverWork: () => boolean;
@@ -104,7 +110,16 @@ export const useAnalysisStore = create<AnalysisState>((set, get) => ({
       ),
     })),
 
-  handleUpload: async (files) => {
+  handleUpload: (files) => {
+    const run = get()._runUpload(files);
+    inflightUpload = run;
+    void run.finally(() => {
+      if (inflightUpload === run) inflightUpload = null;
+    });
+    return run;
+  },
+
+  _runUpload: async (files) => {
     const fileList = Array.from(files);
     const videos = fileList.filter(isVideoFile);
     const images = fileList.filter((f) => !isVideoFile(f));
@@ -140,9 +155,15 @@ export const useAnalysisStore = create<AnalysisState>((set, get) => ({
   },
 
   startAnalysis: async (prompt, taskType) => {
-    const state = get();
     const promptText = prompt.trim();
     if (!promptText) return;
+    // Read the sources only after any upload in progress has landed.
+    if (inflightUpload) await inflightUpload;
+    const state = get();
+    if (state.rasters.length === 0 && !state.video) {
+      set({ analysisError: state.uploadError || "Attach an image or video before asking." });
+      return;
+    }
 
     const hasVideo = Boolean(state.video);
     const rasters = state.rasters;

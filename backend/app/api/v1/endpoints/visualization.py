@@ -31,6 +31,7 @@ from backend.app.agent.controller import agent_controller
 from backend.app.ml.registry import model_registry
 from backend.app.ml.device import get_device
 from backend.app.artifacts.manager import artifact_manager
+from backend.app.artifacts.temporal_order import chronological
 from backend.app.config import settings
 from backend.app.exceptions import (
     SatQueryException,
@@ -106,7 +107,7 @@ async def get_analysis_layers(job_id: str, db: AsyncSession = Depends(get_db)):
 
     input_files = []
     if input_dir.exists():
-        input_files = sorted([f for f in input_dir.iterdir() if f.is_file() and not f.name.endswith(".json")])
+        input_files = chronological(sorted([f for f in input_dir.iterdir() if f.is_file() and not f.name.endswith(".json")]))
 
     if not input_files:
         job = await JobRepository.get_job(db, job_id)
@@ -152,7 +153,7 @@ async def get_visualization_image(job_id: str, layer_id: str, db: AsyncSession =
         return FileResponse(path=str(out_file), media_type="image/png")
 
     input_dir = job_dir / "input"
-    input_files = sorted([f for f in input_dir.iterdir() if f.is_file() and not f.name.endswith(".json")]) if input_dir.exists() else []
+    input_files = chronological(sorted([f for f in input_dir.iterdir() if f.is_file() and not f.name.endswith(".json")])) if input_dir.exists() else []
     if not input_files:
         raise ArtifactNotFoundError("input_imagery", message=f"No input imagery found for job '{job_id}'.", details={"job_id": job_id})
 
@@ -296,7 +297,13 @@ async def get_visualization_image(job_id: str, layer_id: str, db: AsyncSession =
         sam2_mask = job_dir / "masks" / "segmentation_mask.png"
         if sam2_mask.exists():
             return FileResponse(path=str(sam2_mask), media_type="image/png")
-        overlay_files = list((job_dir / "overlays").glob("*.png"))
+        # Grounding jobs draw the SAM 2 masks into grounding_overlay.png, beside an <input>_preview.png
+        # that is the bare image. Taking glob()'s first file served the preview whenever the filesystem
+        # listed it first (the Modal volume does), so the mask layer showed no mask.
+        grounding_overlay = job_dir / "overlays" / "grounding_overlay.png"
+        if grounding_overlay.exists():
+            return FileResponse(path=str(grounding_overlay), media_type="image/png")
+        overlay_files = [f for f in (job_dir / "overlays").glob("*.png") if not f.name.endswith("_preview.png")]
         if overlay_files:
             return FileResponse(path=str(overlay_files[0]), media_type="image/png")
         raise VisualizationNotAvailableError(layer_id=layer_id, message="SAM 2 overlay not found.", details={"job_id": job_id})
@@ -322,7 +329,7 @@ async def get_visualization_legend(job_id: str, layer_id: str):
 
     if not legend_file.exists():
         input_dir = job_dir / "input"
-        input_files = sorted([f for f in input_dir.iterdir() if f.is_file() and not f.name.endswith(".json")]) if input_dir.exists() else []
+        input_files = chronological(sorted([f for f in input_dir.iterdir() if f.is_file() and not f.name.endswith(".json")])) if input_dir.exists() else []
         if input_files:
             arr, meta = RasterInspector.read_as_array(input_files[0])
             if layer_id == "ndvi":
@@ -366,7 +373,7 @@ async def inspect_pixel_at(
 
     job_dir = artifact_manager.get_job_dir(job_id)
     input_dir = job_dir / "input"
-    input_files = sorted([f for f in input_dir.iterdir() if f.is_file() and not f.name.endswith(".json")]) if input_dir.exists() else []
+    input_files = chronological(sorted([f for f in input_dir.iterdir() if f.is_file() and not f.name.endswith(".json")])) if input_dir.exists() else []
     if not input_files:
         raise ArtifactNotFoundError("input_imagery", message="No input imagery found for job.", details={"job_id": job_id})
 
@@ -414,7 +421,7 @@ async def get_layer_histogram(job_id: str, layer_id: str):
     """
     job_dir = artifact_manager.get_job_dir(job_id)
     input_dir = job_dir / "input"
-    input_files = sorted([f for f in input_dir.iterdir() if f.is_file() and not f.name.endswith(".json")]) if input_dir.exists() else []
+    input_files = chronological(sorted([f for f in input_dir.iterdir() if f.is_file() and not f.name.endswith(".json")])) if input_dir.exists() else []
     if not input_files:
         raise ArtifactNotFoundError("input_imagery", message="No input imagery found.", details={"job_id": job_id})
 
@@ -471,7 +478,7 @@ async def export_layer(job_id: str, layer_id: str, format: str = "png"):
     vis_dir.mkdir(parents=True, exist_ok=True)
 
     input_dir = job_dir / "input"
-    input_files = sorted([f for f in input_dir.iterdir() if f.is_file() and not f.name.endswith(".json")]) if input_dir.exists() else []
+    input_files = chronological(sorted([f for f in input_dir.iterdir() if f.is_file() and not f.name.endswith(".json")])) if input_dir.exists() else []
     if not input_files:
         raise ArtifactNotFoundError("input_imagery", message="No input imagery found for export.", details={"job_id": job_id})
 

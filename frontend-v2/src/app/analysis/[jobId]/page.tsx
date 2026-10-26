@@ -63,6 +63,15 @@ function formatTime(ms?: number) {
   return `${(ms / 1000).toFixed(1)}s`;
 }
 
+// Layer shown first when a job completes, most informative first (layer ids from
+// backend/app/visualization/registry.py). Jobs with none of these fall back to the first layer.
+const RESULT_LAYER_PRIORITY = [
+  "grounding_overlay",
+  "sam2_segmentation_overlay",
+  "change_overlay",
+  "change_probability_heatmap",
+];
+
 export default function AnalysisJobPage() {
   const params = useParams<{ jobId: string }>();
   const jobId = params.jobId;
@@ -111,10 +120,15 @@ export default function AnalysisJobPage() {
     setRePromptBusy(true);
     setRePromptError(null);
     try {
-      const { request_id, image_filenames } = await api.reuseSource(jobId);
-      // POST /analyze does not resolve until the whole pipeline finishes, so this is
+      const { request_id, image_filenames, kind } = await api.reuseSource(jobId);
+      // Neither analyze call resolves until the whole pipeline finishes, so they are
       // deliberately not awaited -- the new job page polls progress by request_id.
-      void api.analyze({ query: text, request_id, image_filenames }).catch(() => {});
+      // A video job's footage is re-run through the video pipeline (Q-064).
+      if (kind === "video") {
+        void api.analyzeVideo({ video_id: request_id, query: text }).catch(() => {});
+      } else {
+        void api.analyze({ query: text, request_id, image_filenames }).catch(() => {});
+      }
       setFollowUp("");
       router.push(`/analysis/${request_id}`);
     } catch (e) {
@@ -139,10 +153,23 @@ export default function AnalysisJobPage() {
   const playerRef = useRef<VideoPlayerHandle | null>(null);
 
   const layers = layersQuery.data?.layers ?? [];
+  // Open on what the model produced, not on the input: the layer list always starts with the
+  // plain True Color render, so defaulting to layers[0] showed a masking or change job's result
+  // as if nothing had been found until the user dug the overlay out of the list.
+  const defaultLayer = useMemo(
+    () => RESULT_LAYER_PRIORITY.map((id) => layers.find((l) => l.id === id)).find(Boolean) || layers[0],
+    [layers],
+  );
   const currentLayer = useMemo(() => {
-    if (activeLayerId) return layers.find((l) => l.id === activeLayerId) || layers[0];
-    return layers[0];
-  }, [layers, activeLayerId]);
+    if (activeLayerId) return layers.find((l) => l.id === activeLayerId) || defaultLayer;
+    return defaultLayer;
+  }, [layers, activeLayerId, defaultLayer]);
+  // The result layer is also listed first: the list box scrolls, and the grounding overlay is
+  // seventh of seven, so selecting it in place left the highlighted row hidden below the fold.
+  const orderedLayers = useMemo(
+    () => (defaultLayer ? [defaultLayer, ...layers.filter((l) => l.id !== defaultLayer.id)] : layers),
+    [layers, defaultLayer],
+  );
 
   const data = isVideoJob ? videoResult.data : result.data;
   const videoFlags = data?.flags ?? [];
@@ -512,7 +539,7 @@ export default function AnalysisJobPage() {
                   </div>
                   {isCompleted && layers.length > 0 ? (
                     <div className="max-h-52 space-y-1 overflow-y-auto pr-0.5">
-                      {layers.map((layer) => {
+                      {orderedLayers.map((layer) => {
                         const active = layer.id === currentLayer?.id;
                         return (
                           <button

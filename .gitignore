@@ -99,3 +99,10 @@ deploy/.env.modal
 
 # Team env copy with live credentials (kept locally, never committed)
 satquery_env.txt
+
+# Demo recording: raw screen captures and rendered videos stay local
+demo_resources/recording/raw/
+demo_resources/recording/.vertical_work*/
+demo_resources/recording/*.mp4
+demo_resources/recording/edit_plan.json
+.playwright-mcp/

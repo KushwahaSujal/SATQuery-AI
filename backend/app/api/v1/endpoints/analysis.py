@@ -33,6 +33,7 @@ from backend.app.agent.controller import agent_controller
 from backend.app.ml.registry import model_registry
 from backend.app.ml.device import get_device
 from backend.app.artifacts.manager import artifact_manager
+from backend.app.artifacts.temporal_order import chronological
 from backend.app.config import settings
 from backend.app.exceptions import (
     SatQueryException,
@@ -114,6 +115,8 @@ async def analyze_query(request: AnalyzeRequest, db: AsyncSession = Depends(get_
                 details={"job_id": req_id, "missing_file": clean_name}
             )
         image_paths.append(str(fpath))
+    # Change models read image 1 as T1; pickers and reuse-source hand "after" over first (Q-061).
+    image_paths = chronological(image_paths)
 
     parameters = dict(request.parameters)
     if request.aoi_geojson is not None:
@@ -367,7 +370,27 @@ async def reuse_job_source(job_id: str):
     Returns the new request_id and filenames, which the caller passes straight to
     POST /analyze. No upload round-trip: the bytes never leave the server.
     """
-    source_dir = artifact_manager.get_job_dir(job_id) / "input"
+    job_dir = artifact_manager.get_job_dir(job_id)
+    source_dir = job_dir / "input"
+
+    # A video job keeps its footage in video/ and leaves input/ empty, so every follow-up on a
+    # video used to fail with "no source imagery to reuse" (Q-064). Copy the clip instead; the
+    # caller re-runs POST /video/analyze on the new request_id.
+    video_dir = job_dir / "video"
+    videos = sorted(
+        p for p in video_dir.iterdir()
+        if p.is_file() and p.suffix.lower() in settings.video.allowed_extensions
+    ) if video_dir.is_dir() else []
+    has_images = source_dir.is_dir() and any(p.is_file() for p in source_dir.iterdir())
+    if videos and not has_images:
+        new_request_id = str(uuid.uuid4())
+        dest = artifact_manager.init_job_workspace(new_request_id)["root"] / "video"
+        dest.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(videos[0], dest / videos[0].name)
+        logger.info(f"Reusing video {videos[0].name} from job {job_id} in new workspace {new_request_id}")
+        return {"request_id": new_request_id, "image_filenames": [], "kind": "video",
+                "video_filename": videos[0].name}
+
     if not source_dir.is_dir():
         raise JobNotFoundError(job_id=job_id, details={"job_id": job_id})
 

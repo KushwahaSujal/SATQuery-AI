@@ -315,8 +315,10 @@ export const api = {
 
   // Copies an existing job's source imagery into a fresh workspace so the same scene
   // can be re-queried without re-uploading it, and without overwriting that job.
-  reuseSource: async (jobId: string): Promise<{ request_id: string; image_filenames: string[] }> => {
-    const res = await http<{ request_id: string; image_filenames: string[] }>(
+  reuseSource: async (
+    jobId: string,
+  ): Promise<{ request_id: string; image_filenames: string[]; kind?: "image" | "video" }> => {
+    const res = await http<{ request_id: string; image_filenames: string[]; kind?: "image" | "video" }>(
       endpoints.reuseSource(jobId),
       { method: "POST" },
     );

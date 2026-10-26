@@ -152,6 +152,26 @@ def classify_trained_segmenter_target(
     return matches[0]
 
 
+def read_ground_sample_distance(image: Any) -> Optional[float]:
+    """Metres per pixel from a georeferenced raster in a projected, metre-based CRS; else None.
+
+    Only a path can carry georeferencing (a PNG or an in-memory image has none). Geographic CRSs
+    (degrees) are refused rather than converted, so a wrong number is never reported (Q-063).
+    """
+    if not isinstance(image, (str, Path)):
+        return None
+    try:
+        import rasterio
+        with rasterio.open(str(image)) as src:
+            crs = src.crs
+            if crs is None or not crs.is_projected or (crs.linear_units or "").lower() not in ("metre", "meter", "m"):
+                return None
+            xres, yres = (abs(float(v)) for v in src.res)
+    except Exception:
+        return None
+    return xres if xres > 0 and abs(xres - yres) <= 1e-6 * xres else None
+
+
 def run_trained_segmenter_path(
     model_key: str,
     pil_img: Image.Image,
@@ -159,6 +179,7 @@ def run_trained_segmenter_path(
     target_category: str,
     record_step: Callable[..., None],
     t0: float,
+    gsd_m: Optional[float] = None,
 ) -> Dict[str, Any]:
     """Runs the trained segmenter on the whole image and returns a dict shaped exactly like
     `run_grounding_pipeline`'s normal return, minus `trace` (the caller owns that list and appends
@@ -206,11 +227,26 @@ def run_trained_segmenter_path(
         f"{coverage_pct:.2f}% of the image "
         f"({pixel_count:,} px), using the trained {class_label} segmenter "
         f"(checkpoint {Path(checkpoint_path).name if checkpoint_path else 'unknown'}, "
-        f"threshold {threshold:.2f} from {threshold_source}). Trained and validated at "
-        f"{trained_gsd_m} m/px ground sampling distance; this image was run at its native "
-        f"resolution, with no GSD metadata available to resample it (docs/models/trained_segmenters.md)."
-        f"{SENSOR_CAVEAT_BY_MODEL.get(model_key, '')}"
+        f"threshold {threshold:.2f} from {threshold_source}). "
     )
+    if gsd_m:
+        # The raster's own georeferencing gives the pixel size, so area is measurable and the
+        # "coarser than aerial photography" caveat only applies when the resolutions differ.
+        area_km2 = pixel_count * gsd_m * gsd_m / 1e6
+        matches = bool(trained_gsd_m) and abs(gsd_m - float(trained_gsd_m)) <= 0.5 * float(trained_gsd_m)
+        answer = answer.replace(f"({pixel_count:,} px)", f"({pixel_count:,} px, {area_km2:,.2f} km²)")
+        answer += (
+            f"This image is {gsd_m:g} m/px from its georeferencing"
+            f"{', matching the ' + format(float(trained_gsd_m), 'g') + ' m/px it was trained and validated at' if matches else f'; the model was trained and validated at {trained_gsd_m} m/px'}"
+            f", and was run at native resolution."
+            f"{'' if matches else SENSOR_CAVEAT_BY_MODEL.get(model_key, '')}"
+        )
+    else:
+        answer += (
+            f"Trained and validated at {trained_gsd_m} m/px ground sampling distance; this image was "
+            f"run at its native resolution, with no GSD metadata available to resample it "
+            f"(docs/models/trained_segmenters.md).{SENSOR_CAVEAT_BY_MODEL.get(model_key, '')}"
+        )
 
     evidence: Dict[str, Any] = {
         "target_category": class_label,

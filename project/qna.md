@@ -5463,3 +5463,635 @@ as retryable would notice.
 It works only because the code paths reached here do not touch `db`. That is latent and unrelated
 to this fix; it should become an explicit shared helper rather than one route handler calling
 another through FastAPI's dependency signature.
+
+---
+
+## Q-060 · Demo recording kit; the "SAM 2.1 mask" layer showed no mask, and results opened on the bare image
+
+**Date:** 2026-09-23 · **Branch:** prototype · uncommitted at time of writing
+
+**Files:** `backend/app/api/v1/endpoints/visualization.py`, `tests/unit/test_visualization_api.py`,
+`frontend-v2/src/app/analysis/[jobId]/page.tsx`, `scripts/demo/{rehearse_deployed.py,
+make_vertical.py, start_backend.sh, start_frontend.sh, stop_backend.sh}`,
+`demo_resources/RECORDING.md`, `demo_resources/recording/`, `.gitignore`
+
+**How it was found.** Preparing the recorded SIH demo (masking, VQA, change detection, video) on the
+deployed stack. `rehearse_deployed.py` ran all four prompts over HTTP — all `COMPLETED` — but driving
+the same masking prompt through the deployed UI in a 1920×1080 browser showed the result page on
+*True Color / RGB*, and clicking *SAM 2.1 — High-Resolution Segmentation Mask* changed the label and
+nothing else: no masks on screen, although the job had segmented 9 instances.
+
+**Q1 — Mechanism: why did the SAM 2.1 layer show the bare image?**
+The endpoint (`visualization.py`, `sam2_segmentation_overlay` branch) serves
+`masks/segmentation_mask.png` if present, else "the first `overlays/*.png`". Grounding jobs write no
+`segmentation_mask.png`; `overlays/` holds `grounding_overlay.png` (masks drawn in) **and**
+`<input>_preview.png` (the bare input). `glob()` order is filesystem order. Evidence, job
+`ae1c4ce2…` on Modal: the layer returned **401,985 bytes**; the job ZIP lists
+`overlays/airport_airplanes__P0173_0003_preview.png` at exactly **401,985** and
+`overlays/grounding_overlay.png` at 434,335. Fix: after `segmentation_mask.png`, serve
+`grounding_overlay.png`, and never fall back to a `*_preview.png`.
+
+**Q2 — Rationale: why also change the frontend default instead of only fixing the layer?**
+Even with the layer fixed, the page opened on `layers[0]` = True Color, so every masking and change
+result first looked like "nothing found" until the viewer found the overlay — seventh of seven rows in
+a scrolling list, below the fold. The page now opens on the first of `grounding_overlay`,
+`sam2_segmentation_overlay`, `change_overlay`, `change_probability_heatmap`, and lists that layer
+first. Requested by the user for demo continuity. Rejected: reordering layers in the backend registry —
+it would change the `/layers` API contract for every client to fix a presentation default.
+
+**Q3 — Blast radius.** Backend: one branch of a read-only endpoint; a grounding job's SAM layer now
+returns the grounding overlay (same image the *Grounding Evidence Overlay* layer serves). Frontend:
+the initial layer and list order on `/analysis/[jobId]`; jobs with none of the four ids (VQA,
+caption) keep `layers[0]`. The user's explicit layer clicks are unaffected. Neither is deployed yet —
+`modal deploy` / `vercel deploy --prod` ship the working tree.
+
+**Q4 — Verification.**
+- New test `test_sam2_layer_serves_mask_overlay_not_input_preview` pins `glob()` to the order seen on
+  Modal; it **failed** before the fix (served the preview) and passes after.
+- `pytest -m "not models" -q`: **562 passed, 3 failed** — the same three pre-existing GDAL failures in
+  `test_geotiff_georeferencing.py` as the 2026-09-22 handover (561 + this test).
+- `tsc --noEmit` clean; `next build` passes.
+- Local `frontend-v2` pointed at the deployed backend: masking job `ae1c4ce2…` opens on *Grounding
+  Evidence Overlay* with the planes masked; change job `1fa3a7b0…` opens on *ChangeFormer — Temporal
+  Change Overlay*.
+- Deployed rehearsal (warm T4), 2026-09-23: `mask airplanes` 38.7 s, conf 0.876, 9 instances;
+  `what type of area is shown in this image?` 24.3 s → `workflow_single_vqa`, "airport tarmac…";
+  `detect building changes` (LEVIR scene 100) 58.1 s, 118,998 px, 11.35 %; `find all vehicles`
+  123.3 s, 2 events (14.88–18.72 s, 25.44–27.36 s).
+
+**Q5 — Defence: what would a reviewer catch on screen?**
+- "9 instances of airplanes" — the image has **six**; some planes are split into two masks. The UI's
+  *Regions detected: 6* is right; the sentence is not. Not fixed here; the voiceover avoids the count.
+- `how many airplanes are parked here?` → "at least five" (six). Replaced in the demo by the area
+  question. `what kind of facility is this…` misrouted to grounding (D-116).
+- Video: the parked white car is never boxed; "find all vehicles" finds vehicle *moments*, not every
+  vehicle.
+- **Change-pair labels are filename-sorted.** Every visualization endpoint does
+  `sorted(input_dir.iterdir())`, so `after.png` becomes *Earlier Image A (T1)*. The model receives the
+  request's upload order and is unaffected; the labels are wrong. Not fixed; the demo uses
+  `t1_before` / `t2_after` symlinks that sort chronologically. Needs a real fix (persist upload order).
+- Masking *Key Findings* shows "Changed pixels" — a change-detection label reused for a mask area.
+
+**Q6 — Relation to earlier entries.** Q-059 verified `sam2_segmentation_overlay` → **200** on the
+deployed backend. That was true, and it was the wrong image: the check measured status, not content.
+This entry does not amend Q-059; it records that a 200 on an image route is not evidence the image is
+right, and the new test compares bytes.
+
+---
+
+## Q-061 · Change detection ran the pair backwards from the browser: 5.06 % instead of 11.35 %
+
+**Date:** 2026-09-23 · **Branch:** prototype · uncommitted at time of writing · **deployed** to Modal
+the same evening. Supersedes the "Not fixed" note on change-pair labels in Q-060 Q5.
+
+**Files:** `backend/app/artifacts/temporal_order.py` (new), `backend/app/api/v1/endpoints/analysis.py`,
+`backend/app/api/v1/endpoints/visualization.py`, `tests/unit/test_temporal_order.py` (new),
+`demo_resources/RECORDING.md`
+
+**How it was found.** Recording the demo on the hosted site, the user ran change detection on
+`levir_scene_100` and got results that did not match `expected_outputs/`. Jobs `2a270cb1…` and
+`f16940b4…` (inputs byte-identical to the rehearsal, md5 `e64f9dc6…` / `edd79e8c…`) returned
+**5.06 %, 53,062 px, 45 regions**; the rehearsal job `1fa3a7b0…` that morning returned **11.35 %,
+118,998 px, 181 regions**. Same threshold (0.5), same inference mode (native).
+
+**Q1 — Mechanism.** `analyze_query` passes `request.image_filenames` to the pipeline in the order
+received, and ChangeFormer reads image 1 as T1. The rehearsal sent `[before, after]` over HTTP. The
+browser sent `[after, before]`: the file picker returns a multi-selection alphabetically, and
+`POST /jobs/{id}/reuse-source` (the follow-up box) returns `sorted()` filenames — "after" < "before"
+in both. Evidence: the morning overlay's mean absolute difference to `before.png` is 22.4 vs 71.0 to
+`after.png`; tonight's is 50.6 vs 23.0 — the overlay is drawn on image 1, and image 1 was "after".
+Reversed, the model marks only about half the new houses.
+
+**Q2 — Rationale.** One chokepoint fix: `chronological()` reorders a two-image request earlier-first
+when the filenames say so — whole tokens (before/after, pre/post, t1/t2, old/new, …) or a date/year in
+both names — and otherwise keeps the client's order. Applied in `analyze_query` (what the model sees)
+and to the six `sorted(input_dir)` sites in `visualization.py` (the T1/T2 labels). Rejected: fixing
+only the frontend — the reuse-source path would still sort, and any API client could repeat it;
+persisting upload order — correct long-term, but it cannot recover the order for a client that sent it
+wrong, which is what happened here.
+
+**Q3 — Blast radius.** Only two-image requests with a clear time signal in the names are reordered.
+Unhinted pairs (e.g. `optical.png` + `sar.png`) are untouched; substrings do not count (`preview` is not
+`pre`, `newark` is not `new`). A pair named against its content (a later image called "before") would
+now be flipped — the names are the only signal the system has.
+
+**Q4 — Verification.**
+- `tests/unit/test_temporal_order.py`: 5 tests, failed (module missing) before, pass after.
+- `pytest -m "not models" -q`: **567 passed, 3 failed** (the pre-existing GDAL three; 562 + 5).
+- Deployed to Modal, then the pair sent **after-first**, as the browser did:
+  `detect the difference between the two images.` → **11.35 %, 118,998 px, 181 regions** (job
+  `250ee99e…`); `detect building changes` → **118,998 px, 11.35 %** (job `63c38271…`). Overlay now
+  drawn on `before.png`; layers read *Earlier Image A (T1) — before.png*, *Later Image B (T2) —
+  after.png*.
+
+**Q5 — Defence.** "So the model depends on filenames?" — No: the model depends on order, as every
+bi-temporal change model does. The client was not telling it the order reliably; the names are the
+only temporal metadata a PNG upload carries. GeoTIFFs with acquisition dates would be the principled
+signal; that is not read here. The 256² `real_pair` job tonight (`2e2d3826…`, 4.22 %) was also sent
+after-first; README records 25.46 % for it in the right order, not re-measured here.
+
+---
+
+## Q-062 · "Invalid request parameters or payload" on every change request: Enter beat the upload
+
+**Date:** 2026-09-23 · **Branch:** prototype · uncommitted · **deployed** to Vercel the same evening.
+
+**Files:** `frontend-v2/src/stores/useAnalysisStore.ts`
+
+**Q1 — Mechanism.** Modal logs, 17:42–17:50 UTC: every failing `POST /api/analyze` was a 422 with
+`image_filenames: []` ("List should have at least 1 item"), each paired with a `POST /api/upload` that
+succeeded in 7.75–33 s. `handleUpload` appends to `rasters` only when the upload resolves;
+`startAnalysis` read `rasters` synchronously, and the composer's send was gated on a running analysis,
+not on an upload. Pressing Enter mid-upload sent an empty list; the upload then landed and the images
+reappeared in the composer as "2 sources attached" — the user's screenshot.
+
+**Q2 — Fix.** The in-flight upload promise is kept at module scope; `startAnalysis` awaits it before
+reading `rasters`, and refuses with "Attach an image or video before asking." if there are still no
+sources, instead of posting a request the backend must reject. Rejected: disabling Enter during upload —
+it leaves the user guessing why nothing happens, and still races any other caller of `startAnalysis`.
+
+**Q3 — Blast radius.** Only the moment a prompt is sent: it may now wait for an upload already in
+progress. No request shape changes. The home page's upload-then-navigate path is unaffected.
+
+**Q4 — Verification.** `tsc --noEmit` clean; Vercel production build passed. Local build of the fix
+against the deployed backend, with `/api/upload` held back 15 s by a Playwright route and Enter pressed
+immediately after selecting `after.png` + `before.png`: `/api/analyze` was posted 18.4 s later with
+`["after.png", "before.png"]`, and the job returned **118,998 px, 11.35 %** (the Q-061 ordering fix
+applied server-side). Deployed; the live bundle contains the new message string.
+
+**Q5 — Defence.** Why did the rehearsal miss it? `rehearse_deployed.py` calls the API directly and
+waits for the upload response before analyzing; the race only exists in the browser, and only when the
+upload is slower than the user — 4 s from this machine, up to 33 s from the user's connection.
+
+---
+
+## Q-063 · On a 10 m Sentinel-2 GeoTIFF the water answer said "no GSD metadata" and warned about aerial imagery
+
+**Date:** 2026-09-23 · **Branch:** prototype · uncommitted · **deployed** to Modal the same evening.
+
+**Files:** `backend/app/workflows/trained_segmenter.py`, `backend/app/workflows/grounding.py`,
+`tests/unit/test_segmenter_gsd.py` (new), `demo_resources/RECORDING.md`, `demo_resources/recording/inputs/`
+
+**Q1 — Mechanism.** `run_trained_segmenter_path` built its answer from a fixed sentence: "this image was
+run at its native resolution, with no GSD metadata available", plus the water model's caveat that it
+was trained at 10 m/px, "roughly 20x coarser than typical sub-metre aerial photography". Nothing passed
+the raster's pixel size down, although `run_grounding_pipeline` receives the upload's path. On
+`sentinel2_valencia/before.tif` (EPSG:32630, 10.0 m, Sentinel-2B L2A TCI) both statements were false.
+
+**Q2 — Fix.** `read_ground_sample_distance(image)` returns metres/pixel only for a path whose CRS is
+projected with metre units and square pixels; anything else (PNG, geographic CRS, in-memory image) is
+None and keeps the old wording. With a GSD, the answer states it, reports area
+(`px × GSD²`), and drops the aerial caveat when the GSD is within 50 % of the training GSD. No
+resampling is added — the model still runs at native resolution, as before.
+
+**Q3 — Blast radius.** Trained-segmenter answers on metre-projected GeoTIFFs only. PNG/JPEG answers are
+byte-identical (test `test_unknown_gsd_keeps_the_original_wording`). A GeoTIFF with a mislabelled
+transform would now report a wrong area; the header is the only source of pixel size the system has.
+
+**Q4 — Verification.** 3 new tests fail before, pass after; `pytest -m "not models"`: **570 passed, 3
+failed** (the pre-existing GDAL three). Deployed; live on `before.tif`, `segment the water bodies`:
+*"61.06% of the image (160,055 px, 16.01 km²) … This image is 10 m/px from its georeferencing, matching
+the 10 m/px it was trained and validated at"*, confidence 0.9562; UI side panel "Estimated area
+16.01 km²". Check: 160,055 × 100 m² = 16.0055 km², of a 26.21 km² tile.
+
+**Q5 — Also recorded for the demo, not fixed.** `analyze this optical and SAR pair` on
+`3_optical_sar/` routes to `workflow_optical_sar` and returns NOT_CONFIGURED (by design, D-102); its
+layer list labels the two sensors "Earlier (T1)" / "Later (T2)". The GeoTIFF job's footer lists
+"grounding_dino, sam2" although the trained water segmenter produced the mask.
+
+---
+
+## Q-064 · Video jobs froze the server for ~2 min (UI stuck on "Planning the workflow"); video follow-ups failed
+
+**Date:** 2026-09-24 · **Branch:** prototype · uncommitted · **deployed** (Modal + Vercel) the same night.
+
+**Files:** `backend/app/api/v1/endpoints/video.py`, `backend/app/workflows/video_analysis.py`,
+`backend/app/api/v1/endpoints/analysis.py`, `frontend-v2/src/lib/api.ts`,
+`frontend-v2/src/app/analysis/[jobId]/page.tsx`, `tests/unit/test_video_endpoint_nonblocking.py`,
+`tests/unit/test_reuse_source_video.py` (both new)
+
+**Q1 — Mechanism (spinner).** `VideoAnalysisWorkflow.execute` is `async` but its Grounding DINO loop
+and SAM 2.1 propagation are synchronous GPU code, awaited inline by `POST /video/analyze`. The event
+loop was blocked for the whole job, so the progress poll the UI renders steps from could not be
+served. Measured on the deployed backend: one poll issued at 0.4 s returned at 88.1 s, already at the
+final stage. The image path does not have this problem: `agent/executor.py` runs each tool through
+`asyncio.to_thread`. The workflow itself was fine — the user's job `3f133b05…` completed in 137 s.
+
+**Q2 — Fix (spinner).** The endpoint runs `execute` on a worker thread with its own loop
+(`asyncio.to_thread(asyncio.run, …)`) and `db_session=None`; the database writes moved into
+`VideoAnalysisWorkflow.persist_results` and run afterwards on the request's loop, where its session
+lives. Rejected: running the whole coroutine with the request's session on another loop — the engine
+is loop-scoped (`db/session.py` recreates it on a loop change), which would flap the global engine.
+Rejected: wrapping each GPU call in `to_thread` inside a 400-line function the night before recording.
+
+**Q3 — Mechanism and fix (follow-up).** `POST /jobs/{id}/reuse-source` copied only `input/`; a video
+job's footage is in `video/`, so every follow-up on a video returned "has no source imagery to reuse".
+It now copies the clip into a new workspace and returns `kind: "video"`; the result page's follow-up
+box calls `POST /video/analyze` for that kind instead of `POST /analyze`.
+
+**Q4 — Blast radius.** Video analysis only. `execute` with a session still persists exactly as before
+(existing `test_video_workflow.py` unchanged and passing). Two video jobs can now run concurrently on
+the GPU, as two image jobs already could. Image reuse-source responses are unchanged apart from being
+able to carry `kind`.
+
+**Q5 — Verification.** New non-blocking test failed first (poll waited **3.0 s** behind a 3 s job),
+passes after; reuse-source video test failed first, passes after. `pytest -m "not models"`: **573
+passed, 3 failed** (the GDAL three). Deployed; site flow replayed over HTTP: polls answered in ≤0.8 s
+throughout, stages 404 → detect_objects (3.1 s) → propagate_masks (62.6 s) → flag_events (96.4 s);
+`find all vehicles` COMPLETED in 134.4 s, events (14.88–18.72), (25.44–27.36) — identical to the
+rehearsal. Follow-up via reuse-source, `spot red cars`: COMPLETED in 101.4 s, one event 15.36–18.72 s.
+
+## Q-065 · Restoration core library ("Clarity" foundation): detectors, planner, fused LUT pass, switching median, receipt
+
+**Date:** 2026-09-30 · **Branch:** `feat/restoration-core` (worktree `.claude/worktrees/restoration-core`,
+from `prototype` b158729) · commits `dca780e`..`4206244` (16) · **not merged, not deployed**.
+
+**Files:** `backend/app/restoration/{__init__,schemas,registry,stages,detectors,planner,correction,impulse,executor}.py`
+(all new), `backend/app/config.py` (`RestorationSettings`), `configs/app.yaml` (`restoration:` block),
+`tests/unit/test_restoration_{config,schemas,stage_registry,detectors,planner,fused,impulse,executor}.py` +
+`tests/unit/restoration_fixtures.py` (new), `project/plan-2026-09-30-restoration-core.md`.
+Spec: `project/spec-2026-09-21-restoration-framework.md`.
+
+**Q1 — Mechanism.** A pure in-memory pipeline over `(bands, H, W)` arrays. Nothing is wired into the
+agent DAG yet; that is Plan 2.
+- `detectors.assess()` builds the valid mask, measures 11 metrics, and returns a `QualityAssessment`.
+  Rasters over 16 MP are measured on a tile sample; tiles with no valid pixel are dropped, and
+  `sample_fraction` is weighted by valid pixels.
+- `planner.plan()` is a pure function mapping the assessment through decision table `dt@1` to an
+  ordered `RestorationPlan`. `validate_table()` refuses, at import and again at plan time, to gate on
+  a NOT_CALIBRATED metric.
+- `executor.execute_plan()` runs the registered stages in order: `impulse_denoise` 20,
+  `gaussian_denoise` 30 (refuses NOT_CONFIGURED), `photometric_correct` 50, `super_resolve` 90
+  (refuses NOT_CONFIGURED; "the image was NOT upscaled"). Each stage gets a read-only view of the
+  array, and the input is hashed before the call. A stage that raises, returns a non-receipt, changes
+  shape or dtype, writes a nodata pixel, reports APPLIED with no changed byte, or changes bytes while
+  reporting `fraction_modified = 0` is recorded as FAILED, and its output is discarded.
+- `executor.build_receipt()` emits a `RestorationReceipt` carrying:
+  - `residual_degradations`, crediting only terms that actually changed pixels;
+  - `unmeasured_degradations`, `provisional_gates_fired` and warnings;
+  - `ConfidenceAdvice`, whose multiplier is bounded at 1.0 by the schema and is 1.0 in every v1
+    row, with `blocking` only for UNASSESSABLE.
+
+**Q2 — Rationale; deviations from the spec, all decided while planning (plan §Deviations).**
+- **D1 `max_similar_neighbours` 2 → 1.** A pixel on a 1-px road has exactly two similar neighbours,
+  so the spec's value would have flagged roads as salt-and-pepper. With 1, line pixels are safe. Cost:
+  line *ends*, including lines cut by tile borders, count as impulses. Measured on the fixture:
+  3.05e-5 of pixels.
+- **D2 `direction` field.** The metric is bad when **low**, and the spec's own §2.11 example
+  (0.21 < 0.30 → exceeds) could not come out of its validator without this field.
+- **D3** Black level is a parameter, not a gate.
+- **D4** There is no `mask_invalid` stage; a clean plan has `stages == []`.
+- **D5** `gsd_m` has a PROVISIONAL threshold of 2.0 m, and geographic degrees are refused as in
+  Q-063.
+- **D6** The median lives in `impulse.py`.
+- **D7** The naive reference quantises once.
+- **D8** Row strips, not `RasterTiler`.
+- **D9** Diagonal grey-world gains are folded into the per-band LUT.
+- **Rejected: a neural denoiser for salt-and-pepper or contrast.** Both are exact classical
+  operations that cannot invent pixels. The learned stages (upscaling, real-noise denoising) have
+  slots at orders 90 and 30 that refuse with a reason until the "Clarity models" plan verifies and
+  measures a checkpoint.
+
+**Q3 — Blast radius.** None for users today. Nothing outside `tests/` imports
+`backend.app.restoration`, and no agent, orchestration or workflow file changed. Once wired (Plan 2),
+a wrong detector or plan changes the pixels every model sees. That is why the receipt records both
+hashes and the confidence advice can only hold or lower.
+
+**Q4 — Verification (measured, worktree).**
+- Baseline `pytest -m "not models"`: **513 passed, 10 failed**. Final: **611 passed, the same 10
+  failed** by name:
+  - 3 GDAL georeferencing;
+  - 7 needing git-ignored checkpoints absent from a worktree (registry refusal ×5, optical-SAR ×1,
+    end-to-end ×1).
+- `-k restoration`: **98 passed**.
+- Measured on the synthetic fixtures (`tests/unit/restoration_fixtures.py`, 512×512 uint8 unless
+  noted). These are fixture numbers, **not a calibration on real imagery**:
+
+  | Measurement | Result |
+  |---|---|
+  | Impulse density, injected 0.0 | 0.0 |
+  | Impulse density, injected 0.001 | 0.000999 (262 px / 262144 = 0.00099945 is the true injected fraction) |
+  | Impulse density, injected 0.01 | 0.009998 |
+  | Impulse density, injected 0.05 | 0.049263 (worst, −1.5 %) |
+  | 1-px bright lines | 3.05e-5 (guard < 5e-4) |
+  | Gaussian σ̂ for a true σ = 20 (256×256) | **17.79 DN**: the x − median3×3 estimator reads ~11 % low |
+
+- Every threshold (`impulse_gate` 0.001, `dev_dn` 40, saturation 0.02, dynamic range 0.30,
+  grey-world 1.15, σ 0.04·dn_max, 2.0 m) is an **ASSUMPTION / PROVISIONAL**.
+- Config hash `5b645067efe5f35e`.
+
+**Q5 — Defence: "your own review found bugs, so why trust it?"** Every task had a spec-and-quality
+review, and the branch had a final whole-branch review. Those reviews found and fixed, each with a
+failing test first:
+- a sampled detector that reported **MEASURED 0.0 / CLEAN** when every sampled tile was nodata
+  (`184d253`);
+- a LUT that would have allocated ~32 GiB for uint32 (`d3ad329`);
+- `gsd_m` reporting MEASURED 0.0 or NaN for a zero or NaN resolution (`61922c3`);
+- a placeholder `dn_max = 0.0` (`f59d801`);
+- an executor that could raise, or miss a stage mutating its input in place (`3e2fbe7`);
+- a receipt that credited corrections which never happened (a skipped grey-world gain or stretch
+  still counted as "addressed", `baa14ad`).
+
+Two plan-text defects were ruled on, not tuned:
+- a gate assertion at exactly the gate density;
+- a warning substring.
+
+**Q6 — Open before Plan 2 wires this into jobs (plan "Decisions to confirm", all unresolved).**
+1. uint16 Sentinel-2 reads dynamic range ≈ 0.1 against `dn_max` 65535, so every scene would be
+   stretched.
+2. Grey-world would "correct" genuinely green vegetation.
+3. Every 10 m scene is DEGRADED with a refusing `super_resolve`.
+4. Signed and float rasters, measured: SAR dB and int16 read `saturation_low` ≈ 0.73, which gives a
+   false "clipped values are lost" warning. The stretch also remaps signed data to non-negative.
+5. Stage memory, tracemalloc on 4-band 768²: `execute_plan` peaks at 93 B/px. Extrapolated (not
+   measured) to about 11 GB for a 10980² Sentinel-2 tile, against a 2.5 GB guard.
+6. `StageReceipt` has no `image_index`, so pair residuals are global.
+7. `_tiles` overstates `sample_fraction` on elongated rasters, measured 0.655 against 0.256 unique
+   at 300×3000.
+8. The offset term blackens a band that is constant at a nonzero value. The receipt is honest, but
+   no warning says so.
+
+Upscaling routing, decided the same day: upscale only when the input GSD is coarser than the routed
+model's `trained_gsd_m`. SEN2SR first, for Sentinel-2 going to 0.5 m models. EuroSAT and flood are
+trained at 10 m and never get upscaled input.
+
+## Q-066 · Clarity v2 Phase A: calibrate the restoration core so clean demo images are left alone
+
+**Date:** 2026-10-03 · **Branch:** `feat/restoration-core` (worktree) · commits `612bddb`..`193d9d9` (11,
+after plan commit `eba98ca`) · **not merged, not deployed, not wired into the DAG**.
+Plan: `project/plan-2026-10-03-clarity-v2.md` (Phase A in full; B–D outlined). Handoff:
+`project/clarity-agent.md` §4A. Review page republished: https://claude.ai/artifact/2nFkjp5TkSay85Ees1J76r
+(version 2, data commit `193d9d9`, config hash `eb758c71c97a4d20`).
+
+**Q1 — Mechanism.** Seven tasks, each with a test written first. Every `restoration.*` version string
+whose behaviour changed was bumped.
+- **A1** `grey_world_gain` → NOT_CALIBRATED. Decision table row 7 is removed (`dt@2`). The metric is
+  still measured and appears as an advisory; it gates nothing.
+- **A2** `impulse_candidates` now requires the pixel to be pinned at an extreme (`impulse@2`,
+  `switching_median@2`). The spec §3.1 clause-5 alternative `dev >= 2·dev_dn` is dropped. The
+  `impulse_gate` moved from 0.001 to **0.005** (`configs/app.yaml` and the `RestorationSettings`
+  default together).
+- **A3** `assess(..., modality=)`. On `"sar"`, the 7 optical metrics come back NOT_APPLICABLE with a
+  reason, `plan()` returns a no-op with a SAR rationale, and the receipt warns "SAR input: optical
+  restoration does not apply". `"unknown"` keeps the optical path. The modality comes from the
+  caller: `ModalityDetector` in the demo, and `state.modalities[i]` at wiring.
+- **A4** `photometric_correct` refuses signed and float dtypes with NOT_CONFIGURED and a reason
+  (`fused_lut@2`). `saturation_low` is NOT_APPLICABLE on those dtypes. A band whose black-level
+  percentile equals its maximum skips the offset, with a warning (Decisions #4 and #8).
+- **A5** `StageReceipt.image_index` is stamped by `execute_plan`, and residuals are computed per
+  image (Decision #6).
+- **A6** New `restoration/pairs.py::restore_pair`.
+  - Stages before order 50 run per image.
+  - One `fit_photometric_joint` runs on the pooled histogram of both dates.
+  - The identical transfer is applied to both dates **or neither**: any refusal (SAR, dtype, band
+    count, `dn_max`, unassessable, signed or float), a failed stage on either date, or an exception
+    in the fit leaves both dates at their pre-photometric arrays, with a reason on each receipt.
+  - A joint fit is credited with addressing **nothing** (`executor._addressed`), because it buys
+    comparability across the dates, not a fix of either one.
+- **A7** `scripts/clarity/demo_check.py` + `.html`.
+  - It reads `settings.restoration`. Before this it used code defaults, so a yaml change would never
+    have reached the page.
+  - It passes the modality, routes `2_change_detection/<scene>/{before,after}` through
+    `restore_pair`, and adds a 0.5% stress case.
+  - Every claim on the page is now derived from `data.json`.
+
+**Q2 — Rationale and rejected alternatives.**
+- **Grey-world.** On 13 clean demo images it measured 1.12–1.62 against the 1.15 gate. A cast cannot
+  be told apart from genuine scene colour (vegetation, water, soil). The rejected alternative was to
+  raise the gate to about 1.65, which would still have fired on the next green scene. "Report only"
+  is the honest state until there is a calibration set.
+- **Salt-and-pepper.** Under impulse@1, LEVIR 101 "after" (a clean image) produced 2,079 candidates:
+  windshield glints, car highlights and dark specks. Extremes-only matches what salt-and-pepper
+  physically is. Pinned glints (255) can still qualify; they are what the 0.005 gate is for.
+- **SAR.** Speckle read as 6.7% "salt-and-pepper", and the colour correction ran on backscatter.
+  Excluding SAR by modality was chosen over a speckle-aware threshold, which would have meant
+  calibrating a second detector with no data.
+- **Pairs.** Correcting one date alone manufactures change for ChangeFormer (spec §4.4). In the
+  baseline, LEVIR 101 and 105 had "after" corrected and "before" not.
+- **Ruling recorded against the plan text (A5).** The plan said a receipt with `image_index=None`
+  counts for every image. The task review flagged that as the same over-claim the task removes. It
+  now addresses **no** image. The cost is that a hand-built legacy receipt could show a residual that
+  was actually fixed, which errs on the safe side.
+
+**Q3 — Blast radius.** None for users. Nothing outside `tests/` and `scripts/clarity/` imports
+`backend.app.restoration`. At wiring, the A2 gate decides whether real salt-and-pepper is repaired,
+and a missing modality would put SAR back on the optical path. That is listed as a wiring blocker
+below.
+
+**Q4 — Verification (measured, verbatim).**
+- **Demo check** (`demo_check.py`, 30 real inputs: 26 images + 6 video frames, plus 8 stress cases),
+  at `193d9d9`:
+  - **Baseline at `4206244`: 21 of 30 real inputs modified. Now: 3 of 30.** The three are
+    `photometric_correct` offset + stretch on genuinely flat images:
+    - `storage_tanks_grayscale` (dynamic range 0.2235);
+    - `real_aerial_footage` frames 0 and 372 (0.1529 each).
+  - No change-pair image was modified (5 scenes, 10 images). The SAR image was untouched.
+  - `impulse_density` on real non-SAR inputs: **max 0.0005035, median 1.907e-06**, against gate
+    0.005.
+- **Stress cases**, PSNR against the undamaged original:
+
+  | Case | impulse_density | PSNR | Repaired? |
+  |---|---|---|---|
+  | airport + 0.5% salt-and-pepper | 0.00475 | 27.94 → 27.94 dB | **No, missed** (below the gate) |
+  | street + 0.5% salt-and-pepper | 0.00435 | 28.08 → 28.08 dB | **No, missed** |
+  | airport + 1% | 0.00959 | 24.69 → 43.97 dB | Yes |
+  | street + 1% | 0.00888 | 25.01 → 44.86 dB | Yes |
+  | airport + 5% | 0.04711 | 17.89 → 33.26 dB | Yes |
+  | street + 5% | 0.04303 | 18.04 → 32.94 dB | Yes |
+  | airport, low contrast + red cast | — | 15.12 → 25.59 dB | Stretch only; the red cast now stays, by design |
+  | street, low contrast + red cast | — | 12.66 → 18.03 dB | Stretch only; the red cast now stays, by design |
+
+- **Tests.**
+  - `-k restoration`: 98 → **125 passed**.
+  - Full suite `-m "not models"` at `e2ffb12`: **635 passed, 10 failed, 29 skipped**. The 10 failures
+    are the same ones by name as the baseline: 3 georeferencing, 5 registry refusal, 1 optical-SAR,
+    1 end-to-end; all need checkpoints absent from a worktree.
+  - The fix wave after that (`df97fa3`, `193d9d9`) touched only `pairs.py`, its tests, a yaml comment
+    and the html, and was verified with `-k restoration`.
+- **Review.** Every task had a spec-and-quality review, and Phase A had a final whole-branch review.
+  - It reproduced a crash path: interlaced nodata plus stride sampling left an empty fit sample, and
+    `restore_pair` raised IndexError, against spec §6.3. It was fixed in `df97fa3` with a test that
+    makes the fit raise.
+
+**Q5 — Defence: "3 of 30 is a tuned number."** No threshold was tuned against the demo output.
+- The two gate changes (grey-world report-only, impulse 0.005) were fixed in the handoff before this
+  run, and are justified by impulse@1 and grey-world measurements taken on 2026-09-30.
+- The run then reports what fell out, including the unflattering 0.5% miss.
+- The implementer was forbidden to touch a threshold in response to the output.
+- The three images that are still modified are the ones a human would call flat, and their dynamic
+  range is printed beside them.
+
+**Q6 — Open.**
+1. **`impulse_gate` 0.005 vs about 0.002. This is a product call put to the user.**
+   - Under impulse@2, the clean max is 0.0005035, so 0.002 would sit about 4× above it and about
+     2.2× below the 0.5% case.
+   - At 0.005, 0.5% salt-and-pepper is missed.
+2. **Video flicker.** Frames 0 and 372 are stretched, but frame 188 is not. Spec §4.4 asks for one
+   plan per clip; that work is not built (Plan 3).
+3. **The joint-fit path is tested only on synthetic data.** No demo pair needed photometric
+   correction.
+4. **Wiring blockers:**
+   - pass `state.modalities[i]` into `assess`;
+   - guard the DAG node;
+   - per-date residuals in a pair receipt;
+   - `dt@2` and the config hash in the cache key;
+   - Decisions #1 (uint16 dynamic range, a product call), #3, #5 (memory, worse for pairs because the
+     pooled sample is twice the size) and #7.
+5. **Deferred minors** are in the worktree ledger `.superpowers/sdd/plan-2026-10-03-clarity-v2/progress.md`:
+   - M1: a refused pair photometric reads as ASSESSED_NO_ACTION;
+   - M4: `saturation@1` was not bumped;
+   - M5: a joint receipt's `triggered_by` names the partner's metric;
+   - one signed-pair test can pass vacuously.
+
+## Q-067 · Display-only "AI-enhanced preview" (Real-ESRGAN ×4): an approved exception to the no-GAN rule
+
+**Date:** 2026-10-03 · **Branch:** `feat/ai-enhance-preview` (worktree `.claude/worktrees/ai-enhance`, from
+`prototype` b158729) · commits `7a9a5f1`..`b95d7e0` (6) · **not merged, not deployed**.
+Plan and spec: `project/plan-2026-10-03-ai-enhance-preview.md`. Samples:
+https://claude.ai/artifact/TjBAukTtxMH5hypZMo1CX1.
+
+**Q1 — Mechanism.**
+- **`backend/app/enhance/`.**
+  - `rrdbnet.py` is the ESRGAN generator, with parameter names that match the official `params_ema` keys, so
+    the released weights load with `strict=True`.
+  - `realesrgan.py::RealESRGANEnhancer`:
+    1. sha256-verifies `checkpoints/realesrgan/RealESRGAN_x4plus.pth` (67,040,989 B, `4fa0d389…`);
+    2. loads it with `weights_only=True`;
+    3. Lanczos-downscales any input above 1024 px and records that it did;
+    4. runs tiled fp16 inference on CUDA, with 256-px tiles and a 16-px pad;
+    5. returns an `EnhanceResult` carrying `ILLUSTRATIVE_LABEL`.
+  - A missing or unverified checkpoint raises `EnhancerUnavailable` with a reason. There is no bicubic stand-in.
+- **The `ai_enhanced_preview` layer.** `GET /analysis/{job}/visualizations/ai_enhanced_preview` renders true
+  colour, then enhances it under an `asyncio.Lock` via `to_thread`, and writes atomically to
+  `visualizations/`, **never `input/`**.
+  - **Label on every response:** each response carries `X-SatQuery-Illustrative` and `X-SatQuery-Label`, plus
+    Effective-Scale and Downscaled-From. The label is also embedded as PNG text chunks, so it travels with the
+    file.
+  - **Export:** routed through the same checks. The banner reads MODEL_OUTPUT / "Display only". GeoTIFF and
+    GeoJSON are refused.
+  - **Other consumers:** the histogram is refused. The result zip adds a `.LABEL.txt` sidecar. The layer is
+    hidden from the visual-analytics page, because that page maps clicks 1:1 to raster pixels. It is not
+    advertised when `enhance.enabled` is false.
+- **`scripts/enhance/sample_check.py`** builds the sample page.
+
+**Q2 — Rationale.**
+- **Why there is an exception at all.** The user asked for portrait-style "AI upscale" results. GAN and diffusion
+  output was previously banned outright, because it invents detail (rejected in Q-065 and in the Clarity
+  handoff).
+- **What the user decided on 2026-10-03:**
+  - display only;
+  - satellite and drone imagery only;
+  - on demand;
+  - approach A, Real-ESRGAN.
+- **Rejected for now:**
+  - **(B) diffusion super-resolution** (the SD ×4 upscaler, StableSR, SUPIR). It needs about 3.5 GB of weights,
+    only just fits 8 GB of VRAM, takes 30–90 s per tile, and the machine has already frozen three times.
+  - **Face models** (GFPGAN, CodeFormer). They add nothing for aerial imagery.
+- **The safety design is the point of the work.** Invented pixels are acceptable to show a person only while
+  they cannot reach an analysis model, and cannot leave the system labelled as data.
+
+**Q3 — Blast radius.**
+- **Analysis:** none. No analysis path reads `visualizations/`, and job reuse copies `input/` only.
+- **If the label failed:** a user could take invented detail for real imagery. That is why the label is applied
+  in three ways: response headers, PNG text chunks, and the export banner and zip sidecar.
+- **Deployment:** the hosted backend has no weights, so the layer refuses there with a reason.
+- **GPU:** the GPU is shared with the analysis models. A preview takes 576 MB at its peak.
+
+**Q4 — Verification (measured, verbatim).**
+- **Real weights:** they load with `strict=True` and pass the sha check. 256 px → 1024 px takes **191–277 ms** on
+  the RTX 3070, peaking at **576 MB** of GPU memory.
+- **Honesty test.** A clean crop was area-downscaled ×4, then restored by bicubic and by Real-ESRGAN, and both
+  were scored against the real original. The crops are 512 px, because the demo sources are 512×512.
+  - Airport: PSNR **24.31 vs 24.45 dB**, SSIM **0.7970 vs 0.7693**.
+  - Street: PSNR **26.05 vs 25.45 dB**, SSIM **0.7703 vs 0.7462** (numpy luma SSIM; skimage is not installed).
+  - Real-ESRGAN looks sharper but is **not closer to the truth** than bicubic. That is the measured
+    justification for display-only.
+- **Tests:**
+  - `-k "enhance or visualization"`: **26 passed**.
+  - Full suite `-m "not models"`: **533 passed, 10 failed**. The failures are the same 10 checkpoint-dependent
+    ones by name as on `prototype` (513 passed there).
+  - frontend-v2 `tsc --noEmit`: exit 0.
+- **Review.** Every task was reviewed. The E3 review (opus) found that the PNG export labelled the invented image
+  `[SOURCE_DATA]` and bypassed the disabled switch when cached. It also found an unlabelled zip, broken inspect
+  mapping on the visual-analytics page, and a render test that was really a cache hit. All were fixed in
+  `b95d7e0`.
+
+**Q5 — Defence: "this contradicts your own no-fabrication rule."** It is a scoped, recorded exception, not a
+reversal. The enhanced image is never evidence:
+- no model reads it;
+- every copy of it says what it is;
+- the measured PSNR and SSIM show it is not more accurate.
+
+The analysis path is unchanged.
+
+**Q6 — Open.**
+1. **E4, the frontend "Enhance" button, is blocked.** It is waiting on the user's uncommitted frontend-v2 changes.
+2. **GPU contention with a running analysis job** has not been measured.
+3. **The absolute checkpoint path** needs an env override before deploy.
+4. **Diffusion (approach B)** stays deferred.
+
+## Q-068 · AI-enhanced preview hardening after final review (supersedes parts of Q-067)
+
+**Date:** 2026-10-03 · **Branch:** `feat/ai-enhance-preview` · commit `9f6bf09` · **not merged**. This entry
+**supersedes three statements in Q-067:**
+- the checkpoint path is now repo-relative, not absolute;
+- tiling is now 512 px with a 32 px pad (Q-067 said 256/16);
+- "label on every response" now also covers the pixels themselves (a burned-in badge) and the artifacts endpoint.
+
+Q-067 stays as written. This is the correction.
+
+**Q1 — What changed, and why.** The final whole-branch review (opus) found three Important issues:
+1. **Shared GPU lock.** The preview took only its own lock, so it could run on the 8 GB GPU at the same time as
+   SAM2, ChangeFormer or the VLM and OOM them. It now takes the global `gpu_lock`. A lock timeout returns 503
+   `gpu_busy`. A CUDA OOM empties the cache and returns 503 `gpu_out_of_memory`, writing nothing.
+2. **Portable path.** The absolute checkpoint path worked on one machine only. The layer was also advertised on
+   the hosted backend, where the weights are absent, and its refusal leaked a `/home/...` path. Now:
+   - the path is `checkpoints/realesrgan/RealESRGAN_x4plus.pth`, resolved against `root_dir`;
+   - the env overrides `SATQUERY_ENHANCE_CHECKPOINT` and `SATQUERY_ENHANCE_ENABLED` exist;
+   - the layer is advertised only when the file exists;
+   - HTTP bodies never carry filesystem paths.
+3. **Unlabelled display paths.** `/api/artifacts/.../ai_enhanced_preview.png` served the file without the label.
+   The existing analysis page (which we cannot edit; it holds the user's uncommitted work) shows the layer in a
+   bare `<img>`. Now:
+   - a visible badge, "AI-generated - illustrative only", is burned into the bottom-left of the pixels, at about
+     1.6% of the area;
+   - the artifacts endpoint returns 403 for that file and for `*.tmp`.
+
+Minor fixes:
+- unique temp files;
+- `X-SatQuery-Effective-Scale` is output/original, with a new `X-SatQuery-Model-Scale: 4`;
+- failed weight loads are cached until the file's mtime changes;
+- the sample page discloses its SSIM method and crop selection.
+
+**Q2 — Tile size, measured** on the real model, comparing tiled output with whole-image output on 512-px demo
+images:
+
+| Tiles | Pad | max\|Δ\| | Pixels with Δ > 8 | Time | Peak GPU |
+|---|---|---|---|---|---|
+| 256 | 16 | 33 DN (airport), **50 DN** (street) | 0.067% / 0.271% | — | 576 MB |
+| 256 | 32 | 21 DN (street) | 0.056% | 952 ms | 721 MB |
+| **512** | 16 | **0** (single tile) | 0% | 741 ms | 2209 MB |
+| 512 | 32, on a 1024-px input | — | — | 3318 ms | 2490 MB |
+
+Chosen: 512 px with a 32 px pad. It leaves no seams at demo sizes, and 2.5 GB is safe now that the preview and
+analysis serialise on the shared lock.
+
+**Q3 — Verification.**
+- **Tests:** `-k "enhance or visualization"` gives 46 passed. The full suite `-m "not models"` gives **553 passed,
+  10 failed**; the failures are the same 10 checkpoint-dependent ones as `prototype` (513 passed there). The
+  scoped re-review accepted 9/9.
+- **End-to-end with the real model:**
+  - the layer is advertised;
+  - it renders 200 in 2632 ms, including the model load;
+  - a 512 px input becomes 2048 px;
+  - the headers, the PNG text and the visible badge are all present;
+  - `input/` is unchanged;
+  - GeoTIFF export is refused;
+  - the artifacts bypass gets 403.
+
+**Q4 — Open.**
+1. **E4, the frontend button, is still blocked.**
+2. **Refusals use different status codes on purpose:** `disabled` and `unavailable` return 404, while `gpu_busy`
+   and OOM return 503.
+3. **Video jobs** have no preview: they do not use the job-layer endpoints. This deviates from plan E3's "or a
+   video frame".

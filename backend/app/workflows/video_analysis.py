@@ -82,6 +82,41 @@ class VideoAnalysisWorkflow:
             return TaskType.VIDEO_GROUNDING, "Query requests target localization and moment flagging across video footage."
 
     @classmethod
+    async def persist_results(cls, db_session: Any, job_id: str, video_path: Path, meta: Any,
+                              flags: List[Any], task: Any) -> Optional[str]:
+        """Write the video record, keyframes, flags and job status. Returns a warning, never raises.
+
+        Separate from `execute` so the endpoint can run the GPU work on a worker thread (with no
+        session) and persist afterwards on the request's own event loop, where its session lives
+        (Q-064).
+        """
+        try:
+            await VideoRepository.create_or_update_video(
+                session=db_session, job_id=job_id, filename=video_path.name,
+                file_path=str(video_path), metadata=meta, video_id=job_id,
+            )
+            saved_frame_records = [
+                {
+                    "frame_index": f.peak_frame,
+                    "timestamp_sec": round(f.start_timestamp + (f.end_timestamp - f.start_timestamp) / 2.0, 3),
+                    "is_keyframe": True,
+                    "image_path": f.keyframe_url,
+                }
+                for f in flags if f.keyframe_url
+            ]
+            if saved_frame_records:
+                await VideoRepository.save_video_frames(session=db_session, video_id=job_id, frames=saved_frame_records)
+            await VideoRepository.save_video_flags(session=db_session, video_id=job_id, flags=flags)
+            await JobRepository.update_job_status(
+                session=db_session, job_id=job_id, status=JobStatus.COMPLETED.value, task_type=task.value,
+            )
+            logger.info(f"Successfully persisted video job '{job_id}' to PostgreSQL.")
+            return None
+        except Exception as e:
+            logger.warning(f"Database persistence for video job '{job_id}' encountered error: {e}")
+            return f"Database persistence warning: {e}"
+
+    @classmethod
     async def execute(
         cls,
         video_path: Path,
@@ -534,52 +569,9 @@ class VideoAnalysisWorkflow:
 
                 # 7. PostgreSQL Persistence
                 if db_session is not None:
-                    try:
-                        # Save VideoRecord
-                        await VideoRepository.create_or_update_video(
-                            session=db_session,
-                            job_id=job_id,
-                            filename=video_path.name,
-                            file_path=str(video_path),
-                            metadata=meta,
-                            video_id=job_id
-                        )
-
-                        # Save keyframe records
-                        saved_frame_records = []
-                        for f in flags:
-                            if f.keyframe_url:
-                                saved_frame_records.append({
-                                    "frame_index": f.peak_frame,
-                                    "timestamp_sec": round(f.start_timestamp + (f.end_timestamp - f.start_timestamp) / 2.0, 3),
-                                    "is_keyframe": True,
-                                    "image_path": f.keyframe_url
-                                })
-                        if saved_frame_records:
-                            await VideoRepository.save_video_frames(
-                                session=db_session,
-                                video_id=job_id,
-                                frames=saved_frame_records
-                            )
-
-                        # Save VideoFlag records
-                        await VideoRepository.save_video_flags(
-                            session=db_session,
-                            video_id=job_id,
-                            flags=flags
-                        )
-
-                        # Update AnalysisJob status
-                        await JobRepository.update_job_status(
-                            session=db_session,
-                            job_id=job_id,
-                            status=JobStatus.COMPLETED.value,
-                            task_type=task.value
-                        )
-                        logger.info(f"Successfully persisted video job '{job_id}' to PostgreSQL.")
-                    except Exception as e:
-                        logger.warning(f"Database persistence for video job '{job_id}' encountered error: {e}")
-                        warnings.append(f"Database persistence warning: {e}")
+                    persist_warning = await cls.persist_results(db_session, job_id, video_path, meta, flags, task)
+                    if persist_warning:
+                        warnings.append(persist_warning)
 
                 # Build response
                 artifacts = artifact_manager.list_artifacts(job_id)
